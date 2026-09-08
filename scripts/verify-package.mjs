@@ -70,8 +70,7 @@ try {
   await close(page); report.checks.push('Packaged native worker/SQLite/lock launch, offline history and draft save');
   page = await launch(); assert.equal(await page.getByRole('textbox', { name: 'Your message' }).inputValue(), draft);
   assert.equal(await page.locator('aside').isVisible(), false, 'Collapsed history survives restart');
-  await page.getByRole('button', { name: 'Chat options' }).click();
-  await page.getByRole('menuitem', { name: 'Conversation details', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversation details', exact: true }).click();
   await page.getByRole('dialog', { name: 'Conversation details', exact: true }).waitFor();
   await page.getByRole('button', { name: /Request details/ }).click();
   await page.getByText('No model requests have been made for this chat.').waitFor();

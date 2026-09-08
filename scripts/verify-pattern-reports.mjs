@@ -170,10 +170,7 @@ try {
   await cmd('patternClose'); await wait(()=>report.isClosed(),'viewer close');
   checks.push('Actual medium HTML rendered in native isolated window; no Node/preload/storage, no desktop overflow');
   const reopenedWindow = app.waitForEvent('window');
-  await page.getByRole('button',{name:'Chat options',exact:true}).click();
-  assert.equal(await page.getByRole('menuitem',{name:'Delete chat',exact:true}).count(),1);
-  assert.equal(await page.getByRole('menuitem',{name:'Conversation details',exact:true}).count(),1,'Current conversation tools stay available beside the report library');
-  await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('button',{name:'Conversation details',exact:true}).count(),1,'Current conversation details stay available beside the report library');
   await page.getByRole('button',{name:'View existing report',exact:true}).click();
   const reopened = await reopenedWindow; await reopened.locator('h1').first().waitFor();
   assert.equal(count(),1,'Reopening the existing report must not generate another report');

@@ -2,6 +2,7 @@
 
 ## Unreleased — 2026-09-09
 
+- Consolidate chat details in the header and replace its overflow menu with a delete button.
 - Show live post-chat progress in a blocking dialog with retry and cancel controls.
 
 ## 0.2.0 — 2026-09-09

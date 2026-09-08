@@ -67,3 +67,7 @@ dialog closes automatically. If processing fails, choose **Try again** or
 **Cancel remaining**. Cancellation keeps completed results and discards unfinished
 work. Restarting the app reopens unfinished processing without automatically
 sending requests again. Completed stages remain in **Conversation details**.
+
+The upper-right controls are **Bookmark chat**, **Conversation details**, and
+**End chat** while chatting or **Delete chat** after ending. Delete opens a
+confirmation dialog. Completed processing has no separate details button.

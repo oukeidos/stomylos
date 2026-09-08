@@ -25,8 +25,7 @@ try {
   await page.getByText('Writing…', { exact: true }).waitFor();
   await page.getByText('Writing…', { exact: true }).waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'End chat', exact: true }).click();
-  await page.getByRole('button', { name: 'More options' }).click();
-  await page.getByRole('menuitem', { name: 'Conversation details', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversation details', exact: true }).click();
   await page.getByRole('button', { name: /Starter renewal.*Generating questions/ }).waitFor();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Start another chat' }).click(); await input.waitFor();
@@ -56,8 +55,7 @@ try {
   assert.equal(after.session.starter_text, before.session.starter_text); assert.equal(after.messages[0].content, before.messages[0].content);
   if (!await page.locator('aside').isVisible()) await page.getByRole('button', { name: 'Show history', exact: true }).click();
   await page.locator('.history-item').filter({ hasText: old.session.starter_text }).click();
-  await page.getByRole('button', { name: 'More options' }).click();
-  await page.getByRole('menuitem', { name: 'Conversation details', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversation details', exact: true }).click();
   const disclosure = page.getByRole('button', { name: /Starter renewal.*2 new questions saved/ });
   await disclosure.click(); await page.getByText('New questions replenish the local pool as space becomes available.').waitFor();
   assert.equal(await page.getByRole('button', { name: 'Try starter renewal again' }).count(), 0);

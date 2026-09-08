@@ -46,8 +46,7 @@ try {
   await page.getByRole('button', { name: 'Retry reply', exact: true }).waitFor();
   assert.deepEqual((await view(page)).requests.find(r => r.id === failed.id), failed);
   assert.equal(mock.requests.length, 2, 'Reopening must not retry');
-  await page.getByRole('button', { name: 'More options' }).click();
-  await page.getByRole('menuitem', { name: 'Conversation details', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversation details', exact: true }).click();
   await page.getByRole('button', { name: /Request details/ }).click();
   await page.getByText('Finish reason: length', { exact: true }).waitFor();
   await page.getByText('8192 output tokens · 8000 reasoning tokens', { exact: true }).waitFor();

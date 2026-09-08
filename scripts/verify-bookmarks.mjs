@@ -102,9 +102,7 @@ try {
   assert.equal(seeded.status, 0, seeded.stderr); await launch();
   const active = (await command('snapshot')).unfinished.id;
   assert.equal(await header().count(), 0);
-  await button('Chat options').click();
-  assert.equal(await page.getByRole('menuitem', { name: 'Bookmark chat', exact: true }).count(), 0, 'Bookmark is not duplicated in Chat options');
-  await page.keyboard.press('Escape');
+  assert.equal(await button('Chat options').count(), 0, 'The redundant header menu is removed');
   await button('Show history').click(); await settled();
   assert.equal(await page.locator('.history-row').count(), 40);
   const draft = '작성 중인 초안\nA second line with exact punctuation.';
@@ -208,7 +206,7 @@ try {
   await header().click(); await button('Undo').waitFor();
   const removed = await page.locator('.history-item[aria-current="page"]').count();
   assert.equal(removed, 0);
-  await button('Chat options').click(); await page.getByRole('menuitem', { name: 'Delete chat', exact: true }).click();
+  await button('Delete chat').click();
   await page.getByRole('dialog', { name: 'Delete this chat?' }).getByRole('button', { name: 'Delete chat', exact: true }).click();
   await page.getByRole('dialog', { name: 'Delete this chat?' }).waitFor({ state: 'hidden' });
   await page.locator('.composer textarea').waitFor(); assert.equal(await button('Undo').count(), 0);

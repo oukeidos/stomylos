@@ -71,8 +71,7 @@ async function details(page, id) {
   // Use the real history row to select the target before exercising its controls.
   const rows = await command(page, 'snapshot'); const index = rows.sessions.findIndex(s => s.id === id);
   await page.locator('.history-item').nth(index).click();
-  await page.getByRole('button', { name: 'More options' }).click();
-  await page.getByRole('menuitem', { name: 'Conversation details', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversation details', exact: true }).click();
   await page.getByRole('button', { name: /^Shared memory/ }).click(); return selected;
 }
 try {

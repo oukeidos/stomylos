@@ -112,7 +112,7 @@ try {
   assert.ok(final.requests.filter(r => r.role === 'chat' && r.status === 'failed').every(r => r.response_content));
   report.checks.push('Original Retry retains exact wire body despite pending selection; explicit replacement creates no duplicate learner bubble and retains failed partial attempts');
 
-  await button('Chat options').click(); await page.getByRole('menuitem', { name: 'Conversation details', exact: true }).click();
+  await button('Conversation details').click();
   await page.getByRole('button', { name: /^Request details/ }).click();
   assert.ok(await page.getByText(`Requested: ${selected.model}`, { exact: false }).count());
   assert.ok(await page.getByText('Partner reselection', { exact: true }).count());

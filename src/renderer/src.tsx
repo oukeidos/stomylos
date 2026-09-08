@@ -449,11 +449,8 @@ function App() {
       {(app.settings.simulation || app.settings.development) && <span className="build-label">{app.settings.simulation ? 'Preview' : 'Development'}</span>}
       {view?.canBookmark && <IconButton icon="bookmark" className="bookmark-toggle" label={view.bookmarked ? 'Remove bookmark' : 'Bookmark chat'} title={view.bookmarked ? 'Remove bookmark' : 'Bookmark chat'} aria-pressed={view.bookmarked} aria-busy={bookmarks.pending.has(view.session.id)} disabled={bookmarkDisabled(view.session.id)} onClick={() => mark({ id: view.session.id, bookmarked: view.bookmarked })} />}
       <IconButton label="Conversation details" icon="info" disabled={!view} onClick={() => { setDetailsSection(null); setDetails(true); }} />
-      <Menu.Root><Menu.Trigger asChild><IconButton className="more-button" label="Chat options" icon="more" /></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" align="end" sideOffset={8} collisionPadding={12}>
-        <Menu.Item className="partner-option" disabled={!view} onSelect={() => { setDetailsSection(null); setDetails(true); }}>Conversation details</Menu.Item>
-        <Menu.Separator className="menu-separator" />
-        <Menu.Item className="partner-option destructive" disabled={!view || view.session.state !== 'ended' || deleting || !!app.activity.storageError} onSelect={() => currentSummary && requestDelete(currentSummary)}>Delete chat</Menu.Item>
-      </Menu.Content></Menu.Portal></Menu.Root>
+      {view?.session.state === 'ended' && <IconButton className="delete-chat" label="Delete chat" icon="trash" disabled={deleting || !!app.activity.storageError} onClick={() => currentSummary && requestDelete(currentSummary)} />}
+
       {view && view.session.state !== 'ended' && <IconButton className="end-chat lifecycle-action" label="End chat" icon="exit" onClick={() => act(async () => { if (!await beforeDictationNavigation()) return; await flushDraft(view.session.id); await window.stomylos.command('endSession', { sessionId: view.session.id }); })} />}
     </div>
   </header><aside id="conversation-sidebar" hidden={!historyOpen} inert={!!genie.opening || !!genie.episode?.open}>
@@ -497,7 +494,6 @@ function App() {
         {view.session.state === 'ended' && <>
           {view.endProcessing && <section className="end-summary" aria-label="End processing">
             <span role="status">{endSummary(view)}</span>
-            <button onClick={() => { setDetailsSection(null); setDetails(true); }}>Processing details</button>
           </section>}
 
           <div className="ended-marker">{!view.endProcessing && labels[view.session.analysis_state]}{view.session.draft && <button className="icon-button retained-draft-link" aria-label="View unsent draft" title="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></button>}</div>

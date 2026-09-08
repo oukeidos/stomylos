@@ -48,8 +48,7 @@ try {
     }, Object.keys(before.sessions));
     assert.equal(result.version, '0.15.0'); assert.equal(result.keyPresent, false);
     assert.equal(result.items, conversion.merge.sharedItems); passes.push(result);
-    await page.getByRole('button', { name: 'More options', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Conversation details', exact: true }).click();
+    await page.getByRole('button', { name: 'Conversation details', exact: true }).click();
     await page.getByRole('button', { name: /^Shared memory/ }).click();
     await page.getByText('All partners use the same shared memory.', { exact: false }).waitFor();
     await page.keyboard.press('Escape');
