@@ -1,13 +1,15 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { Store } from '../src/main/database';
+import * as contracts from '../src/main/contracts';
+import { memoryCharacters, memoryCharacterCap } from '../src/main/memory-render';
 import { characters, conversationBody, conversationSnapshot, conversationComponents, hash, transcriptJson } from '../src/main/contracts';
 import { recordedTime, readMessageTime, renderTime, validateTime } from '../src/main/time-context';
-import { memoryBody, memoryConfig, memoryContext, memoryJson, legacyMemoryVersion, emptyMemory } from '../src/main/memory-updater';
+import { memoryBody, memoryConfig, memoryContext, memoryJson, legacyMemoryVersion, emptyMemory, capacityUpdaterVersion } from '../src/main/memory-updater';
 import { starterBody } from '../src/main/starter-renewal';
 import { timed, universalSnapshot, publicTime, v5Snapshot } from './time-fixtures';
 import type { RecordedTime } from '../src/shared/time';
@@ -16,7 +18,7 @@ let directory: string, store: Store, raw: Database.Database, clock: RecordedTime
 const native = resolve('native/advisory-lock.node');
 function open() { store = new Store(directory, native, () => 0, () => clock); raw = (store as unknown as { db: Database.Database }).db; }
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-time-')); clock = publicTime; open(); });
-afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); store.close(); rmSync(directory, { recursive: true, force: true }); });
 function start(direct = true, old = false, v5 = false, legacyV6 = false) {
   let session = store.createSession(); store.searchMode(session.id, 'off');
   if (old) raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(universalSnapshot(true)), session.id);
@@ -52,9 +54,10 @@ it('pins all revised prompt artifacts independently while retaining experimental
   for (const [file, digest] of Object.entries(expected)) expect(hash(readFileSync('src/main/' + file, 'utf8'))).toBe(digest);
 });
 
-it('keeps the full bounded transcript, maximum memory and timestamps together or rejects before dispatch without truncation', () => {
+it('preserves the historical v3 memory and input bounds without truncating timed transcripts', () => {
   const { id } = start(); store.end(id); const attempt = store.prepareMemory(id, randomUUID());
   const packet = JSON.parse(attempt.input_json), config = memoryConfig('stomylos_memory_updater_v3');
+  packet.limits = { ...config.limits };
   packet.current_memory.traits = Array.from({ length: 60 }, (_, i) => ({ id: 'item-' + i, text: String(i).padStart(3, '0') + 'x'.repeat(237) }));
   packet.session.messages = Array.from({ length: 48 }, (_, i) => ({ id: 'message-' + i, role: i % 2 ? 'assistant' : 'user', origin: i % 2 ? 'model' : 'learner', delivery: 'complete', content: 'x'.repeat(i % 2 ? 750 : 250), sent_time: i % 2 ? null : clock }));
   const body = memoryBody(config, packet);
@@ -68,6 +71,24 @@ it('keeps the full bounded transcript, maximum memory and timestamps together or
   else expect(JSON.parse(memoryBody(config, packet).messages[1].content)).toEqual(packet);
   packet.session.messages.forEach((m: any) => { m.content = '"'.repeat(m.content.length); });
   expect(() => memoryBody(config, packet)).toThrow('memory_input_too_large');
+});
+
+it('sends the current 30000-character memory and timed transcript intact and rejects oversized input', () => {
+  const { id } = start(); store.end(id);
+  const attempt = store.prepareMemory(id, randomUUID());
+  const packet = JSON.parse(attempt.input_json), config = JSON.parse(store.memoryJob(id)!.config);
+  expect(config.version).toBe(capacityUpdaterVersion);
+  packet.current_memory.traits = [{ id: 'large-memory', text: 'x' }];
+  packet.current_memory.traits[0].text += 'x'.repeat(memoryCharacterCap - memoryCharacters(packet.current_memory));
+  expect(memoryCharacters(packet.current_memory)).toBe(30000);
+  packet.session.messages = Array.from({ length: 48 }, (_, i) => ({ id: 'message-' + i,
+    role: i % 2 ? 'assistant' : 'user', origin: i % 2 ? 'model' : 'learner', delivery: 'complete',
+    content: 'x'.repeat(i % 2 ? 750 : 250), sent_time: i % 2 ? null : clock }));
+  expect(JSON.parse(memoryBody(config, packet).messages[1].content)).toEqual(packet);
+  packet.session.messages[0].content = 'x'.repeat(1_048_576);
+  const unchanged = JSON.stringify(packet);
+  expect(() => memoryBody(config, packet)).toThrow('memory_input_too_large');
+  expect(JSON.stringify(packet)).toBe(unchanged);
 });
 
 it('rejects missing timing for a new accepted user rather than manufacturing a date', () => {
@@ -88,6 +109,8 @@ it('preserves exact role/content for all partners with empty and populated memor
     expect(body.messages[0].content.includes('Enjoys museums.')).toBe(populated);
     expect(body.messages[0].content.includes(partner.id)).toBe(false);
     store.end(id);
+    // This matrix covers request assembly; explicitly abandon unrelated end stages.
+    store.cancelEnd(id);
   }
 });
 
@@ -188,15 +211,18 @@ it('blocks changed sources and clock metadata instead of silently rebuilding a s
 it('uses message dates rather than ending/execution dates in new frozen memory packets and records unknown times for newly ended legacy chats', () => {
   const old = start(false, true); complete(old.id); store.end(old.id);
   const legacyJob = store.memoryJob(old.id)!;
-  expect(JSON.parse(legacyJob.config).version).toBe('stomylos_memory_updater_v3');
+  expect(JSON.parse(legacyJob.config).version).toBe(capacityUpdaterVersion);
   expect(JSON.parse(legacyJob.source).messages.every((m: any) => m.sent_time === null)).toBe(true);
+  update(old.id);
+  // Finish the old memory update and cancel unrelated stages before another chat.
+  store.cancelEnd(old.id);
   const modern = start(); complete(modern.id);
   clock = recordedTime('2026-09-08T03:00:00.000Z', 'Asia/Seoul', 540);
   const second = store.submit(modern.id, 'Tomorrow is another event.'); store.end(modern.id);
-  expect(store.memoryReady([modern.id])).toBeNull(); update(old.id);
+  expect(store.memoryReady([modern.id])).toBe(modern.id);
   const attempt = store.prepareMemory(modern.id, randomUUID()), job = store.memoryJob(modern.id)!;
   const packet = JSON.parse(attempt.input_json), config = JSON.parse(job.config);
-  expect(config.version).toBe('stomylos_memory_updater_v3');
+  expect(config.version).toBe(capacityUpdaterVersion);
   expect(packet.session.messages.filter((m: any) => m.role === 'user').map((m: any) => m.sent_time.local_date)).toEqual(['2026-09-05', '2026-09-08']);
   expect(packet.session.messages.find((m: any) => m.id === second.id).content).toBe(second.content);
   expect(memoryBody(config, packet).messages[0].content).toContain('The session end time is not the time of every message.');
@@ -217,19 +243,30 @@ it('preserves exact universal-v4 memory injection without adding temporal contex
 
 it('keeps unknown timing explicit and rejects assistant timestamps and oversized updater input', () => {
   const { id } = start(); store.end(id); const attempt = store.prepareMemory(id, randomUUID());
-  const packet = JSON.parse(attempt.input_json), config = memoryConfig('stomylos_memory_updater_v3');
+  const packet = JSON.parse(attempt.input_json), config = JSON.parse(store.memoryJob(id)!.config);
+  expect(config.version).toBe(capacityUpdaterVersion);
   packet.session.messages.forEach((m: any) => { m.sent_time = null; });
   expect(memoryBody(config, packet).messages[1].content).toContain('"sent_time":null');
   packet.session.messages.push({ id: 'assistant', role: 'assistant', origin: 'model', delivery: 'complete', content: 'Public.', sent_time: clock });
   expect(() => memoryBody(config, packet)).toThrow('memory_source_time');
-  packet.session.messages.at(-1).sent_time = null; packet.session.messages.at(-1).content = 'x'.repeat(60000);
+  packet.session.messages.at(-1).sent_time = null; packet.session.messages.at(-1).content = 'x'.repeat(1_048_576);
   expect(() => memoryBody(config, packet)).toThrow('memory_input_too_large');
   expect(() => renderTime({ reply_reference: clock, sources: [{ user_turn: 2, message_id: 'wrong', sequence: 0, sent_time: null }] }, store.messages(id))).toThrow('invalid_time_context');
 });
 
- it('preserves the exact 0.14.0 v6 memory-v2 request and frozen snapshot across restart', () => {
+it('preserves the exact 0.14.0 v6 memory-v2 request and frozen snapshot across restart', () => {
   const { id } = start(true, false, false, true), saved = store.session(id).chat_config;
+  // Reproduce the pre-cache request builder, then persist its complete snapshot.
+  // An old session alone does not make a newly prepared request historical.
+  const original = contracts.conversationRequestSnapshot;
+  vi.spyOn(contracts, 'conversationRequestSnapshot').mockImplementationOnce(session => {
+    const snapshot = original(session); delete snapshot.cache_version;
+    snapshot.app_version = '0.14.0'; return snapshot;
+  });
   const first = store.prepareChat(id, randomUUID()), body = store.chatBody(first.id);
+  vi.restoreAllMocks();
+  expect(JSON.parse(first.config).cache_version).toBeUndefined();
+  expect(JSON.parse(first.config).app_version).toBe('0.14.0');
   expect(body).toEqual(JSON.parse(readFileSync('tests/fixtures/reciprocal-direct-golden.json', 'utf8')));
   store.dispatch(first.id); store.prepareReply(id, first.id); store.close(); open();
   const retry = store.prepareChat(id, randomUUID()); expect(retry.config).toBe(first.config);
