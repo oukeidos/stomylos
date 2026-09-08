@@ -6,7 +6,7 @@ import { strictJson } from './strict-json';
 import prompt from './search-router-prompt.txt?raw';
 
 export const searchHash = (value: string) => createHash('sha256').update(value).digest('hex');
-export const searchVersion = 'stomylos_search_v1';
+export const searchVersion = 'stomylos_search_v2';
 export const searchOverlay: Json = {
   tools: [{ type: 'openrouter:web_search', parameters: {
     engine: 'parallel', mode: 'fast', max_results: 5, max_total_results: 10, max_uses: 2, max_characters: 1500
@@ -25,12 +25,18 @@ export function searchSnapshot(): Json {
       { model: 'ibm-granite/granite-4.2-8b', reasoning: { enabled: false, exclude: false }, max_tokens: 128 }
     ],
     provider: { sort: 'latency', allow_fallbacks: true, require_parameters: true, data_collection: 'deny' },
-    attempt_timeout_ms: 2000, total_timeout_ms: 4000, overlay: structuredClone(searchOverlay),
+    attempt_timeout_ms: 10000, total_timeout_ms: 20000, overlay: structuredClone(searchOverlay),
     transport: { timeout_ms: 120000, idle_ms: 30000, max_bytes: 8000000, metadata: true }
   };
 }
 export function validateSearchSnapshot(snapshot: Json) {
-  if (!isDeepStrictEqual(snapshot, searchSnapshot())) throw new AppFailure('search_contract_changed');
+  const expected = searchSnapshot();
+  // Submitted turns retain their original deadlines and exact retry contract.
+  if (snapshot.version === 'stomylos_search_v1') {
+    expected.version = 'stomylos_search_v1';
+    expected.attempt_timeout_ms = 2000; expected.total_timeout_ms = 4000;
+  }
+  if (!isDeepStrictEqual(snapshot, expected)) throw new AppFailure('search_contract_changed');
 }
 export function searchInput(previous: string, current: string): string {
   return JSON.stringify({ previous_assistant: previous, current_user: current });

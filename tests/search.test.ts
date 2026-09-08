@@ -10,6 +10,7 @@ import { routeSearch, type SearchRoutingStore } from '../src/main/search-router'
 import { AppFailure } from '../src/main/errors';
 import { ChatStream, type Gateway } from '../src/main/transport';
 import { validateCommand } from '../src/main/ipc';
+import * as searchContracts from '../src/main/search-contract';
 
 let store: Store, directory: string;
 const native = resolve('native/advisory-lock.node');
@@ -32,6 +33,7 @@ function gateway(outputs: (string | Error)[]) {
 }
 it('freezes the selected prompt, two model settings and exact search limits', () => {
   const snapshot = searchSnapshot();
+  expect(snapshot).toMatchObject({ version: 'stomylos_search_v2', attempt_timeout_ms: 10000, total_timeout_ms: 20000 });
   expect(searchHash(snapshot.prompt)).toBe('459b48c7e5b0b3e8ebb79b87d0e08b3f258ed3e5feedc9a3bed52f124c8287be');
   expect(searchOverlay).toEqual({ tools: [{ type: 'openrouter:web_search', parameters: { engine: 'parallel', mode: 'fast', max_results: 5, max_total_results: 10, max_uses: 2, max_characters: 1500 } }], max_tool_calls: 4, stop_server_tools_when: [{ type: 'step_count_is', step_count: 4 }, { type: 'max_cost', max_cost_in_dollars: 0.25 }, { type: 'max_tokens_used', max_tokens: 32000 }] });
   const body = searchRouterBody(snapshot, searchInput('Last reply', 'Current message'), 0);
@@ -105,8 +107,34 @@ it('cancels a dispatched primary without launching fallback and budgets only rem
   expect(store.searchView(id)!.attempts[0].status).toBe('interrupted');
   const fallback = gateway(['{"search":true}']);
   await routeSearch(hooks(id), fallback, new AbortController().signal);
-  expect(fallback.stream.mock.calls[0][3].timeoutMs).toBeLessThanOrEqual(2000);
+  expect(fallback.stream.mock.calls[0][3].timeoutMs).toBe(10000);
   expect(store.searchView(id)!.turn.decision).toBe('fallback');
+});
+it.each([false, true])('preserves saved deadlines across restart and retry (legacy: %s), then uses new deadlines on Send', async legacy => {
+  const snapshot = searchSnapshot();
+  if (legacy) Object.assign(snapshot, { version: 'stomylos_search_v1', attempt_timeout_ms: 2000, total_timeout_ms: 4000 });
+  const freeze = vi.spyOn(searchContracts, 'searchSnapshot').mockReturnValueOnce(snapshot);
+  let id: string;
+  try { id = submitted().id; } finally { freeze.mockRestore(); }
+  const saved = store.searchView(id)!.turn.config;
+  store.close(); store = new Store(directory, native);
+  expect(store.view(id).search!.turn.config).toBe(saved);
+  const primary = store.searchPrepare(id)!; store.searchDispatch(primary.id);
+  // Simulate a slow attempt without waiting: fallback gets the remaining total budget.
+  const spent = legacy ? 3000 : 12000;
+  store.searchFinish(primary.id, '', { routing_network_ms: spent }, 'request_timeout');
+  const net = gateway(['{"search":false}']); await routeSearch(hooks(id), net, new AbortController().signal);
+  expect(net.stream.mock.calls[0][3].timeoutMs).toBe(snapshot.total_timeout_ms - spent);
+  const request = store.prepareChat(id, randomUUID()), body = store.chatBody(request.id);
+  store.dispatch(request.id); store.failRequest(request.id, 'transport_failed');
+  const retry = store.prepareChat(id, randomUUID()); expect(store.chatBody(retry.id)).toEqual(body);
+  store.dispatch(retry.id); const bubble = store.prepareReply(id, retry.id);
+  store.finishReply(retry.id, bubble.id, 'Complete reply.', {});
+  store.submit(id, 'Continue this conversation.');
+  const next = JSON.parse(store.searchView(id)!.turn.config);
+  expect(next).toMatchObject({ version: 'stomylos_search_v2', attempt_timeout_ms: 10000, total_timeout_ms: 20000 });
+  const nextNet = gateway(['{"search":false}']); await routeSearch(hooks(id), nextNet, new AbortController().signal);
+  expect(nextNet.stream.mock.calls[0][3].timeoutMs).toBe(10000);
 });
 it('resumes only an unused fallback after a dispatched gate is interrupted by restart', async () => {
   const { id } = submitted(), attempt = store.searchPrepare(id)!; store.searchDispatch(attempt.id);
