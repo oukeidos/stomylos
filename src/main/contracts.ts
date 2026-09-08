@@ -1,5 +1,6 @@
 import { createHash, randomInt } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { version } from '../../package.json';
 import runtime from './runtime-config.json';
 import conversationV5 from './conversation-v5-config.json';
 import conversationV6 from './conversation-v6-config.json';
@@ -20,7 +21,7 @@ import starterSevenPrompt from './starter-router-seven-prompt.txt?raw';
 import reciprocalPrompt from './reciprocal-replacement-prompt.txt?raw';
 
 export const appId = 'io.github.oukeidos.stomylos';
-export const appVersion = '0.22.0';
+export const appVersion = version;
 export const config = runtime;
 export const characters: Character[] = runtime.conversation.characters;
 export const starters: Starter[] = runtime.starters;
