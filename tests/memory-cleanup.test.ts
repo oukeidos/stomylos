@@ -38,3 +38,19 @@ it('keeps the selected automatic-routing cleanup request and new factual-only up
   expect(config.limits).toEqual(candidateLimits);
   expect(memoryBody(config, { current_memory: doc, limits: candidateLimits, session: { id: 's', character_id: 'partner', ended_at: '', timezone: 'UTC', messages: [] } }).model).toBe('google/gemini-3.8-flash');
 });
+
+it('adds low effort only for v5 while replaying the frozen v4 medium request unchanged', async () => {
+  const { default: historical } = await import('./fixtures/memory-updater-v4.json');
+  const { currentUpdaterVersion } = await import('../src/main/memory-updater');
+  expect(memoryConfig(capacityUpdaterVersion)).toEqual(historical);
+  const current = memoryConfig(currentUpdaterVersion);
+  const comparison = structuredClone(current);
+  comparison.version = historical.version; comparison.parameters.reasoning.effort = 'medium';
+  expect(comparison).toEqual(historical);
+  const packet = { current_memory: emptyMemory('shared'), limits: candidateLimits,
+    session: { id: 's', character_id: 'partner', ended_at: '', timezone: 'UTC', messages: [] } };
+  expect(memoryBody(current, packet).reasoning.effort).toBe('low');
+  expect(memoryBody(historical, packet).reasoning.effort).toBe('medium');
+  const altered = structuredClone(historical); altered.parameters.reasoning.effort = 'low';
+  expect(() => memoryBody(altered, packet)).toThrow('memory_unsupported_settings');
+});

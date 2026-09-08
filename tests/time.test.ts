@@ -9,7 +9,7 @@ import * as contracts from '../src/main/contracts';
 import { memoryCharacters, memoryCharacterCap } from '../src/main/memory-render';
 import { characters, conversationBody, conversationSnapshot, conversationComponents, hash, transcriptJson } from '../src/main/contracts';
 import { recordedTime, readMessageTime, renderTime, validateTime } from '../src/main/time-context';
-import { memoryBody, memoryConfig, memoryContext, memoryJson, legacyMemoryVersion, emptyMemory, capacityUpdaterVersion } from '../src/main/memory-updater';
+import { memoryBody, memoryConfig, memoryContext, memoryJson, legacyMemoryVersion, emptyMemory, currentUpdaterVersion } from '../src/main/memory-updater';
 import { starterBody } from '../src/main/starter-renewal';
 import { timed, universalSnapshot, publicTime, v5Snapshot } from './time-fixtures';
 import type { RecordedTime } from '../src/shared/time';
@@ -77,7 +77,7 @@ it('sends the current 30000-character memory and timed transcript intact and rej
   const { id } = start(); store.end(id);
   const attempt = store.prepareMemory(id, randomUUID());
   const packet = JSON.parse(attempt.input_json), config = JSON.parse(store.memoryJob(id)!.config);
-  expect(config.version).toBe(capacityUpdaterVersion);
+  expect(config.version).toBe(currentUpdaterVersion);
   packet.current_memory.traits = [{ id: 'large-memory', text: 'x' }];
   packet.current_memory.traits[0].text += 'x'.repeat(memoryCharacterCap - memoryCharacters(packet.current_memory));
   expect(memoryCharacters(packet.current_memory)).toBe(30000);
@@ -211,7 +211,7 @@ it('blocks changed sources and clock metadata instead of silently rebuilding a s
 it('uses message dates rather than ending/execution dates in new frozen memory packets and records unknown times for newly ended legacy chats', () => {
   const old = start(false, true); complete(old.id); store.end(old.id);
   const legacyJob = store.memoryJob(old.id)!;
-  expect(JSON.parse(legacyJob.config).version).toBe(capacityUpdaterVersion);
+  expect(JSON.parse(legacyJob.config).version).toBe(currentUpdaterVersion);
   expect(JSON.parse(legacyJob.source).messages.every((m: any) => m.sent_time === null)).toBe(true);
   update(old.id);
   // Finish the old memory update and cancel unrelated stages before another chat.
@@ -222,7 +222,7 @@ it('uses message dates rather than ending/execution dates in new frozen memory p
   expect(store.memoryReady([modern.id])).toBe(modern.id);
   const attempt = store.prepareMemory(modern.id, randomUUID()), job = store.memoryJob(modern.id)!;
   const packet = JSON.parse(attempt.input_json), config = JSON.parse(job.config);
-  expect(config.version).toBe(capacityUpdaterVersion);
+  expect(config.version).toBe(currentUpdaterVersion);
   expect(packet.session.messages.filter((m: any) => m.role === 'user').map((m: any) => m.sent_time.local_date)).toEqual(['2026-09-05', '2026-09-08']);
   expect(packet.session.messages.find((m: any) => m.id === second.id).content).toBe(second.content);
   expect(memoryBody(config, packet).messages[0].content).toContain('The session end time is not the time of every message.');
@@ -244,7 +244,7 @@ it('preserves exact universal-v4 memory injection without adding temporal contex
 it('keeps unknown timing explicit and rejects assistant timestamps and oversized updater input', () => {
   const { id } = start(); store.end(id); const attempt = store.prepareMemory(id, randomUUID());
   const packet = JSON.parse(attempt.input_json), config = JSON.parse(store.memoryJob(id)!.config);
-  expect(config.version).toBe(capacityUpdaterVersion);
+  expect(config.version).toBe(currentUpdaterVersion);
   packet.session.messages.forEach((m: any) => { m.sent_time = null; });
   expect(memoryBody(config, packet).messages[1].content).toContain('"sent_time":null');
   packet.session.messages.push({ id: 'assistant', role: 'assistant', origin: 'model', delivery: 'complete', content: 'Public.', sent_time: clock });

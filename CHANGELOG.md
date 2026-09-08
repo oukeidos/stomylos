@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Use Gemini low reasoning for new shared-memory updates to reduce end-of-chat
+  waiting time and cost. Keep saved medium jobs unchanged on retry; schema 16
+  upgrades preserve existing data and request history.
+
 - Generate starter questions with the tested concise prompt and only the ended
   chat’s user messages; select Gemini 20%, GLM 40%, and Claude Sonnet 40%.
   Preserve existing duplicate/pool handling and exact retries of older jobs.

@@ -17,6 +17,8 @@ export const memoryVersion = 'stomylos_memory_context_v2';
 export const sharedMemoryVersion = 'stomylos_memory_context_v3';
 export const capacityMemoryVersion = 'stomylos_memory_context_v4';
 export const capacityUpdaterVersion = 'stomylos_memory_updater_v4';
+export const currentUpdaterVersion = 'stomylos_memory_updater_v5';
+export const isCapacityUpdater = (version: unknown) => version === capacityUpdaterVersion || version === currentUpdaterVersion;
 // Structural admission only; committed capacity is measured on the rendered body.
 export const candidateLimits = Object.freeze({ max_items: 1000000, max_item_chars: 1000000, max_bytes: 1000000 });
 export const sharedMemoryId = 'shared';
@@ -75,21 +77,21 @@ export function applyMemory(packet: MemoryPacket, content: string, shared = fals
   validateMemory(doc, packet.limits); return doc;
 }
 export function memoryConfig(version = 'stomylos_memory_updater_v1'): Json {
-  if (!['stomylos_memory_updater_v1', 'stomylos_memory_updater_v2', sharedUpdaterVersion, capacityUpdaterVersion].includes(version)) fail('unsupported_settings');
-  const selected = version === capacityUpdaterVersion ? capacityPrompt : version === sharedUpdaterVersion ? sharedPrompt : version === 'stomylos_memory_updater_v2' ? temporalPrompt : prompt;
+  if (!['stomylos_memory_updater_v1', 'stomylos_memory_updater_v2', sharedUpdaterVersion, capacityUpdaterVersion, currentUpdaterVersion].includes(version)) fail('unsupported_settings');
+  const selected = isCapacityUpdater(version) ? capacityPrompt : version === sharedUpdaterVersion ? sharedPrompt : version === 'stomylos_memory_updater_v2' ? temporalPrompt : prompt;
   return { version, prompt: selected, prompt_sha256: memoryHash(selected),
-    timeout_seconds: 180, limits: { ...(version === capacityUpdaterVersion ? candidateLimits : memoryLimits) },
+    timeout_seconds: 180, limits: { ...(isCapacityUpdater(version) ? candidateLimits : memoryLimits) },
     response_identity: { allowed_models: ['google/gemini-3.8-flash-20260902', 'google/gemini-3.8-flash'], provider: 'Google AI Studio' },
-    parameters: { model: 'google/gemini-3.8-flash', stream: false, max_tokens: version === capacityUpdaterVersion ? 32768 : 8192,
+    parameters: { model: 'google/gemini-3.8-flash', stream: false, max_tokens: isCapacityUpdater(version) ? 32768 : 8192,
       provider: { only: ['google-ai-studio'], allow_fallbacks: false, require_parameters: true, data_collection: 'deny' },
-      reasoning: { effort: 'medium', exclude: true },
+      reasoning: { effort: version === currentUpdaterVersion ? 'low' : 'medium', exclude: true },
       response_format: { type: 'json_schema', json_schema: { name: 'stomylos_memory_delta_v1', strict: true, schema } } } };
 }
 export function memoryBody(snapshot: Json, packet: MemoryPacket): Json {
   if (!isDeepStrictEqual(snapshot, memoryConfig(snapshot.version))) fail('unsupported_settings');
-  if (!isDeepStrictEqual(packet.limits, snapshot.version === capacityUpdaterVersion ? candidateLimits : memoryLimits)) fail('limits');
+  if (!isDeepStrictEqual(packet.limits, isCapacityUpdater(snapshot.version) ? candidateLimits : memoryLimits)) fail('limits');
   validateMemory(packet.current_memory, packet.limits);
-  if (packet.current_memory.character_id !== ([sharedUpdaterVersion, capacityUpdaterVersion].includes(snapshot.version) ? sharedMemoryId : packet.session.character_id)) fail('character_mismatch');
+  if (packet.current_memory.character_id !== ([sharedUpdaterVersion, capacityUpdaterVersion, currentUpdaterVersion].includes(snapshot.version) ? sharedMemoryId : packet.session.character_id)) fail('character_mismatch');
   if (snapshot.version !== 'stomylos_memory_updater_v1') {
     for (const message of packet.session.messages) {
       if (!Object.hasOwn(message, 'sent_time')) fail('source_time');
@@ -100,7 +102,7 @@ export function memoryBody(snapshot: Json, packet: MemoryPacket): Json {
     }
   } else if (packet.session.messages.some(m => Object.hasOwn(m, 'sent_time'))) fail('source_time');
   const body = { ...snapshot.parameters, messages: [{ role: 'system', content: snapshot.prompt }, { role: 'user', content: JSON.stringify(packet) }] };
-  if (Buffer.byteLength(JSON.stringify(body)) + 512 + (snapshot.version === capacityUpdaterVersion ? 32768 : 0) > (snapshot.version === capacityUpdaterVersion ? 1_048_576 : 60000)) fail('input_too_large');
+  if (Buffer.byteLength(JSON.stringify(body)) + 512 + (isCapacityUpdater(snapshot.version) ? 32768 : 0) > (isCapacityUpdater(snapshot.version) ? 1_048_576 : 60000)) fail('input_too_large');
   return body;
 }
 export function memoryContext(doc: MemoryDocument, version = memoryVersion): string {

@@ -117,3 +117,29 @@ it('refuses over-cap authoritative memory on restart without truncation or mutat
   expect(()=>new Store(dir,resolve('native/advisory-lock.node'))).toThrow('memory_recovery_required');
   const after = new Database(join(dir,'stomylos.sqlite3')); expect(after.prepare('SELECT document FROM shared_memory').pluck().get()).toBe(document); after.close();
 });
+
+it.each(['stomylos_memory_updater_v4', 'stomylos_memory_updater_v5'])('preserves frozen %s effort across restart/retry and still stages cleanup', async version => {
+  const { memoryConfig, memoryBody, currentUpdaterVersion } = await import('../src/main/memory-updater');
+  const { store, dir, id, message } = setup();
+  expect(JSON.parse(store.memoryJob(id)!.config).version).toBe(currentUpdaterVersion);
+  expect(JSON.parse(store.memoryJob(id)!.config).parameters.reasoning.effort).toBe('low');
+  // Construct an old saved job in isolated test data; production never rewrites one.
+  const db = new Database(join(dir, 'stomylos.sqlite3'));
+  const trigger = db.prepare("SELECT sql FROM sqlite_master WHERE name='immutable_memory_source'").pluck().get() as string;
+  const config = memoryJson(memoryConfig(version));
+  db.exec('DROP TRIGGER immutable_memory_source');
+  db.prepare('UPDATE memory_jobs SET config=?,config_hash=? WHERE session_id=?').run(config, memoryHash(config), id);
+  db.exec(trigger); db.close();
+  const first = store.prepareMemory(id, randomUUID()); store.dispatchMemory(first.id);
+  store.failMemory(first.id, 'request_timeout');
+  store.close(); stores.splice(stores.indexOf(store), 1);
+  const reopened = new Store(dir, resolve('native/advisory-lock.node')); stores.push(reopened);
+  reopened.retryMemory(id); const retry = reopened.prepareMemory(id, randomUUID());
+  expect(retry.input_json).toBe(first.input_json);
+  expect(reopened.memoryJob(id)!.config).toBe(config);
+  expect(memoryBody(JSON.parse(config), JSON.parse(retry.input_json)).reasoning.effort).toBe(version.endsWith('v4') ? 'medium' : 'low');
+  reopened.dispatchMemory(retry.id);
+  reopened.saveMemory(retry.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'experiences', text: 'y'.repeat(2500), source_message_ids: [message.id] }] }), {});
+  expect(reopened.memoryCandidate(id)?.state).toBe('pending');
+  expect(() => reopened.createSession()).toThrow('end_processing_pending');
+});

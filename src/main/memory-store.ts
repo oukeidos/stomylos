@@ -6,7 +6,7 @@ import type { MemoryAttempt, MemoryDocument, MemoryJob, MemoryPacket, MemoryView
 import { readMessageTime } from './time-context';
 import { AppFailure } from './errors';
 import { memoryChanges } from './memory-history';
-import { applyMemory, memoryBody, memoryConfig, memoryHash, memoryJson, memoryLimits, memoryVersion, sharedMemoryVersion, sharedMemoryId, sharedUpdaterVersion, capacityUpdaterVersion, capacityMemoryVersion, candidateLimits, memorySupported, validateMemory } from './memory-updater';
+import { applyMemory, memoryBody, memoryConfig, memoryHash, memoryJson, memoryLimits, memoryVersion, sharedMemoryVersion, sharedMemoryId, sharedUpdaterVersion, currentUpdaterVersion, isCapacityUpdater, capacityMemoryVersion, candidateLimits, memorySupported, validateMemory } from './memory-updater';
 
 const now = () => new Date().toISOString();
 function fail(code: string): never { throw new AppFailure('memory_' + code); }
@@ -51,7 +51,7 @@ export class MemoryStore {
         if (temporal && role === 'user' && origin === 'learner' && !sent_time) fail('source_time');
         return { id, role, origin, delivery, content, sent_time };
       }) });
-    const config = memoryJson(memoryConfig(capacityUpdaterVersion));
+    const config = memoryJson(memoryConfig(currentUpdaterVersion));
     this.run("INSERT INTO memory_jobs(session_id,character_id,source,source_hash,config,config_hash,created_at,state) VALUES(?,?,?,?,?,?,?,'pending')", session.id, session.character, source, memoryHash(source), config, memoryHash(config), now());
   }
   job(sessionId: string) { return this.row<MemoryJob>('SELECT * FROM memory_jobs WHERE session_id=?', sessionId) ?? null; }
@@ -88,9 +88,9 @@ export class MemoryStore {
       if (previous) { if (previous.job_id !== job?.ordinal) fail('duplicate_job'); return previous; }
       if (!job || job.state !== 'pending' || this.blocker(job)) fail('not_ready');
       if (memoryHash(job.source) !== job.source_hash || memoryHash(job.config) !== job.config_hash) fail('source_changed');
-      if (![sharedUpdaterVersion, capacityUpdaterVersion].includes(JSON.parse(job.config).version)) fail('legacy_job_requires_resolution');
+      if (JSON.parse(job.config).version !== sharedUpdaterVersion && !isCapacityUpdater(JSON.parse(job.config).version)) fail('legacy_job_requires_resolution');
       const older = this.attempts(job.ordinal).at(-1);
-      const packet: MemoryPacket = older ? JSON.parse(older.input_json) : { current_memory: this.load(), session: JSON.parse(job.source), limits: { ...(JSON.parse(job.config).version === capacityUpdaterVersion ? candidateLimits : memoryLimits) } };
+      const packet: MemoryPacket = older ? JSON.parse(older.input_json) : { current_memory: this.load(), session: JSON.parse(job.source), limits: { ...(isCapacityUpdater(JSON.parse(job.config).version) ? candidateLimits : memoryLimits) } };
       if (packet.session.id !== sessionId || memoryJson(packet.session) !== job.source || memoryJson(packet.current_memory) !== memoryJson(this.load())) fail('stale_input');
       const input = memoryJson(packet); if (older && memoryHash(input) !== older.input_hash) fail('input_changed');
       this.run("INSERT INTO memory_attempts(id,job_id,parent_id,input_json,input_hash,status,created_at) VALUES(?,?,?,?,?,'queued',?)", id, job.ordinal, older?.id ?? null, input, memoryHash(input), now());
@@ -113,7 +113,7 @@ export class MemoryStore {
       if (packet.session.id !== job.session_id || packet.session.character_id !== job.character_id || memoryJson(packet.session) !== job.source || memoryJson(packet.current_memory) !== memoryJson(this.load())) fail('stale_input');
       memoryBody(JSON.parse(job.config), packet);
       const doc = applyMemory(packet, content, true), encoded = memoryJson(doc);
-      if (JSON.parse(job.config).version === capacityUpdaterVersion && memoryCharacters(doc) > memoryCharacterCap) {
+      if (isCapacityUpdater(JSON.parse(job.config).version) && memoryCharacters(doc) > memoryCharacterCap) {
         const config = memoryJson(cleanupConfig());
         this.run("INSERT INTO memory_candidates(session_id,update_attempt_id,document,document_hash,config,config_hash,state,created_at) VALUES(?,?,?,?,?,?,'pending',?)", job.session_id, id, encoded, memoryHash(encoded), config, memoryHash(config), now());
         this.run("UPDATE memory_attempts SET status='succeeded',finished_at=?,response_content=?,result=?,metadata=? WHERE id=?", now(), content, encoded, JSON.stringify(metadata), id);
