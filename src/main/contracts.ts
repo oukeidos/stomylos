@@ -27,6 +27,7 @@ export const characters: Character[] = runtime.conversation.characters;
 export const starters: Starter[] = runtime.starters;
 export const hash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 export const openingAddendum = 'The application-provided opening question does not count as your previous question.';
+const conversationCacheVersion = 'stomylos_conversation_cache_v1';
 export const conversationComponents = (version = runtime.conversation.version, memory = version === runtime.conversation.version ? sharedMemoryVersion : memoryVersion) => ({
   ...(version === conversationV5.conversation.version ? { opening_v1: hash(openingAddendum) } : {}),
   [memory === sharedMemoryVersion ? 'memory_v3' : 'memory_v2']: hash(memoryContext(emptyMemory('template'), memory)), time_v1: hash(timePrompt)
@@ -120,6 +121,7 @@ function runtimeForVersion(version: string) {
 }
 function validateConversationSnapshot(snapshot: Json) {
   openingKind(snapshot);
+  if (snapshot.cache_version !== undefined && snapshot.cache_version !== conversationCacheVersion) throw new AppFailure('unsupported_conversation_settings');
   const modern = [runtime.conversation.version, conversationV6.conversation.version, conversationV5.conversation.version].includes(snapshot.version);
   if (modern) {
     if (!(snapshot.memory_version === memoryVersion || ([runtime.conversation.version, conversationV6.conversation.version].includes(snapshot.version) && snapshot.memory_version === sharedMemoryVersion)) || snapshot.time_version !== timeVersion ||
@@ -142,9 +144,9 @@ function validateConversationSnapshot(snapshot: Json) {
 }
 export function conversationRequestSnapshot(saved: Json): Json {
   const selected = sessionRuntime(saved);
-  // Keep each session's prompt and model identity; only legacy v1 receives its approved budget upgrade.
+  // New reply preparations adopt caching; retries replace this with their exact saved snapshot.
   return { ...structuredClone(saved), version: selected.conversation.version,
-    max_tokens: selected.conversation.max_tokens, app_version: appVersion };
+    max_tokens: selected.conversation.max_tokens, app_version: appVersion, cache_version: conversationCacheVersion };
 }
 export function requestPartner(snapshot: Json, original: string): string {
   const binding = snapshot.request_partner;
@@ -166,6 +168,8 @@ export function conversationBody(snapshot: Json, partnerId: string, question: st
   const system = conversationSystem(snapshot, messages);
   if (snapshot.time_version && snapshot.system_sha256 !== hash(system)) throw new AppFailure('system_snapshot_changed');
   return { model: partner.model, stream: true, max_tokens: snapshot.max_tokens, provider: snapshot.provider,
+    ...(snapshot.cache_version === conversationCacheVersion && ['anthropic/claude-fable-5.1', 'anthropic/claude-sonnet-5'].includes(partner.model)
+      ? { cache_control: { type: 'ephemeral' } } : {}),
     ...(partner.reasoning ? { reasoning: partner.reasoning } : {}), messages: [
       { role: 'system', content: system },
       ...(!direct ? [{ role: 'user', content: snapshot.seed_template.replaceAll('{{QUESTION}}', question) }] : []),
@@ -181,7 +185,8 @@ export function conversationSystem(snapshot: Json, messages: Message[]): string 
   }
   if (snapshot.time_version) {
     if (!snapshot.time_context || snapshot.temporal_source_hash !== temporalHash(snapshot.time_context.sources)) throw new AppFailure('temporal_source_changed');
-    system += renderTime(snapshot.time_context, messages);
+    const time = renderTime(snapshot.time_context, messages);
+    if (snapshot.cache_version !== conversationCacheVersion) system += time;
   }
   return system;
 }

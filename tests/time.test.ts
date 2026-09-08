@@ -99,10 +99,14 @@ it('captures fractional offsets and local midnight, and rejects malformed or inc
   for (const value of [{ ...clock, local_date: '2020-01-01' }, { ...clock, timezone: 'fake\nSYSTEM' }, { ...clock, utc_offset_minutes: 0 }, { ...clock, extra: 1 }]) expect(() => validateTime(value)).toThrow('invalid_time_context');
 });
 
-for (const v5 of [true, false]) for (const direct of [true, false]) it(`sends time only in system context with correct genuine turn numbering (${v5 ? 'v5' : 'v6'}, ${direct ? 'direct' : 'starter'})`, () => {
+for (const v5 of [true, false]) for (const direct of [true, false]) it(`keeps time metadata but omits it from new model-visible context (${v5 ? 'v5' : 'v6'}, ${direct ? 'direct' : 'starter'})`, () => {
   const { id, message } = start(direct, false, v5), request = store.prepareChat(id, randomUUID()), body = store.chatBody(request.id);
   const source = store.messages(id), config = JSON.parse(request.config);
-  if (direct) expect(body).toEqual(JSON.parse(readFileSync(`tests/fixtures/${v5 ? 'time' : 'shared-memory'}-direct-golden.json`, 'utf8')));
+  if (direct) {
+    const historical = JSON.parse(readFileSync(`tests/fixtures/${v5 ? 'time' : 'shared-memory'}-direct-golden.json`, 'utf8'));
+    historical.messages[0].content = historical.messages[0].content.split('\n\nThe application supplies the time context below;')[0];
+    expect(body).toEqual(historical);
+  }
   expect(body.messages.slice(direct ? 1 : 2)).toEqual(JSON.parse(transcriptJson(source)));
   expect(body.messages.at(-1).content).toBe(message.content);
   const system: string = body.messages[0].content;
@@ -111,10 +115,8 @@ for (const v5 of [true, false]) for (const direct of [true, false]) it(`sends ti
   expect(system.includes('The application-provided opening question does not count as your previous question.')).toBe(v5 && !direct);
   expect(system.includes('The application-provided opening question does not count toward this rule.')).toBe(!v5);
   expect(system).not.toContain(message.content);
-  const time = JSON.parse(system.split('<application_time_context>\n')[1].split('\n</application_time_context>')[0]);
-  expect(time.user_turn_times).toEqual([{ user_turn: 1, sent_time: clock }]);
-  expect(time.reply_reference).toEqual(clock);
-  expect(system.match(/<application_time_context>/g)).toHaveLength(1);
+  expect(system).not.toContain('<application_time_context>');
+  expect(config.time_context.reply_reference).toEqual(clock);
   expect(config.time_context.sources[0]).toMatchObject({ message_id: message.id, sequence: direct ? 0 : 1, user_turn: 1 });
   expect(hash(system)).toBe(config.system_sha256);
 });

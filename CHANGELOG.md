@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Omit application time instructions and timestamps from newly prepared chat
+  prompts, and enable automatic five-minute prompt caching for Fable and Sonnet.
+  Keep message-time storage, memory updates and exact retries of older requests.
 - Increased search-decision timeouts to 10 seconds per model and 20 seconds total
   for new messages, including existing chats. Previously submitted requests keep
   their saved retry settings.
