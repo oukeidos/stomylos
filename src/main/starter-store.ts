@@ -6,7 +6,7 @@ import { AppFailure } from './errors';
 import { intentionPolicy } from './intention-questions';
 import type { StarterPreparation } from '../shared/intention';
 import { sessionOpening } from './opening';
-import { parseStarterQuestions, questionKey, selectStarter, starterBody, starterContext, starterPolicy, starterSnapshot, renewalV2, renewalV3, renewalV4, type SlotQuestion } from './starter-renewal';
+import { parseStarterQuestions, questionKey, selectStarter, starterBody, starterContext, starterPolicy, starterSnapshot, renewalV2, renewalV3, renewalV4, renewalV5, type SlotQuestion } from './starter-renewal';
 
 const now = () => new Date().toISOString();
 type Question = Starter & { normalized_text: string; state: string; created_at: string; expires_at: string | null };
@@ -140,7 +140,7 @@ export class StarterStore {
   prepare(session: Session, source: Message[]) {
     if (this.preparation(session.id) || this.jobForSession(session.id)) return;
     if (!source.some(isLearner) && !this.rows('SELECT 1 FROM starter_skips WHERE session_id=? LIMIT 1', session.id).length) return;
-    const config = JSON.stringify(starterSnapshot(this.pickGenerator, JSON.parse(session.chat_config).time_version ? renewalV4 : JSON.parse(session.chat_config).opening ? renewalV2 : starterPolicy.version));
+    const config = JSON.stringify(starterSnapshot(this.pickGenerator, renewalV5));
     this.run("INSERT INTO starter_preparations VALUES(?,?,?,?,?,?, 'waiting',NULL)", session.id, now(), new Date(Date.now() + intentionPolicy.preparationMs).toISOString(), session.source_hash, config, hash(config));
   }
   release(session: Session, source: Message[], reason: string) {
@@ -187,9 +187,9 @@ export class StarterStore {
     this.refill();
     const sourceHash = hash(transcriptJson(source));
     if (sourceHash !== session.source_hash) throw new AppFailure('frozen_source_changed');
-    const snapshot = selected ?? starterSnapshot(this.pickGenerator, JSON.parse(session.chat_config).time_version ? renewalV4 : JSON.parse(session.chat_config).opening ? renewalV2 : starterPolicy.version); const config = JSON.stringify(snapshot);
-    const input = JSON.stringify(this.packet(session, source)); starterBody(snapshot, input); const jobId = randomUUID();
-    if (!source.length && snapshot.version !== renewalV2 && snapshot.version !== renewalV3 && snapshot.version !== renewalV4) throw new AppFailure('starter_source_changed');
+    const snapshot = selected ?? starterSnapshot(this.pickGenerator, renewalV5); const config = JSON.stringify(snapshot);
+    const input = JSON.stringify(snapshot.version === renewalV5 ? source.filter(isLearner).map(message => message.content) : this.packet(session, source)); starterBody(snapshot, input); const jobId = randomUUID();
+    if (!source.length && snapshot.version !== renewalV2 && snapshot.version !== renewalV3 && snapshot.version !== renewalV4 && snapshot.version !== renewalV5) throw new AppFailure('starter_source_changed');
     this.run(`INSERT INTO starter_renewal_jobs(id,session_id,created_at,source_sequence,source_hash,source_messages,input_json,input_hash,config,config_hash,model,state)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,'pending')`, jobId, session.id, now(), (source.at(-1)?.sequence ?? -1), sourceHash,
       JSON.stringify(source.map(m => ({ id: m.id, sequence: m.sequence, origin: m.origin, delivery: m.delivery }))), input, hash(input), config, hash(config), snapshot.parameters.model);
@@ -229,7 +229,7 @@ export class StarterStore {
     const messages = this.rows<Message>('SELECT * FROM messages WHERE session_id=? ORDER BY sequence', job.session_id);
     if (session.state !== 'ended' || session.source_hash !== job.source_hash || hash(transcriptJson(messages)) !== job.source_hash ||
         (messages.at(-1)?.sequence ?? -1) !== job.source_sequence || hash(job.config) !== job.config_hash || hash(job.input_json) !== job.input_hash) throw new AppFailure('starter_source_changed');
-    if (!messages.length && ![renewalV2, renewalV3, renewalV4].includes(JSON.parse(job.config).version)) throw new AppFailure('starter_source_changed');
+    if (!messages.length && ![renewalV2, renewalV3, renewalV4, renewalV5].includes(JSON.parse(job.config).version)) throw new AppFailure('starter_source_changed');
     starterBody(JSON.parse(job.config), job.input_json);
   }
   save(id: string, content: string, metadata: Json) {

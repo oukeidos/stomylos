@@ -866,3 +866,20 @@ it('backup releases its gate when an accepted draft write fails during draining'
   await controller.withBackup(async () => undefined);
   await controller.command('close', undefined);
 });
+
+it.each([false, true])('dispatches minimal starter input and records source counts (skip-only: %s)', async skipOnly => {
+  const id = activeId();
+  if (skipOnly) {
+    const session = store.session(id);
+    store.replaceQuestion(id, randomUUID(), session.starter_id!, session.opening_revision);
+  } else store.submit(id, 'A real user message.');
+  await controller.command('endSession', {sessionId:id});
+  await waitFor(() => store.starterJob(id)?.state === 'completed');
+  expect(renewalCalls).toHaveLength(1);
+  expect(JSON.parse(renewalCalls[0].messages[1].content)).toEqual(skipOnly ? [] : ['A real user message.']);
+  expect(renewalCalls[0].messages[0].content).toContain('Use the supplied user messages as loose inspiration.');
+  const job = store.starterJob(id)!;
+  const attempt = store.starterAttempts(job.id).at(-1)!;
+  expect(JSON.parse(attempt.metadata).source_turns).toBe(skipOnly ? 0 : 1);
+  await controller.command('close', undefined);
+});

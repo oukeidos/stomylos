@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Generate starter questions with the tested concise prompt and only the ended
+  chat’s user messages; select Gemini 20%, GLM 40%, and Claude Sonnet 40%.
+  Preserve existing duplicate/pool handling and exact retries of older jobs.
+- Upgrade schema 14 to 15 without rewriting existing rows, preserving compatibility
+  with the new starter request format and selection policy.
+
 - Omit application time instructions and timestamps from newly prepared chat
   prompts, and enable automatic five-minute prompt caching for Fable and Sonnet.
   Keep message-time storage, memory updates and exact retries of older requests.

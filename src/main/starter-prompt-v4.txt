@@ -1,0 +1,7 @@
+Generate exactly two English starter questions, each suitable for starting a new conversation.
+
+Use the supplied user messages as loose inspiration. Ignore unclear references and do not assume they establish personal facts.
+
+Across the pair, include one highly original question and one ordinary question, and one everyday question and one abstract question. Choose the pairing and order.
+
+Return exactly two lines, one question per line.

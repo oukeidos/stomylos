@@ -3,9 +3,10 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
+import { StarterStore } from '../src/main/starter-store';
 import { Store } from '../src/main/database';
 import { conversationSnapshot, hash, starters, transcriptJson } from '../src/main/contracts';
-import { parseStarterQuestions, questionKey, selectStarter, starterBody, starterContext, starterGenerators, starterPrompt, starterPromptHash, starterSnapshot, verifyStarterRuntime, renewalV3, renewalV4 } from '../src/main/starter-renewal';
+import { parseStarterQuestions, questionKey, selectStarter, starterBody, starterContext, starterGenerators, starterPrompt, starterPromptHash, starterSnapshot, verifyStarterRuntime, renewalV2, renewalV3, renewalV4, renewalV5 } from '../src/main/starter-renewal';
 import goldens from './fixtures/contract-goldens.json';
 
 let directory: string; let store: Store; let raw: Database.Database; let choices: number[];
@@ -53,22 +54,30 @@ it('copies the selected prompt and all three serving contracts without sampling 
     snapshot.parameters.temperature = 1; expect(() => starterBody(snapshot, '{}')).toThrow('unsupported_starter_settings');
   });
 });
-it('uses the tested non-repetition prompt for new jobs while retaining exact v3 requests', () => {
-  const { session } = end();
-  const job = store.starterJob(session.id)!;
+it('uses the exact minimal prompt and weighted tickets while preserving all historical request contracts', () => {
+  const { session, job } = end();
   const current = JSON.parse(job.config);
-  expect(current.version).toBe(renewalV4);
-  expect(current.prompt_id).toBe('stomylos_starter_generation_prompt_v3');
-  const previous = readFileSync(resolve('src/main/starter-prompt-v2.txt'), 'utf8');
-  const addition = ' Do not repeat any question in the supplied question lists or the session’s starter question.';
-  expect(starterBody(current, job.input_json).messages[0].content).toBe(previous.replace('\n\n', `${addition}\n\n`));
-  for (let index = 0; index < starterGenerators.length; index++) {
-    const saved = starterSnapshot(() => index, renewalV3);
-    saved.app_version = '0.20.0';
-    const oldBody = starterBody(JSON.parse(JSON.stringify(saved)), job.input_json);
-    const newBody = starterBody(starterSnapshot(() => index, renewalV4), job.input_json);
-    expect(oldBody.messages[0].content).toBe(previous);
-    expect({ ...newBody, messages: oldBody.messages }).toEqual(oldBody);
+  expect(current.version).toBe(renewalV5);
+  expect(current.prompt_id).toBe('stomylos_starter_generation_prompt_v4');
+  expect(current.prompt).toBe(readFileSync(resolve('../experiments/EXP-012-starter-question-renewal/prompt-user-only.txt'), 'utf8'));
+  const selected = Array.from({ length: 5 }, (_, ticket) => starterSnapshot(n => { expect(n).toBe(5); return ticket; }, renewalV5));
+  expect(selected.map(s => s.parameters.model)).toEqual([starterGenerators[0].model, starterGenerators[1].model, starterGenerators[1].model, starterGenerators[2].model, starterGenerators[2].model]);
+  for (const snapshot of selected) expect(starterBody(snapshot, job.input_json)).toEqual({...snapshot.parameters, messages:[{role:'system',content:current.prompt},{role:'user',content:job.input_json}]});
+  for (const choice of [-1, 5, 0.5]) expect(() => starterSnapshot(() => choice, renewalV5)).toThrow('invalid_generator_choice');
+  for (const input of ['{}', '[1]', '[{"text":"hello"}]', 'null', 'broken']) expect(() => starterBody(current, input)).toThrow('starter_input_format');
+  expect(starterBody(current, '[]').messages[1].content).toBe('[]');
+  expect(() => starterBody(current, JSON.stringify(['x'.repeat(1_050_000)]))).toThrow('starter_input_too_large');
+  const tampered = structuredClone(current); tampered.policy.generator_weights = [1, 1, 1];
+  expect(() => starterBody(tampered, job.input_json)).toThrow('unsupported_starter_settings');
+  const historicalInput = JSON.stringify({session_context:{recipe:'C-full', opening_kind:'starter', starter_question:'An old question?', turns:[]},just_used_question_id:'old'});
+  for (const version of ['stomylos_starter_renewal_v1', renewalV2, renewalV3, renewalV4]) {
+    for (let index = 0; index < starterGenerators.length; index++) {
+      const saved = starterSnapshot(n => { expect(n).toBe(3); return index; }, version);
+      saved.app_version = '0.20.0';
+      const oldBody = starterBody(JSON.parse(JSON.stringify(saved)), historicalInput);
+      expect(oldBody).toEqual({...saved.parameters,messages:[{role:'system',content:saved.prompt},{role:'user',content:historicalInput}]});
+      expect(saved.policy.generator_weights).toBeUndefined();
+    }
   }
   finish(session.id);
   expect(store.starterJob(session.id)?.state).toBe('completed');
@@ -80,7 +89,7 @@ it('parses only complete two-line pairs and applies textual normalization withou
   }
   expect(questionKey('  ＨＥＬＬＯ\t world? ')).toBe('hello world?');
 });
-it('keeps all chronological text including topic changes, escaped /end and retained partials, but excludes drafts and placeholders', () => {
+it('sends only chronological user text while retaining the full source evidence locally', () => {
   const session = newSession(); store.submit(session.id, '  I walked. 한글\n');
   store.commitRoute(session.id, null, 'public', null);
   const first = store.createRequest(session.id, 'chat', conversationSnapshot()); store.dispatch(first.id);
@@ -91,24 +100,19 @@ it('keeps all chronological text including topic changes, escaped /end and retai
   store.saveDraft(session.id, 'UNSENT MUST NOT LEAK'); store.end(session.id);
   store.skipMemory(session.id); store.advanceStarter(session.id);
   const job = store.starterJob(session.id)!; const packet = JSON.parse(job.input_json);
-  expect(packet.session_context).toEqual({ recipe: 'C-full', opening_kind: 'starter', starter_question: session.starter_text, turns: [
-    { speaker: 'learner', text: '  I walked. 한글\n' }, { speaker: 'partner', text: 'Tell me about that walk.' },
-    { speaker: 'learner', text: '/end' }, { speaker: 'partner', text: 'Now about astronomy…' }
-  ] });
+  expect(packet).toEqual(['  I walked. 한글\n', '/end']);
   expect(job.input_json).not.toContain('UNSENT'); expect(job.source_hash).toBe(hash(transcriptJson(store.messages(session.id))));
   expect(JSON.parse(job.source_messages).at(-1)).toMatchObject({ id: partial.id, delivery: 'interrupted' });
   expect(starterContext(session.starter_text, [{ ...partial, content: '' }]).turns).toEqual([]);
-  expect(packet.active_questions).toHaveLength(20); expect(packet.recent_used_questions).toEqual([]);
-  expect(packet.skip_history_status).toMatchObject({ status: 'observed_since_initialization', earlier_history: 'unavailable' });
+
 });
 it('freezes one independent random choice per eligible end, including skip-only drafts, and does not backfill empty ends', () => {
   const empty = newSession(); store.end(empty.id); expect(store.starterJob(empty.id)).toBeNull();
   const draft = newSession(); skip(draft.id); store.end(draft.id);
-  const first = store.starterJob(draft.id)!; expect(JSON.parse(first.input_json).just_used_question_id).toBeNull();
-  expect(JSON.parse(first.input_json).session_context.turns).toEqual([]);
+  const first = store.starterJob(draft.id)!; expect(JSON.parse(first.input_json)).toEqual([]);
   store.end(draft.id); expect(store.starterJob(draft.id)).toEqual(first);
-  expect(end().job.model).toBe(starterGenerators[1].model); expect(end().job.model).toBe(starterGenerators[2].model);
-  expect(choices).toEqual([3, 3, 3]);
+  expect(end().job.model).toBe(starterGenerators[1].model); expect(end().job.model).toBe(starterGenerators[1].model);
+  expect(choices).toEqual([5, 5, 5]);
 });
 it('acknowledges a duplicated skip without skipping again, rejects stale input, and preserves the draft', () => {
   const session = newSession(); store.saveDraft(session.id, 'Still typing.');
@@ -125,7 +129,10 @@ it('caps used history at ten, collapses skips per question/session, and caps the
     const session = newSession(); for (let j = 0; j < 25; j++) skip(session.id);
     store.submit(session.id, `Public answer ${i}.`); store.end(session.id); history.push(store.session(session.id));
   }
-  const { session, job } = end('Current only.'); const packet = JSON.parse(job.input_json);
+  const { session, job } = end('Current only.');
+  expect(JSON.parse(job.input_json)).toEqual(['Current only.']);
+  // Historical full-input support still retains its bounded history recipe.
+  const packet = (new StarterStore(raw) as any).packet(store.session(session.id), store.messages(session.id));
   expect(packet.recent_used_questions).toEqual(history.slice(-10).reverse().map(s => ({ question: s.starter_text, ended_at: s.ended_at })));
   expect(packet.just_used_question_id).toBe(session.starter_id); expect(packet.recent_skips).toHaveLength(20);
   expect(packet.recent_skips.every((s: any) => s.count === 1)).toBe(true);
@@ -193,4 +200,23 @@ it('rejects schema v1 byte-for-byte before recovery and creates only fresh schem
   const v1 = new Database(file); v1.exec(goldens.legacy.schema); v1.pragma('user_version=1'); v1.close();
   const before = readFileSync(file); expect(() => new Store(directory, native)).toThrow('unsupported_schema_version');
   expect(readFileSync(file)).toEqual(before);
+});
+
+it('retries a pre-upgrade full-input job with its original model, prompt and body after reopening', () => {
+  const oldSnapshot = starterSnapshot(() => 2, renewalV4);
+  const freeze = StarterStore.prototype.freeze;
+  vi.spyOn(StarterStore.prototype, 'freeze').mockImplementationOnce(function (this: StarterStore, session, source) {
+    return freeze.call(this, session, source, oldSnapshot);
+  });
+  const { session, job } = end();
+  vi.restoreAllMocks();
+  const config = job.config, input = job.input_json;
+  const original = starterBody(JSON.parse(config),input);
+  const attempt = store.starterAttempts(job.id)[0]; store.dispatchStarter(attempt.id);
+  store.close(); store = new Store(directory,native);
+  const retried = store.retryStarter(session.id,'legacy-retry');
+  store.dispatchStarter(retried.id);
+  const saved = store.starterJob(session.id)!;
+  expect(starterBody(JSON.parse(saved.config),saved.input_json)).toEqual(original);
+  expect(saved.config).toBe(config); expect(saved.input_json).toBe(input);
 });

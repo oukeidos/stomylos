@@ -6,6 +6,7 @@ import { appVersion, hash } from './contracts';
 import revisedPrompt from './starter-prompt-v2.txt?raw';
 import nonRepeatingPrompt from './starter-prompt-v3.txt?raw';
 import prompt from './starter-prompt.txt?raw';
+import userOnlyPrompt from './starter-prompt-v4.txt?raw';
 
 export const starterPrompt = prompt;
 export const starterPromptHash = '0eed5675428600412efdf864a5bd46da53b61d6dab318735208ac3b4c2491656';
@@ -22,21 +23,27 @@ export const starterGenerators = [
 
 export function verifyStarterRuntime() {
   if (hash(prompt) !== starterPromptHash || hash(revisedPrompt) !== 'e237d85f445066d62d9dc0f5741b436b25621df1b1da5a2a95ae82805b112f7f' ||
-      hash(nonRepeatingPrompt) !== '9c74bbd56a93ec2ee1a609708ff34a1fb4630ef8e9dfed85fc64827765b3702a') throw new AppFailure('starter_prompt_hash_mismatch');
+      hash(nonRepeatingPrompt) !== '9c74bbd56a93ec2ee1a609708ff34a1fb4630ef8e9dfed85fc64827765b3702a' ||
+      hash(userOnlyPrompt) !== 'ffe18583d6ecbed5eaa4854c78021de86a15a0d8a369dea1492f163c97f8c1bb') throw new AppFailure('starter_prompt_hash_mismatch');
 }
 export const questionKey = (text: string) => text.normalize('NFKC').toLowerCase().replace(/\s+/gu, ' ').trim();
 
+export const renewalV5 = 'stomylos_starter_renewal_v5';
+// Five equiprobable tickets: Gemini 20%, GLM 40%, Sonnet 40%.
+const generatorTickets = [0, 1, 1, 2, 2] as const;
 export const renewalV4 = 'stomylos_starter_renewal_v4';
 export const renewalV3 = 'stomylos_starter_renewal_v3';
 export const renewalV2 = 'stomylos_starter_renewal_v2';
 export function starterSnapshot(pick: (length: number) => number = randomInt, version: string = starterPolicy.version): Json {
-  if (version !== starterPolicy.version && version !== renewalV2 && version !== renewalV3 && version !== renewalV4) throw new AppFailure('unsupported_starter_settings');
-  const index = pick(starterGenerators.length);
-  if (!Number.isInteger(index) || index < 0 || index >= starterGenerators.length) throw new AppFailure('invalid_generator_choice');
+  if (version !== starterPolicy.version && version !== renewalV2 && version !== renewalV3 && version !== renewalV4 && version !== renewalV5) throw new AppFailure('unsupported_starter_settings');
+  const length = version === renewalV5 ? generatorTickets.length : starterGenerators.length;
+  const choice = pick(length);
+  if (!Number.isInteger(choice) || choice < 0 || choice >= length) throw new AppFailure('invalid_generator_choice');
+  const index = version === renewalV5 ? generatorTickets[choice] : choice;
   const g = starterGenerators[index];
-  const selectedPrompt = version === renewalV4 ? nonRepeatingPrompt : version === renewalV3 ? revisedPrompt : prompt;
-  return { version, app_version: appVersion, prompt: selectedPrompt, prompt_id: version === renewalV4 ? 'stomylos_starter_generation_prompt_v3' : version === renewalV3 ? 'stomylos_starter_generation_prompt_v2' : 'stomylos_starter_generation_prompt_v1',
-    prompt_sha256: hash(selectedPrompt), policy: { ...starterPolicy, version }, timeout_seconds: 180, context_limit: g.context,
+  const selectedPrompt = version === renewalV5 ? userOnlyPrompt : version === renewalV4 ? nonRepeatingPrompt : version === renewalV3 ? revisedPrompt : prompt;
+  return { version, app_version: appVersion, prompt: selectedPrompt, prompt_id: version === renewalV5 ? 'stomylos_starter_generation_prompt_v4' : version === renewalV4 ? 'stomylos_starter_generation_prompt_v3' : version === renewalV3 ? 'stomylos_starter_generation_prompt_v2' : 'stomylos_starter_generation_prompt_v1',
+    prompt_sha256: hash(selectedPrompt), policy: { ...starterPolicy, version, ...(version === renewalV5 ? { generator_weights: [1, 2, 2] } : {}) }, timeout_seconds: 180, context_limit: g.context,
     response_identity: { allowed_models: [g.model, g.canonical], provider: g.provider },
     parameters: { model: g.model, stream: false, provider: { only: [g.tag], allow_fallbacks: false,
       require_parameters: true, data_collection: 'deny' }, max_tokens: g.max_tokens, reasoning: { ...g.reasoning } } };
@@ -45,9 +52,14 @@ export function starterSnapshot(pick: (length: number) => number = randomInt, ve
 export function starterBody(snapshot: Json, input: string): Json {
   const index = starterGenerators.findIndex(g => g.model === snapshot.parameters?.model);
   if (index < 0) throw new AppFailure('unsupported_starter_settings');
-  const expected = starterSnapshot(() => index, snapshot.version);
+  const expected = starterSnapshot(() => snapshot.version === renewalV5 ? generatorTickets.indexOf(index as 0 | 1 | 2) : index, snapshot.version);
   for (const key of Object.keys(expected).filter(k => k !== 'app_version')) {
     if (!isDeepStrictEqual(snapshot[key], expected[key])) throw new AppFailure('unsupported_starter_settings');
+  }
+  if (snapshot.version === renewalV5) {
+    let messages: unknown;
+    try { messages = JSON.parse(input); } catch { throw new AppFailure('starter_input_format'); }
+    if (!Array.isArray(messages) || messages.some(message => typeof message !== 'string')) throw new AppFailure('starter_input_format');
   }
   if (snapshot.version === renewalV2 || snapshot.version === renewalV3 || snapshot.version === renewalV4) {
     let packet: Json;

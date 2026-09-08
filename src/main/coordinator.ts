@@ -583,7 +583,7 @@ export class Coordinator {
       if (hash(job.input_json) !== job.input_hash || hash(job.config) !== job.config_hash) throw new AppFailure('starter_source_changed');
       const snapshot = JSON.parse(job.config); const body = starterBody(snapshot, job.input_json);
       const input = JSON.parse(job.input_json);
-      metadata = { input_bytes: Buffer.byteLength(job.input_json), source_turns: input.session_context.turns.length,
+      metadata = { input_bytes: Buffer.byteLength(job.input_json), source_turns: Array.isArray(input) ? input.length : input.session_context.turns.length,
         input_hash: job.input_hash, prompt_hash: snapshot.prompt_sha256, config_hash: job.config_hash,
         queue_seconds: Math.max(0, Date.now() - Date.parse(attempt.created_at)) / 1000 };
       if (signal.aborted) throw new AppFailure('queued_not_dispatched');

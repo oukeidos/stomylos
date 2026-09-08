@@ -15,6 +15,8 @@ A Linux desktop app for practicing English with AI conversation partners.
 ## Memory and finishing a chat
 
 Ending a chat runs grammar analysis, new question generation and memory updating.
+New starter questions use only your messages from that chat as loose inspiration.
+Generation uses Gemini 20% of the time, GLM 40%, and Claude Sonnet 40%.
 Wait for all applicable stages to finish before starting another chat. You can
 browse history and Settings while processing. If a stage fails, use **Continue
 processing** or its retry button. Each manual retry makes one inference attempt;
@@ -34,7 +36,7 @@ Intention items have been removed; the Intentions category remains in memory.
 ## Database upgrades
 
 The app automatically upgrades supported older databases before normal startup.
-The first public release, 0.1.0, used schema 13; the current source uses schema 14.
+The first public release, 0.1.0, used schema 13; the current source uses schema 15.
 App release and database version numbers are independent. Users can skip releases
 because required migration steps are bundled with the app. A consistent pre-upgrade
 backup is retained, and failure preserves recoverable data instead of resetting it.
