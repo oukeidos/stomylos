@@ -148,7 +148,7 @@ it('uses exact historical contracts for old sessions and direct routing/assembly
   const session = direct(), user = store.submit(session.id, 'Explain gravity.');
   const saved = JSON.parse(store.session(session.id).chat_config);
   expect(JSON.parse(routerBody(null, user.content, saved).messages[1].content)).toEqual({ opening_kind: 'user', first_message: user.content });
-  expect(routerSnapshot(saved).version).toBe('stomylos_character_router_v7');
+  expect(routerSnapshot(saved).version).toBe('stomylos_compact_router_v1_direct');
   expect(routerBody(null, user.content, saved).response_format).toEqual(config.router.response_format);
   const prompt = readFileSync('src/main/direct-router-seven-prompt.txt', 'utf8');
   expect(hash(prompt)).toBe('9aea4092950d333da528772588014540472af3b99599a440d57252d6dfc90711');
@@ -161,7 +161,7 @@ it('uses exact historical contracts for old sessions and direct routing/assembly
     expect(body.messages.some((m: any) => m.content.includes('Opening question:'))).toBe(false);
     expect(() => conversationBody(snapshot, partner.id, 'Unseen question?', [user])).toThrow('opening_source_changed');
   }
-  const legacy = conversationSnapshot();
+  const legacy = conversationSnapshot(); delete legacy.router_prompt_version;
   expect(routerSnapshot(legacy).version).toBe(config.router.version);
   expect(routerBody('Known question?', 'Known answer.', legacy).messages[0].content).toBe(config.routerPrompt);
   expect(() => conversationRequestSnapshot({ ...saved, opening: { kind: 'user', version: 'unknown' } })).toThrow('unsupported_opening');

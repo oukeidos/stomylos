@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Use the selected concise Auto prompts for new conversations and new seven-model
+  partner reselections. Preserve score selection rules and exact historical retries.
+  Schema 17 admits the new contracts without rewriting existing data.
+
 - Use Gemini low reasoning for new shared-memory updates to reduce end-of-chat
   waiting time and cost. Keep saved medium jobs unchanged on retry; schema 16
   upgrades preserve existing data and request history.

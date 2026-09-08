@@ -1,0 +1,29 @@
+import { expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { config, conversationSnapshot, hash, routerBody, routerSnapshot } from '../src/main/contracts';
+import { partnerRouterBody, partnerRouterSnapshot } from '../src/main/partner-router';
+import type { Message } from '../src/shared/types';
+import cards from '../src/main/partner-router-cards.json';
+const source = (kind: string) => readFileSync(`../experiments/EXP-002-character-router-selection/prompt-compression-no-independent-2026-09-08/compact-${kind}.txt`, 'utf8');
+it.each(['user', 'starter'] as const)('uses selected exact %s wording while preserving historical input and parameters', kind => {
+  const saved = conversationSnapshot(kind), old = { ...saved }; delete old.router_prompt_version;
+  const question = kind === 'user' ? null : 'Question?', answer = '  Original text.\n';
+  const body = routerBody(question, answer, saved), previous = routerBody(question, answer, old);
+  expect(body.messages[0].content).toBe(source(kind === 'user' ? 'direct' : 'starter'));
+  expect({ ...body, messages: previous.messages }).toEqual(previous);
+  expect(routerSnapshot(saved).prompt).toBe(body.messages[0].content);
+  expect(previous.messages[0].content).toBe(kind === 'user' ? readFileSync('src/main/direct-router-seven-prompt.txt', 'utf8') : config.routerPrompt);
+  expect(() => routerBody(question, answer, { ...saved, router_prompt_version: 'unknown' })).toThrow('unsupported_router_settings');
+});
+it('uses compact new reselection for existing seven-model chats and reconstructs frozen v1 exactly', () => {
+  const saved = conversationSnapshot(); delete saved.router_prompt_version;
+  const messages: Message[] = [{ id: 'u', session_id: 's', sequence: 0, role: 'user', origin: 'learner', delivery: 'complete', request_id: null, content: 'Try something different.' }];
+  const current = partnerRouterSnapshot(saved, messages, saved.characters[0].model);
+  expect(current.version).toBe('stomylos_partner_reselection_v2');
+  expect(partnerRouterBody(current).messages[0].content).toBe(source('reselection'));
+  const prompt = readFileSync('src/main/partner-router-prompt.txt', 'utf8') + '\n' + cards.stomylos_conversation_v7.text;
+  const old = { ...current, version: 'stomylos_partner_reselection_v1', prompt_id: 'stomylos_partner_reselection_v1', prompt, prompt_sha256: hash(prompt) };
+  const frozen = JSON.parse(JSON.stringify(old));
+  expect(partnerRouterBody(frozen)).toEqual({ ...current.parameters, messages: [{ role: 'system', content: prompt }, { role: 'user', content: current.input }] });
+  expect(() => partnerRouterBody({ ...current, prompt, prompt_sha256: hash(prompt) })).toThrow('partner_source_changed');
+});

@@ -37,7 +37,7 @@ it('dispatches complete router bundles by saved version and entry and rejects mi
     expect(oldBody.response_format).toEqual(v5.router.response_format);
     expect(oldBody.messages[0].content).toBe(kind === 'user' ? readFileSync('src/main/direct-router-prompt.txt', 'utf8') : v5.routerPrompt);
     expect(routerSnapshot(old).version).toBe(kind === 'user' ? 'stomylos_character_router_v3' : 'stomylos_character_router_v2');
-    expect(routerSnapshot(current).version).toBe(kind === 'user' ? 'stomylos_character_router_v7' : 'stomylos_character_router_v6');
+    expect(routerSnapshot(current).version).toBe(kind === 'user' ? 'stomylos_compact_router_v1_direct' : 'stomylos_compact_router_v1_starter');
     expect(body.messages[1]).toEqual(oldBody.messages[1]);
     expect(body.response_format.json_schema.name).toBe('stomylos_character_scores_v4');
     expect(body.response_format.json_schema.schema.required).toEqual(ids);
@@ -82,7 +82,7 @@ for (const kind of ['starter', 'user'] as const) it(`keeps a v5 unsent draft and
   const retry = store.prepareChat(created.id, randomUUID()); expect(retry.config).toBe(request.config); expect(store.chatBody(retry.id)).toEqual(body);
   expect(body.messages[0].content.startsWith(v5.conversationPrompt)).toBe(true);
   store.dispatch(retry.id); const complete = store.prepareReply(created.id, retry.id); store.finishReply(retry.id, complete.id, 'Saved reply.', {});
-  store.end(created.id); const next = store.createSession(); expect(JSON.parse(next.chat_config).version).toBe('stomylos_conversation_v7');
+  store.end(created.id); store.cancelEnd(created.id); const next = store.createSession(); expect(JSON.parse(next.chat_config).version).toBe('stomylos_conversation_v7');
   expect(JSON.parse(store.session(created.id).chat_config).characters[3].label).toBe('Everyday companion');
 });
 
@@ -112,7 +112,7 @@ it('gives all seven models the same memory while preserving their conversation i
     for (let other = 0; other < ids.length; other++) expect(body.messages[0].content).toContain(`Public preference ${other}.`);
     store.dispatch(request.id); const reply = store.prepareReply(session.id, request.id); store.finishReply(request.id, reply.id, 'My imagined story.', {}); store.end(session.id);
     expect(JSON.parse(store.memoryJob(session.id)!.source).character_id).toBe(partner);
-    const attempt = store.prepareMemory(session.id, randomUUID()); store.dispatchMemory(attempt.id); store.saveMemory(attempt.id, '{"operations":[]}', {});
+    const attempt = store.prepareMemory(session.id, randomUUID()); store.dispatchMemory(attempt.id); store.saveMemory(attempt.id, '{"operations":[]}', {}); store.cancelEnd(session.id);
   }
   store.close(); open(); expect(raw.prepare('SELECT document FROM shared_memory').get()).toEqual({ document: encoded });
 });
@@ -134,7 +134,8 @@ for (const model of models) it(`rejects identity drift and retains search eviden
 import v6 from '../src/main/conversation-v6-config.json';
 import { conversationComponents } from '../src/main/contracts';
 function v6Snapshot(kind: 'starter' | 'user', memory = 'stomylos_memory_context_v3') {
-  return { ...conversationSnapshot(kind), ...structuredClone(v6.conversation), memory_version: memory,
+  const base = conversationSnapshot(kind); delete base.router_prompt_version;
+  return { ...base, ...structuredClone(v6.conversation), memory_version: memory,
     component_hashes: conversationComponents(v6.conversation.version, memory) };
 }
 for (const kind of ['starter', 'user'] as const) for (const memory of ['stomylos_memory_context_v2', 'stomylos_memory_context_v3']) {
@@ -172,7 +173,7 @@ it('keeps Taste eligible only through fit scores, with no cost preference or per
   expect(leastUsed(['model_04', 'model_08'], { model_04: 1, model_08: 4 }, () => 0)).toBe('model_04');
   for (const kind of ['starter', 'user'] as const) {
     const prompt = routerBody(kind === 'user' ? null : 'Question?', 'Answer.', conversationSnapshot(kind)).messages[0].content;
-    expect(prompt).toContain('7. model_08 — Taste');
+    expect(prompt).toContain('model_08 — Taste');
     expect(prompt).not.toMatch(/cost|cheap|price|budget/i);
   }
   expect(config.conversation.characters.slice(0, 6)).toEqual(v6.conversation.characters);

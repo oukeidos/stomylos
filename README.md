@@ -36,7 +36,7 @@ Intention items have been removed; the Intentions category remains in memory.
 ## Database upgrades
 
 The app automatically upgrades supported older databases before normal startup.
-The first public release, 0.1.0, used schema 13; the current source uses schema 16.
+The first public release, 0.1.0, used schema 13; the current source uses schema 17.
 App release and database version numbers are independent. Users can skip releases
 because required migration steps are bundled with the app. A consistent pre-upgrade
 backup is retained, and failure preserves recoverable data instead of resetting it.

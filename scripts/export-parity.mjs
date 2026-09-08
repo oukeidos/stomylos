@@ -104,3 +104,9 @@ console.log('Explain request goldens preserve tested settings, compact JSON inpu
 assert.equal(readFileSync('src/main/memory-cleanup-prompt.txt', 'utf8'),
   readFileSync('../experiments/EXP-029-memory-capacity/prompt-v6.txt', 'utf8'));
 console.log('Memory cleanup prompt matches the selected EXP-029 prompt-v6 bytes.');
+
+for (const kind of ['direct', 'starter', 'reselection']) {
+  assert.deepEqual(readFileSync(`src/main/compact-router-${kind}.txt`),
+    readFileSync(`../experiments/EXP-002-character-router-selection/prompt-compression-no-independent-2026-09-08/compact-${kind}.txt`));
+}
+console.log('All three compact Auto prompts exactly match the selected no-independent experiment.');

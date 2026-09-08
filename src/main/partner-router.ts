@@ -3,8 +3,10 @@ import { AppFailure } from './errors';
 import { character, hash, isLearner, leastUsed, routerSnapshot, sessionRuntime } from './contracts';
 import cards from './partner-router-cards.json';
 import prompt from './partner-router-prompt.txt?raw';
+import { compactRouterPrompts } from './compact-router';
 
 export const partnerRouterVersion = 'stomylos_partner_reselection_v1';
+export const compactPartnerRouterVersion = 'stomylos_partner_reselection_v2';
 export const partnerWindow = { turns: 3, bytes: 24_000 } as const;
 export function recentDialogue(messages: Message[]) {
   const users = messages.filter(isLearner), latest = users.at(-1);
@@ -23,15 +25,18 @@ export function partnerRouterSnapshot(saved: Json, messages: Message[], excluded
   const selected = sessionRuntime(saved), reference = (cards as Record<string, { text: string; source_sha256: string }>)[saved.version];
   if (!reference || reference.source_sha256 !== hash(selected.routerPrompt)) throw new AppFailure('unsupported_partner_router');
   const original = routerSnapshot(saved), window = recentDialogue(messages);
-  const system = prompt + '\n' + reference.text;
-  return { ...original, version: partnerRouterVersion, purpose: 'partner_reselection',
-    prompt: system, prompt_id: partnerRouterVersion, prompt_sha256: hash(system),
+  const compact = saved.version === 'stomylos_conversation_v7';
+  const system = compact ? compactRouterPrompts.reselection : prompt + '\n' + reference.text;
+  const version = compact ? compactPartnerRouterVersion : partnerRouterVersion;
+  return { ...original, version, purpose: 'partner_reselection',
+    prompt: system, prompt_id: version, prompt_sha256: hash(system),
     input: window.input, input_hash: hash(window.input), source_message_ids: window.message_ids,
     omitted_groups: window.omitted_groups, excluded_model: excludedModel,
     roster_version: saved.version, policy_version: partnerRouterVersion };
 }
 export function partnerRouterBody(snapshot: Json): Json {
-  if (snapshot.version !== partnerRouterVersion || snapshot.prompt_sha256 !== hash(snapshot.prompt) ||
+  if (![partnerRouterVersion, compactPartnerRouterVersion].includes(snapshot.version) ||
+    (snapshot.version === compactPartnerRouterVersion && snapshot.prompt !== compactRouterPrompts.reselection) || snapshot.prompt_sha256 !== hash(snapshot.prompt) ||
     snapshot.input_hash !== hash(snapshot.input)) throw new AppFailure('partner_source_changed');
   return { ...snapshot.parameters, messages: [{ role: 'system', content: snapshot.prompt }, { role: 'user', content: snapshot.input }] };
 }

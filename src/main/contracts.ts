@@ -19,6 +19,7 @@ import starterSixPrompt from './starter-router-six-prompt.txt?raw';
 import directSevenPrompt from './direct-router-seven-prompt.txt?raw';
 import starterSevenPrompt from './starter-router-seven-prompt.txt?raw';
 import reciprocalPrompt from './reciprocal-replacement-prompt.txt?raw';
+import { compactRouterPrompts, compactRouterVersion } from './compact-router';
 
 export const appId = 'io.github.oukeidos.stomylos';
 export const appVersion = version;
@@ -41,6 +42,9 @@ export function character(id: string, snapshot?: Json): Character {
 }
 export function verifyRuntime() {
   for (const [text, expected] of [
+    [compactRouterPrompts.direct, 'b88d9200645c266bf37296a2bbb0748530e85c10b8ad4a6d715f19ef3ade76ac'],
+    [compactRouterPrompts.starter, 'cfc7887b9b7bcfb9b94723c333e9461262468adeb3dbaf75d6e801edaef6bf59'],
+    [compactRouterPrompts.reselection, '0340c6714b96d5b4835c4c05a010a95eaff7cbd8f4e3cd045a4d0fc63c417327'],
     [directRouterPrompt, 'c712eb789b47213909621634f5cd6498110489b13c4ae64d394c8855bfa4a2aa'],
     [conversationV5.routerPrompt, '2395d53d1c67029edb64fabdf521577e49d2fc40da8b4f00bc8466a3cdbea841'],
     [starterSixPrompt, 'fd30312a638df8b411b9a75e7b60b681fd4cdbbc25f64dc08ad04bb6da5d1eb3'],
@@ -66,12 +70,16 @@ function directPrompt(selected: ReturnType<typeof sessionRuntime>) {
   if (selected.conversation.version === runtime.conversation.version) return directSevenPrompt;
   return selected.conversation.version === conversationV6.conversation.version ? directSixPrompt : directRouterPrompt;
 }
+function routingPrompt(snapshot: Json | undefined, direct: boolean, selected: ReturnType<typeof sessionRuntime>) {
+  if (!snapshot || snapshot.router_prompt_version === compactRouterVersion) return direct ? compactRouterPrompts.direct : compactRouterPrompts.starter;
+  return direct ? directPrompt(selected) : selected.routerPrompt;
+}
 export function routerBody(question: string | null, answer: string, snapshot?: Json): Json {
   const selected = sessionRuntime(snapshot); const r = selected.router;
   const direct = snapshot && openingKind(snapshot) === 'user';
   if (direct ? question !== null : typeof question !== 'string') throw new AppFailure('opening_source_changed');
   return { model: r.model.requested_model, messages: [
-    { role: 'system', content: direct ? directPrompt(selected) : selected.routerPrompt },
+    { role: 'system', content: routingPrompt(snapshot, !!direct, selected) },
     { role: 'user', content: JSON.stringify(direct ? { opening_kind: 'user', first_message: answer } : { starter_question: question, learner_answer: answer }) }
   ], stream: false, max_tokens: r.generation.max_tokens, reasoning: r.model.reasoning,
   provider: { only: r.provider.only, require_parameters: r.provider.require_parameters,
@@ -81,17 +89,18 @@ export function routerBody(question: string | null, answer: string, snapshot?: J
 export function routerSnapshot(snapshot?: Json): Json {
   const selected = sessionRuntime(snapshot);
   const direct = snapshot && openingKind(snapshot) === 'user';
-  const prompt = direct ? directPrompt(selected) : selected.routerPrompt;
+  const prompt = routingPrompt(snapshot, !!direct, selected);
+  const compact = !snapshot || snapshot.router_prompt_version === compactRouterVersion;
   const directVersion = selected.conversation.version === runtime.conversation.version ? 'v7' : selected.conversation.version === conversationV6.conversation.version ? 'v5' : 'v3';
   const { messages: _, ...parameters } = routerBody(direct ? null : '', '', snapshot);
-  return { version: direct ? `stomylos_character_router_${directVersion}` : selected.router.version, app_version: appVersion, parameters,
-    prompt, prompt_id: direct ? `stomylos_character_router_prompt_${directVersion}` : selected.router.prompt.id, prompt_sha256: hash(prompt),
+  return { version: compact ? `${compactRouterVersion}_${direct ? 'direct' : 'starter'}` : direct ? `stomylos_character_router_${directVersion}` : selected.router.version, app_version: appVersion, parameters,
+    prompt, prompt_id: compact ? `${compactRouterVersion}_${direct ? 'direct' : 'starter'}` : direct ? `stomylos_character_router_prompt_${directVersion}` : selected.router.prompt.id, prompt_sha256: hash(prompt),
     response_identity: { allowed_models: selected.router.model.accepted_response_models, provider: selected.router.provider.expected_response_provider }, timeout_seconds: 10 };
 }
 export function conversationSnapshot(kind?: OpeningKind): Json {
   return { ...structuredClone(runtime.conversation), system_prompt: runtime.conversationPrompt,
     prompt_id: 'stomylos_conversation_prompt_v5', prompt_sha256: hash(runtime.conversationPrompt), app_version: appVersion, memory_version: capacityMemoryVersion,
-    time_version: timeVersion, component_hashes: conversationComponents(),
+    time_version: timeVersion, component_hashes: conversationComponents(), router_prompt_version: compactRouterVersion,
     ...(kind ? { opening: { version: openingVersion, kind } } : {}) };
 }
 export function grammarSnapshot(): Json {
@@ -121,6 +130,7 @@ function runtimeForVersion(version: string) {
 }
 function validateConversationSnapshot(snapshot: Json) {
   openingKind(snapshot);
+  if (snapshot.router_prompt_version !== undefined && (snapshot.router_prompt_version !== compactRouterVersion || snapshot.version !== runtime.conversation.version)) throw new AppFailure('unsupported_router_settings');
   if (snapshot.cache_version !== undefined && snapshot.cache_version !== conversationCacheVersion) throw new AppFailure('unsupported_conversation_settings');
   const modern = [runtime.conversation.version, conversationV6.conversation.version, conversationV5.conversation.version].includes(snapshot.version);
   if (modern) {
