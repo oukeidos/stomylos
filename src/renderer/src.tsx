@@ -171,6 +171,34 @@ function Feedback({ view, controls, onReveal }: { view: SessionView; controls: H
     {controls && createPortal(<button className="icon-button" aria-label={`Analysis details · ${view.session.analysis_state === 'completed' ? `${view.units.filter(u => u.changed).length} suggested changes · ${view.units.length} messages analyzed` : labels[view.session.analysis_state]}`} title="Review feedback" aria-expanded={open} aria-controls="conversation-review" onClick={() => { onReveal(); setOpen(value => !value); }}><Icon name="review" /></button>, controls)}
   </>;
 }
+const endStageLabels: Record<string, string> = { grammar: 'Grammar analysis', starter: 'Question generation', update: 'Memory update', cleanup: 'Memory cleanup' };
+function endSummary(view: SessionView) {
+  const processing = view.endProcessing!;
+  if (processing.cancelled) return 'Chat saved · Remaining work cancelled';
+  if (processing.complete) return 'Chat saved · Processing complete';
+  const stages = Object.entries(processing.stages);
+  const running = stages.filter(([, state]) => state === 'running').map(([stage]) => endStageLabels[stage]);
+  if (running.length) return `Finishing chat · ${running.join(' · ')}`;
+  return stages.some(([, state]) => ['failed', 'interrupted'].includes(String(state)))
+    ? 'Chat saved · Processing needs attention' : 'Finishing chat · Preparing updates';
+}
+function EndProcessingDetails({ view, act }: { view: SessionView; act: (fn: () => Promise<unknown>) => void }) {
+  const processing = view.endProcessing;
+  if (!processing) return null;
+  const running = Object.values(processing.stages).some(state => state === 'running');
+  const stateLabels: Record<string, string> = { pending: 'Waiting', running: 'Working…', completed: 'Done', skipped: 'Not needed', failed: 'Needs attention', interrupted: 'Interrupted', cancelled: 'Cancelled' };
+  return <section className="end-details" aria-label="Processing stages">
+    <h3>After this chat</h3><p className="note" role="status">{endSummary(view)}</p>
+    <ul>{Object.entries(processing.stages).map(([stage, state]) => <li key={stage}>
+      <div><span>{endStageLabels[stage]}</span><span>{stateLabels[String(state)] ?? String(state)}</span></div>
+      {processing.details?.[stage]?.failure && <p className="note">{errorText(processing.details[stage].failure)}</p>}
+    </li>)}</ul>
+    {!processing.complete && <><p className="note">A new chat can start once these updates finish. You can browse saved chats while waiting.</p>
+      <div className="dialog-actions">{!running && <button onClick={() => act(() => window.stomylos.command('continueEnd', { sessionId: view.session.id }))}>Continue processing</button>}
+      <button onClick={() => act(() => window.stomylos.command('cancelEnd', { sessionId: view.session.id }))}>Force cancel</button></div>
+      <p className="note">Force cancel keeps completed results and discards remaining work and any unsaved memory update.</p></>}
+  </section>;
+}
 function Renewal({ view, onToggle, act, initialOpen = false }: { view: SessionView; onToggle: () => void; act: (fn: () => Promise<unknown>) => void; initialOpen?: boolean }) {
   const renewal = view.renewal;
   if (!renewal) return null;
@@ -420,6 +448,7 @@ function App() {
       <div className="header-partner">{view && <Partner view={view} characters={app.characters} act={act} blocked={app.activity.phase !== 'idle' || !!app.activity.storageError || app.activity.closing} />}</div>
       {(app.settings.simulation || app.settings.development) && <span className="build-label">{app.settings.simulation ? 'Preview' : 'Development'}</span>}
       {view?.canBookmark && <IconButton icon="bookmark" className="bookmark-toggle" label={view.bookmarked ? 'Remove bookmark' : 'Bookmark chat'} title={view.bookmarked ? 'Remove bookmark' : 'Bookmark chat'} aria-pressed={view.bookmarked} aria-busy={bookmarks.pending.has(view.session.id)} disabled={bookmarkDisabled(view.session.id)} onClick={() => mark({ id: view.session.id, bookmarked: view.bookmarked })} />}
+      <IconButton label="Conversation details" icon="info" disabled={!view} onClick={() => { setDetailsSection(null); setDetails(true); }} />
       <Menu.Root><Menu.Trigger asChild><IconButton className="more-button" label="Chat options" icon="more" /></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" align="end" sideOffset={8} collisionPadding={12}>
         <Menu.Item className="partner-option" disabled={!view} onSelect={() => { setDetailsSection(null); setDetails(true); }}>Conversation details</Menu.Item>
         <Menu.Separator className="menu-separator" />
@@ -454,11 +483,11 @@ function App() {
     {error && <div className="notice" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError(null)} aria-label="Dismiss message" title="Dismiss"><Icon name="close" /></button></div>}
     {app.activity.storageError && <div className="notice danger" role="alert"><span>{app.activity.storageError.startsWith('database_worker_') ? 'Storage stopped. Copy any unsaved text before restarting the app. Saved history will recover on restart.' : 'Your latest changes could not be saved. Keep this window open.'}</span>{!app.activity.storageError.startsWith('database_worker_') && <button onClick={() => act(() => window.stomylos.command('retrySaving', undefined))}>Retry saving</button>}</div>}
     {app.activity.deletionCleanupPending && <div className="notice danger" role="alert"><span>The chat was deleted, but some voice files still need cleanup.</span><button onClick={() => act(() => window.stomylos.command('retryDeletionCleanup', undefined))}>Retry cleanup</button></div>}
-    {view && maintenanceNotices(view).length > 0 && <div className="maintenance-summary" role="status">
+    {view && !view.endProcessing && maintenanceNotices(view).length > 0 && <div className="maintenance-summary" role="status">
       <span>{maintenanceNotices(view).map(notice => notice.text).join(' · ')}</span>
       <button onClick={() => { setDetailsSection(maintenanceNotices(view)[0].section); setDetails(true); }}>Review updates</button>
     </div>}
-    {app.endBlocker && <div className="notice" role="status">Finish end processing before starting another chat. <button onClick={() => act(() => show(app.endBlocker!))}>View processing</button>{(app.endBlockers?.length ?? 0) > 1 && <details><summary>Chats awaiting processing ({app.endBlockers!.length})</summary><ul>{app.endBlockers!.map(item => <li key={item.sessionId}><button onClick={() => act(() => show(item.sessionId))}>{item.title}</button></li>)}</ul></details>}</div>}
+    {app.endBlocker && app.endBlocker !== view?.session.id && <div className="notice" role="status">Finish end processing before starting another chat. <button onClick={() => act(async () => { await show(app.endBlocker!); setDetailsSection(null); setDetails(true); })}>View processing</button>{(app.endBlockers?.length ?? 0) > 1 && <details><summary>Chats awaiting processing ({app.endBlockers!.length})</summary><ul>{app.endBlockers!.map(item => <li key={item.sessionId}><button onClick={() => act(() => show(item.sessionId))}>{item.title}</button></li>)}</ul></details>}</div>}
     <main inert={genie.locked} ref={scroll.scroller} tabIndex={0} aria-label="Conversation">
       <div className="page" ref={scroll.content}>{view ? <>
         <div className="transcript">{view.messages.filter(message => !(canChangeOpening && message.origin === 'starter')).map(message => <Bubble key={message.id} message={message} metadata={view.requests.find(r => r.id === message.request_id) ? JSON.parse(view.requests.find(r => r.id === message.request_id)!.metadata) : undefined} partner="Partner" />)}</div>
@@ -466,17 +495,13 @@ function App() {
         {app.activity.sessionId === view.session.id && app.activity.phase === 'routing' && <p className="note" role="status">Choosing your conversation partner…</p>}
         {app.activity.sessionId === view.session.id && app.activity.phase === 'preparing' && <p className="note" role="status">Preparing your reply…</p>}
         {view.session.state === 'ended' && <>
-          {view.endProcessing && <section className="notice" aria-label="End processing">
-            <div><strong>{view.endProcessing.cancelled ? 'End processing cancelled' : view.endProcessing.complete ? 'End processing complete' : 'Finishing this chat'}</strong>
-            <ul>{Object.entries(view.endProcessing.stages).map(([stage, state]) => <li key={stage}>{({ grammar: 'Grammar analysis', starter: 'Question generation', update: 'Memory update', cleanup: 'Memory cleanup' } as Record<string,string>)[stage]}: {String(state)}{view.endProcessing?.details?.[stage]?.attempts > 0 && <> · {view.endProcessing?.details?.[stage].attempts} attempt(s)</>}{view.endProcessing?.details?.[stage]?.failure && <small>{errorText(view.endProcessing?.details?.[stage].failure)}</small>}</li>)}</ul>
-            {!view.endProcessing.complete && <><p>Completed results are kept. Force cancel abandons all remaining work and any uncommitted memory update.</p>
-              <button disabled={Object.values(view.endProcessing.stages).some(state => state === 'running')} onClick={() => act(() => window.stomylos.command('continueEnd', { sessionId: view.session.id }))}>Continue processing</button>
-              <button onClick={() => act(() => window.stomylos.command('cancelEnd', { sessionId: view.session.id }))}>Force cancel</button></>}
-            </div>
+          {view.endProcessing && <section className="end-summary" aria-label="End processing">
+            <span role="status">{endSummary(view)}</span>
+            <button onClick={() => { setDetailsSection(null); setDetails(true); }}>Processing details</button>
           </section>}
 
-          <div className="ended-marker">{labels[view.session.analysis_state]}{view.session.draft && <button className="icon-button retained-draft-link" aria-label="View unsent draft" title="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></button>}</div>
-          {['failed', 'pending'].includes(view.session.analysis_state) && <button className="analysis-retry" onClick={() => act(() => window.stomylos.command('retryAnalysis', { sessionId: view.session.id }))}>Try analysis again</button>}
+          <div className="ended-marker">{!view.endProcessing && labels[view.session.analysis_state]}{view.session.draft && <button className="icon-button retained-draft-link" aria-label="View unsent draft" title="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></button>}</div>
+          {!view.endProcessing && ['failed', 'pending'].includes(view.session.analysis_state) && <button className="analysis-retry" onClick={() => act(() => window.stomylos.command('retryAnalysis', { sessionId: view.session.id }))}>Try analysis again</button>}
           <Feedback key={view.session.id} view={view} controls={reviewControls} onReveal={scroll.pause} />
         </>}
       </> : <p className="note">{selected ? 'Loading conversation…' : 'No conversation selected. Start a new chat when you are ready.'}</p>}</div>
@@ -504,6 +529,7 @@ function App() {
     <div className="dialog-actions"><button disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button><button className="delete-confirm" disabled={deleting} onClick={() => void confirmDelete()}>{deleting ? 'Deleting…' : 'Delete chat'}</button></div>
   </Modal>
   <Modal open={details} onOpenChange={setDetails} title="Conversation details">{view && <>
+    <EndProcessingDetails view={view} act={act} />
     <MemoryDetails view={view} act={act} initialOpen={detailsSection === 'memory'} openShared={() => { setDetails(false); setSettingsTab('memory'); setSettings(true); }} show={async id => { setDetails(false); await show(id); }} />
     <RequestDetails view={view} onToggle={() => undefined} />
     <Renewal initialOpen={detailsSection === 'starter'} view={view} onToggle={() => undefined} act={act} />

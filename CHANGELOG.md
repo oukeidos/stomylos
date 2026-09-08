@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — 2026-09-09
+
+- Simplify post-chat progress and fix access to processing details.
+
 ## 0.2.0 — 2026-09-09
 
 - Analyze learner messages with Terra low and compact indexed output, preserving evidence and legacy retries in schema 18.

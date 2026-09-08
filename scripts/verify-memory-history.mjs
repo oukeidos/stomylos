@@ -52,7 +52,14 @@ try {
   if (await button('Show history').count()) await button('Show history').click();
   const snapshot = await command('snapshot');
   await page.locator('.history-item').nth(snapshot.sessions.findIndex(session => session.id === second)).click();
-  await button('Chat options').click(); await page.getByRole('menuitem', { name: 'Conversation details', exact: true }).click();
+  await button('Processing details').click();
+  await page.getByRole('region', { name: 'Processing stages' }).waitFor();
+  assert.equal(await page.locator('.maintenance-summary').count(), 0);
+  assert.equal(await button('View processing').count(), 0);
+  await page.keyboard.press('Escape');
+  await button('Conversation details').click();
+  await page.getByRole('dialog', { name: 'Conversation details' }).waitFor();
+  report.checks.push('Single end summary; processing and header detail buttons open a visible dialog');
   await page.getByRole('button', { name: /^Shared memory/ }).click();
   await button('Changes from this chat').click();
   await page.getByText('Updating memory. Changes will appear when the update completes.', { exact: true }).waitFor();

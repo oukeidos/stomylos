@@ -58,3 +58,12 @@ npm ci
 npm run build
 npm start
 ```
+
+## After a chat
+
+Ending a chat saves it and runs grammar analysis, question generation and memory
+updates. A compact status below the conversation shows progress. Choose
+**Processing details**, or the **Conversation details** information button in the
+upper right, to see individual stages and recover unfinished work. You can browse
+saved chats while processing; starting another chat waits until it finishes or you
+choose **Force cancel**. Cancellation keeps completed results.
