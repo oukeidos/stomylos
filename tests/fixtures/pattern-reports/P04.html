@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Three small shifts for your next conversation</title>
+<style>
+:root{--ink:#203b3a;--muted:#5d6e6b;--paper:#f5f3ed;--white:#fffefa;--line:#d6ded7;--teal:#21675a;--pale:#e6f0e8;--rust:#9b4b2c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,textarea{font:inherit}
+button{cursor:pointer}
+button:focus-visible,summary:focus-visible,textarea:focus-visible{outline:3px solid #b45d32;outline-offset:4px}
+button{border:1px solid var(--line);border-radius:9px;background:var(--white);color:var(--ink);padding:10px 16px}
+button:hover{border-color:var(--teal)}
+[hidden]{display:none!important}
+.wrap{max-width:1080px;margin:auto;padding:28px 32px 50px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:28px}
+.brand{font-size:12px;font-weight:750;letter-spacing:.15em;text-transform:uppercase}
+.quiet{background:transparent;font-size:13px;padding:7px 12px}
+header{max-width:780px;margin:22px 0 32px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);font-weight:750;margin:0 0 10px}
+h1{font-family:Georgia,serif;font-weight:normal;font-size:clamp(34px,5vw,54px);line-height:1.13;letter-spacing:-.025em;margin:0 0 20px}
+h2{font-family:Georgia,serif;font-size:32px;font-weight:normal;line-height:1.2;margin:8px 0 15px}
+h3{font-size:17px;margin:0 0 12px}
+p{margin:0 0 16px}
+.intro{font-size:18px;color:var(--muted);max-width:670px}
+.small{font-size:13px;color:var(--muted)}
+.paths{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:24px 0}
+.path{text-align:left;padding:18px 20px;position:relative;min-height:138px}
+.path[aria-pressed=true]{background:var(--ink);color:white;border-color:var(--ink)}
+.path strong{display:block;font-size:18px;margin:7px 0 3px}
+.path span{display:block;font-size:12px}
+.path .num{font-size:12px;letter-spacing:.12em;opacity:.75}
+.card{background:var(--white);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.panel-head{padding:30px 34px 20px;border-bottom:1px solid var(--line)}
+.panel-head p:last-child{margin-bottom:0;max-width:750px;color:var(--muted)}
+.columns{display:grid;grid-template-columns:1.15fr 1fr}
+.lesson{padding:30px 34px}
+.practice{padding:30px;background:#f0f4ee;border-left:1px solid var(--line)}
+.label{font-size:11px;font-weight:750;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+.example{padding:16px 18px;border-left:3px solid var(--line);margin-bottom:12px;background:#f7f6f1}
+.example.good{border-left-color:var(--teal);background:var(--pale)}
+.example p{margin:0;font-size:18px}
+mark{background:transparent;color:var(--teal);font-weight:750}
+.cue{margin:22px 0;padding-top:20px;border-top:1px solid var(--line)}
+.cue strong{display:block;margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 20px}
+.chips span{padding:4px 9px;background:var(--paper);border-radius:5px;font-size:14px}
+.choices{display:grid;gap:9px;margin:16px 0}
+.choice{text-align:left;background:var(--white)}
+.choice[aria-pressed=true]{border:2px solid var(--teal);padding:9px 15px;background:var(--pale)}
+.feedback{font-size:14px;margin:12px 0;padding:12px 14px;border-radius:7px;background:white;border-left:3px solid var(--teal)}
+details{border-top:1px solid var(--line);padding-top:15px;margin-top:20px}
+summary{cursor:pointer;font-size:14px;font-weight:650;list-style-position:outside;margin-left:18px}
+details>div{padding-top:15px}
+textarea{width:100%;min-height:95px;padding:12px;color:var(--ink);background:var(--white);border:1px solid #a8b9ae;border-radius:7px;resize:vertical;margin-top:8px}
+label{display:block;font-size:14px}
+.evidence{padding:0 34px 24px}
+.evidence details{margin-top:0}
+.record{padding:17px 0;border-bottom:1px solid var(--line)}
+.record:last-child{border:0}
+.record p{margin:4px 0;font-size:14px}
+.ids{font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted)}
+.from{color:#735b4e}
+.to{color:var(--teal)}
+.focus-action{margin-top:22px;background:var(--teal);color:white;border:1px solid var(--teal)}
+.focus-action[aria-pressed=true]{background:var(--ink)}
+.takeaway{display:grid;grid-template-columns:160px 1fr;gap:20px;border-top:2px solid var(--ink);padding:24px 0;margin-top:30px}
+.takeaway h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em}
+.takeaway p{margin:0}
+.notes{max-width:850px;margin-top:12px}
+.notes p{font-size:14px;color:var(--muted)}
+.closed{max-width:560px;margin:15vh auto;padding:32px}
+@media(max-width:720px){.wrap{padding:18px 18px 35px}.paths{gap:7px}.path{padding:12px 10px;min-height:135px}.path strong{font-size:15px}.path span{font-size:11px}.columns{grid-template-columns:1fr}.practice{border-left:0;border-top:1px solid var(--line)}.panel-head,.lesson,.practice{padding:24px}.evidence{padding:0 24px 24px}.takeaway{grid-template-columns:1fr;gap:3px}h2{font-size:28px}}
+@media(prefers-reduced-motion:no-preference){button{transition:background-color .15s,border-color .15s}}
+</style>
+</head>
+<body>
+<div class="wrap" id="report">
+<div class="top"><span class="brand">Conversation fieldnotes</span><button class="quiet" id="close">Close report ×</button></div>
+<header>
+<p class="eyebrow">Your English • July 2 – August 10, 2026</p>
+<h1>Three small shifts.<br>More room for your ideas.</h1>
+<p class="intro">These patterns recur across different sessions. Each gives you a practical cue for telling a story, asking for help, or sharing information.</p>
+<p class="small">Start anywhere. Explore an example, try a short practice, or choose just one reminder to use next time.</p>
+</header>
+<nav class="paths" aria-label="Choose a learning pattern">
+<button class="path" aria-pressed="true" aria-controls="past" data-panel="past"><span class="num">01 / TELL A STORY</span><strong>Finished time → past verb</strong><span>10 records across 10 sessions</span></button>
+<button class="path" aria-pressed="false" aria-controls="nouns" data-panel="nouns"><span class="num">02 / SHARE DETAILS</span><strong>Count the pieces</strong><span>8 records across 8 sessions</span></button>
+<button class="path" aria-pressed="false" aria-controls="questions" data-panel="questions"><span class="num">03 / ASK FOR HELP</span><strong>A question inside a question</strong><span>7 records across 7 sessions</span></button>
+</nav>
+
+<main>
+<section class="card" id="past" aria-labelledby="past-title">
+<div class="panel-head">
+<p class="eyebrow">01 / Finished events</p>
+<h2 id="past-title">Let the verb carry the time, too.</h2>
+<p>In the recorded examples, words such as “yesterday” place an event in the past, but the event verb stays in its base form. For these completed events, use the past simple.</p>
+</div>
+<div class="columns">
+<div class="lesson">
+<p class="label">From your record • excerpt</p>
+<div class="example"><p>Yesterday I go to the market.</p></div>
+<p class="label">Correction</p>
+<div class="example good"><p>Yesterday I <mark>went</mark> to the market.</p></div>
+<div class="cue"><strong>Your conversation cue</strong><p>When you say “yesterday,” “last…” or “…ago,” check the verb that describes the finished event.</p></div>
+<p class="small">Past forms needed in these records:</p>
+<div class="chips"><span>go → went</span><span>buy → bought</span><span>see → saw</span><span>meet → met</span><span>take → took</span><span>send → sent</span></div>
+<p class="small">You do not need to put every verb in the past. In the same source, “I remember that day clearly” describes remembering <em>now</em>, so “remember” can stay.</p>
+<button class="focus-action" data-focus="past" aria-pressed="false">Make this my next-conversation focus</button>
+</div>
+<div class="practice">
+<p class="label">Try it • new learning example</p>
+<h3>A quick story about yesterday</h3>
+<p>“Yesterday I ___ a friend after work.”</p>
+<div class="choices" data-quiz="past">
+<button class="choice" aria-pressed="false" data-answer="wrong">meet</button>
+<button class="choice" aria-pressed="false" data-answer="right">met</button>
+</div>
+<div class="feedback" id="past-feedback" aria-live="polite" hidden></div>
+<details><summary>Make it yours</summary><div>
+<label for="past-draft">Tell someone about one thing you did yesterday.</label>
+<textarea id="past-draft" placeholder="Yesterday I…"></textarea>
+<p class="small">Optional rehearsal only; your writing is not automatically checked or saved.</p>
+<details><summary>See a model and a self-check</summary><div><p><strong>New model:</strong> Yesterday I took a walk after dinner.</p><p class="small">Find your event verb. Does its form match the finished time? Leave any statement about how you feel or what you remember now in the present if that is your meaning.</p></div></details>
+</div></details>
+</div>
+</div>
+<div class="evidence"><details><summary>Trace the examples • 10 records, 10 sessions</summary><div id="past-records"></div></details></div>
+</section>
+
+<section class="card" id="nouns" aria-labelledby="nouns-title" hidden>
+<div class="panel-head">
+<p class="eyebrow">02 / Quantities</p>
+<h2 id="nouns-title">Keep the noun. Count the pieces.</h2>
+<p>Advice, information, furniture and equipment are uncountable in these everyday meanings. Use “some” or “a lot of” for an amount, and “pieces of” when the number matters.</p>
+</div>
+<div class="columns">
+<div class="lesson">
+<p class="label">From your record</p>
+<div class="example"><p>She gave me two useful advices.</p></div>
+<p class="label">Correction</p>
+<div class="example good"><p>She gave me two useful <mark>pieces of advice</mark>.</p></div>
+<div class="cue"><strong>Your conversation cue</strong><p>Before adding “a,” a number, or a plural <em>-s</em>, ask: am I counting this noun, or individual pieces of it?</p></div>
+<div class="chips"><span>some advice</span><span>a lot of information</span><span>three pieces of furniture</span><span>two pieces of equipment</span></div>
+<p class="small">Put the plural on <strong>pieces</strong>, not on <strong>advice</strong>. “An advice” needs a change too: say “some advice” or “a piece of advice.”</p>
+<details><summary>Does this apply to every noun?</summary><div><p class="small">No—meaning matters. Your original “I bought a coffee before the train” is fine when it means one cup. Keep that useful expression.</p><p class="ids">Source: M36-U04 • original accepted in context</p></div></details>
+<button class="focus-action" data-focus="nouns" aria-pressed="false">Make this my next-conversation focus</button>
+</div>
+<div class="practice">
+<p class="label">Try it • new learning example</p>
+<h3>Ask for help with a decision</h3>
+<p>Which version fits ordinary conversation?</p>
+<div class="choices" data-quiz="nouns">
+<button class="choice" aria-pressed="false" data-answer="right">Could you give me some advice?</button>
+<button class="choice" aria-pressed="false" data-answer="wrong">Could you give me an advice?</button>
+</div>
+<div class="feedback" id="nouns-feedback" aria-live="polite" hidden></div>
+<details><summary>Make it yours</summary><div>
+<label for="nouns-draft">Ask for information about a place you want to visit.</label>
+<textarea id="nouns-draft" placeholder="Could you give me…"></textarea>
+<p class="small">Optional rehearsal only; your writing is not automatically checked or saved.</p>
+<details><summary>See a model and a self-check</summary><div><p><strong>New model:</strong> Could you give me some information about the museum?</p><p class="small">Check that “information” has no plural <em>-s</em>. For a specific number, you can use “two pieces of information.”</p></div></details>
+</div></details>
+</div>
+</div>
+<div class="evidence"><details><summary>Trace the examples • 8 records, 8 sessions</summary><div id="nouns-records"></div></details></div>
+</section>
+
+<section class="card" id="questions" aria-labelledby="questions-title" hidden>
+<div class="panel-head">
+<p class="eyebrow">03 / Embedded questions</p>
+<h2 id="questions-title">Inside the question, use statement order.</h2>
+<p>After “Could you tell me…,” “Do you know…” or “I wonder…,” the question clause normally uses subject + verb order—not the order of a standalone question.</p>
+</div>
+<div class="columns">
+<div class="lesson">
+<p class="label">From your record</p>
+<div class="example"><p>Could you tell me where is the station?</p></div>
+<p class="label">Correction</p>
+<div class="example good"><p>Could you tell me where <mark>the station is</mark>?</p></div>
+<div class="cue"><strong>Your conversation cue</strong><p>After the question word, name the person or thing first, then give its verb: <strong>where + the station + is</strong>.</p></div>
+<p class="label">New learning examples • direct → embedded</p>
+<p>When <strong>does the café close</strong>?<br>Do you know when <mark>the café closes</mark>?</p>
+<p>Why <strong>did he leave</strong>?<br>I wonder why <mark>he left</mark>.</p>
+<p class="small">Remove question-helper “do / does / did” from the inner clause. The main verb carries the form: “closes” or “left.” The outer “Do you know…” stays a question.</p>
+<button class="focus-action" data-focus="questions" aria-pressed="false">Make this my next-conversation focus</button>
+</div>
+<div class="practice">
+<p class="label">Try it • new learning example</p>
+<h3>Check a departure time</h3>
+<p>“Do you know ___?”</p>
+<div class="choices" data-quiz="questions">
+<button class="choice" aria-pressed="false" data-answer="wrong">when does the train leave</button>
+<button class="choice" aria-pressed="false" data-answer="right">when the train leaves</button>
+</div>
+<div class="feedback" id="questions-feedback" aria-live="polite" hidden></div>
+<details><summary>Make it yours</summary><div>
+<label for="questions-draft">Ask someone where a place is. Begin with “Could you tell me…”</label>
+<textarea id="questions-draft" placeholder="Could you tell me where…"></textarea>
+<p class="small">Optional rehearsal only; your writing is not automatically checked or saved.</p>
+<details><summary>See a model and a self-check</summary><div><p><strong>New model:</strong> Could you tell me where the library is?</p><p class="small">Read the part after “where.” Does the subject come before “is”? You can use this same order after “I wonder…”</p></div></details>
+</div></details>
+</div>
+</div>
+<div class="evidence"><details><summary>Trace the examples • 7 records, 7 sessions</summary><div id="questions-records"></div></details></div>
+</section>
+</main>
+
+<aside class="takeaway" aria-labelledby="reminder-title">
+<h3 id="reminder-title">Take one thing with you</h3>
+<div><p id="reminder" aria-live="polite">You do not need to monitor all three at once. Choose a focus inside any pattern to put a short reminder here.</p><button class="quiet" id="clear-focus" hidden style="margin-top:12px">Clear my focus</button></div>
+</aside>
+<details class="notes">
+<summary>About this selection</summary>
+<div>
+<p>This report uses the supplied records from 40 sessions, not full transcripts. The three selected patterns are supported by examples across multiple sessions and are useful in everyday conversation.</p>
+<p>The counts describe recorded examples and the distinct sessions containing them—not error rates. Repeated wording in separate sessions is counted as separate records; matching examples are grouped in the evidence views. Unchanged records do not tell us how often each structure was attempted.</p>
+<p>Recurrence across sessions was given more weight than many similar examples in one session. Optional formal rewrites and proposals that would change an intended meaning or make a correct sentence incorrect were not treated as errors.</p>
+<p>“From your record” identifies supplied wording. Corrections are shown separately. Practice prompts and models marked “new” were written for this report.</p>
+</div>
+</details>
+<p class="small" style="margin-top:26px">A small rehearsal is enough. You can leave whenever you like.</p>
+</div>
+<div class="closed" id="closed" hidden>
+<p class="eyebrow">Report closed</p>
+<h1>Ready when you are.</h1>
+<p>You can leave this view, or reopen the report while it is still here.</p>
+<button id="reopen">Reopen report</button>
+</div>
+<script>
+(function(){
+const records={
+past:[
+["M04-U03, M28-U03","Yesterday I go to the market. I remember that day clearly.","Yesterday I went to the market. I remember that day clearly."],
+["M08-U03, M32-U03","Last Friday I buy a used bicycle. I remember that day clearly.","Last Friday I bought a used bicycle. I remember that day clearly."],
+["M12-U03, M36-U03","I see that film last night. I remember that day clearly.","I saw that film last night. I remember that day clearly."],
+["M16-U03, M40-U03","Two days ago I meet my old neighbor. I remember that day clearly.","Two days ago I met my old neighbor. I remember that day clearly."],
+["M20-U03","Last month I take a short trip. I remember that day clearly.","Last month I took a short trip. I remember that day clearly."],
+["M24-U03","I send the letter yesterday. I remember that day clearly.","I sent the letter yesterday. I remember that day clearly."]
+],
+nouns:[
+["M05-U03, M35-U03","She gave me two useful advices.","She gave me two useful pieces of advice."],
+["M10-U03, M40-U04","I found many informations about the route.","I found a lot of information about the route."],
+["M15-U03","We bought three furnitures for the room.","We bought three pieces of furniture for the room."],
+["M20-U04","I need an advice about my interview.","I need some advice about my interview."],
+["M25-U03","This equipment is useful, but we need two more equipments.","This equipment is useful, but we need two more pieces of equipment."],
+["M30-U03","The guide shared several helpful informations.","The guide shared several helpful pieces of information."]
+],
+questions:[
+["M02-U03, M26-U03","Could you tell me where is the station?","Could you tell me where the station is?"],
+["M08-U04, M32-U04","I wonder why did she leave early.","I wonder why she left early."],
+["M14-U03, M38-U03","Do you know when does the shop close?","Do you know when the shop closes?"],
+["M20-U05","Can you explain how does this machine work?","Can you explain how this machine works?"]
+]};
+Object.keys(records).forEach(key=>{
+const host=document.getElementById(key+"-records");
+const note=document.createElement("p");
+note.className="small";note.textContent="Full source sentences below. Identical examples are grouped with all their source IDs.";
+host.appendChild(note);
+records[key].forEach(r=>{
+const block=document.createElement("div");block.className="record";
+[["ids","Source IDs: "+r[0]],["from","Original: "+r[1]],["to","Correction: "+r[2]]].forEach(x=>{
+const p=document.createElement("p");p.className=x[0];p.textContent=x[1];block.appendChild(p);
+});
+host.appendChild(block);
+});
+});
+document.querySelectorAll("[data-panel]").forEach(button=>{
+button.addEventListener("click",()=>{
+document.querySelectorAll("[data-panel]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));
+Object.keys(records).forEach(key=>document.getElementById(key).hidden=key!==button.dataset.panel);
+});
+});
+const answers={
+past:{right:"Yes. “Met” places the completed meeting in the past: “Yesterday I met a friend after work.”",wrong:"Use “met” here. “Yesterday” tells us this meeting is finished, so the event verb needs its past form."},
+nouns:{right:"Yes. “Some advice” works for an unspecified amount. If you mean one suggestion, “a piece of advice” also works.",wrong:"In this meaning, “advice” does not take “an.” Use “some advice” or “a piece of advice.”"},
+questions:{right:"Yes. The inner clause is “when + the train + leaves.” Keep “Do you know” at the beginning, but do not add “does” inside.",wrong:"That order works as a direct question: “When does the train leave?” Inside “Do you know…,” use “when the train leaves.”"}
+};
+document.querySelectorAll("[data-quiz]").forEach(quiz=>{
+quiz.querySelectorAll("button").forEach(button=>button.addEventListener("click",()=>{
+quiz.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));
+const feedback=document.getElementById(quiz.dataset.quiz+"-feedback");
+feedback.hidden=false;feedback.textContent=answers[quiz.dataset.quiz][button.dataset.answer];
+}));
+});
+const reminders={
+past:"My next-conversation cue: when I say “yesterday,” “last…” or “…ago,” I will check the verb for that finished event. Go → went. Meet → met.",
+nouns:"My next-conversation cue: with advice, information, furniture or equipment, I will use “some” for an amount or count “pieces of” the noun.",
+questions:"My next-conversation cue: after “Do you know…” or “Could you tell me…,” I will use question word + subject + verb: “where the station is.”"
+};
+document.querySelectorAll("[data-focus]").forEach(button=>button.addEventListener("click",()=>{
+document.querySelectorAll("[data-focus]").forEach(b=>{
+b.setAttribute("aria-pressed",String(b===button));
+b.textContent=b===button?"Selected as my conversation focus":"Make this my next-conversation focus";
+});
+document.getElementById("reminder").textContent=reminders[button.dataset.focus];
+document.getElementById("clear-focus").hidden=false;
+}));
+document.getElementById("clear-focus").addEventListener("click",()=>{
+document.querySelectorAll("[data-focus]").forEach(b=>{b.setAttribute("aria-pressed","false");b.textContent="Make this my next-conversation focus";});
+document.getElementById("reminder").textContent="You do not need to monitor all three at once. Choose a focus inside any pattern to put a short reminder here.";
+document.getElementById("clear-focus").hidden=true;
+document.querySelector(".path[aria-pressed=true]").focus();
+});
+document.getElementById("close").addEventListener("click",()=>{
+document.getElementById("report").hidden=true;
+document.getElementById("closed").hidden=false;
+document.getElementById("reopen").focus();
+});
+document.getElementById("reopen").addEventListener("click",()=>{
+document.getElementById("closed").hidden=true;
+document.getElementById("report").hidden=false;
+document.getElementById("close").focus();
+});
+})();
+</script>
+</body>
+</html>

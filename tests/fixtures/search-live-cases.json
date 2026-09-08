@@ -1,0 +1,33 @@
+{
+  "version": "search_acceptance_2026_09_06",
+  "reference_checked_at": "2026-09-06",
+  "cases": [
+    {
+      "id": "expo",
+      "expected_search": true,
+      "seed_user": "I am interested in the 2025 World Expo.",
+      "previous_assistant": "The 2025 World Expo was held in Japan.",
+      "current_user": "Please look up which city hosted it and give me the venue in a sentence.",
+      "expected_facts": ["Osaka", "Yumeshima"],
+      "references": ["https://www.expo2025.or.jp/en/overview/"]
+    },
+    {
+      "id": "python",
+      "expected_search": true,
+      "seed_user": "I will use Python for a small personal project.",
+      "previous_assistant": "The Python 3.14 series has stable maintenance releases; prereleases belong to a different release track.",
+      "current_user": "What is the latest stable one in that series today, and when was it released? Please check Python's official site and keep it brief.",
+      "expected_facts": ["3.14.7", "August 5, 2026"],
+      "references": ["https://blog.python.org/2026/08/python-3147-31315/", "https://www.python.org/downloads/"]
+    },
+    {
+      "id": "language",
+      "expected_search": false,
+      "seed_user": "I am practicing everyday English.",
+      "previous_assistant": "Tell me what you did yesterday.",
+      "current_user": "Is 'I went for a walk yesterday' natural English?",
+      "expected_facts": ["The supplied sentence is natural English."],
+      "references": []
+    }
+  ]
+}

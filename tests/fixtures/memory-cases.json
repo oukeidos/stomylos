@@ -1,0 +1,688 @@
+[
+  {
+    "name": "screen_gemini_B02",
+    "packet": {
+      "current_memory": {
+        "character_id": "model_04",
+        "revision": 3,
+        "traits": [
+          {
+            "id": "m2",
+            "text": "The user prefers tea to coffee."
+          }
+        ],
+        "relationships": [
+          {
+            "id": "m1",
+            "text": "Jimin is the user's coworker."
+          },
+          {
+            "id": "m6",
+            "text": "Rosa joins the user for weekend sketching."
+          }
+        ],
+        "experiences": [],
+        "intentions": [
+          {
+            "id": "m3",
+            "text": "The user plans to move to Busan in October 2026."
+          },
+          {
+            "id": "m4",
+            "text": "The user plans to train for a marathon."
+          },
+          {
+            "id": "m5",
+            "text": "The user plans to submit a short story to the Harbor competition."
+          }
+        ]
+      },
+      "session": {
+        "id": "B02",
+        "character_id": "model_04",
+        "ended_at": "2026-09-05T20:00:00+09:00",
+        "timezone": "Asia/Seoul",
+        "messages": [
+          {
+            "id": "S02_m1",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "Small correction: Jimin is my cousin, not my coworker. I still prefer tea. The move is now planned for November, not October; Busan is unchanged."
+          },
+          {
+            "id": "B02_m2",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "I submitted the Harbor story yesterday. I have canceled the marathon plan. I might move in December instead of November, but I have not decided."
+          },
+          {
+            "id": "B02_m3",
+            "role": "assistant",
+            "origin": "model",
+            "delivery": "complete",
+            "content": "Then December is your new moving date and you won the competition."
+          },
+          {
+            "id": "B02_m4",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "No, the move is still planned for November. December was only a possibility, and I do not have any competition result. Please keep everything about Rosa unchanged."
+          }
+        ]
+      },
+      "limits": {
+        "max_items": 60,
+        "max_item_chars": 240,
+        "max_bytes": 20000
+      }
+    },
+    "content": "{\n  \"operations\": [\n    {\n      \"op\": \"update\",\n      \"id\": \"m1\",\n      \"category\": \"relationships\",\n      \"text\": \"Jimin is the user's cousin.\",\n      \"source_message_ids\": [\"S02_m1\"]\n    },\n    {\n      \"op\": \"update\",\n      \"id\": \"m3\",\n      \"category\": \"intentions\",\n      \"text\": \"The user plans to move to Busan in November 2026.\",\n      \"source_message_ids\": [\"S02_m1\", \"B02_m2\", \"B02_m4\"]\n    },\n    {\n      \"op\": \"delete\",\n      \"id\": \"m4\",\n      \"category\": null,\n      \"text\": null,\n      \"source_message_ids\": [\"B02_m2\"]\n    },\n    {\n      \"op\": \"update\",\n      \"id\": \"m5\",\n      \"category\": \"experiences\",\n      \"text\": \"The user submitted a short story to the Harbor competition on September 4, 2026.\",\n      \"source_message_ids\": [\"B02_m2\", \"B02_m4\"]\n    }\n  ]\n}",
+    "expected": {
+      "character_id": "model_04",
+      "revision": 4,
+      "traits": [
+        {
+          "id": "m2",
+          "text": "The user prefers tea to coffee."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "m6",
+          "text": "Rosa joins the user for weekend sketching."
+        },
+        {
+          "id": "m1",
+          "text": "Jimin is the user's cousin."
+        }
+      ],
+      "experiences": [
+        {
+          "id": "m5",
+          "text": "The user submitted a short story to the Harbor competition on September 4, 2026."
+        }
+      ],
+      "intentions": [
+        {
+          "id": "m3",
+          "text": "The user plans to move to Busan in November 2026."
+        }
+      ]
+    }
+  },
+  {
+    "name": "narrow_gemini_S07",
+    "packet": {
+      "current_memory": {
+        "character_id": "model_04",
+        "revision": 3,
+        "traits": [
+          {
+            "id": "m1",
+            "text": "The user prefers quiet cafes."
+          },
+          {
+            "id": "m2",
+            "text": "The user prefers uncrowded cafes."
+          }
+        ],
+        "relationships": [
+          {
+            "id": "m3",
+            "text": "Hana is the user's sister."
+          }
+        ],
+        "experiences": [],
+        "intentions": [
+          {
+            "id": "m4",
+            "text": "The user plans to finish a pottery course in October 2026."
+          }
+        ]
+      },
+      "session": {
+        "id": "S07",
+        "character_id": "model_04",
+        "ended_at": "2026-09-05T20:00:00+09:00",
+        "timezone": "Asia/Seoul",
+        "messages": [
+          {
+            "id": "S07_m1",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "I have enrolled in an evening astronomy course starting September 14. Please remember that alongside my pottery plan and my usual preferences."
+          }
+        ]
+      },
+      "limits": {
+        "max_items": 4,
+        "max_item_chars": 240,
+        "max_bytes": 20000
+      }
+    },
+    "content": "{\n  \"operations\": [\n    {\n      \"op\": \"update\",\n      \"id\": \"m1\",\n      \"category\": \"traits\",\n      \"text\": \"The user prefers quiet, uncrowded cafes.\",\n      \"source_message_ids\": [\n        \"S07_m1\"\n      ]\n    },\n    {\n      \"op\": \"delete\",\n      \"id\": \"m2\",\n      \"category\": null,\n      \"text\": null,\n      \"source_message_ids\": [\n        \"S07_m1\"\n      ]\n    },\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"intentions\",\n      \"text\": \"The user is enrolled in an evening astronomy course starting September 14, 2026.\",\n      \"source_message_ids\": [\n        \"S07_m1\"\n      ]\n    }\n  ]\n}",
+    "expected": {
+      "character_id": "model_04",
+      "revision": 4,
+      "traits": [
+        {
+          "id": "m1",
+          "text": "The user prefers quiet, uncrowded cafes."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "m3",
+          "text": "Hana is the user's sister."
+        }
+      ],
+      "experiences": [],
+      "intentions": [
+        {
+          "id": "m4",
+          "text": "The user plans to finish a pottery course in October 2026."
+        },
+        {
+          "id": "mem_3dd74a6202ef2f266f40",
+          "text": "The user is enrolled in an evening astronomy course starting September 14, 2026."
+        }
+      ]
+    }
+  },
+  {
+    "name": "final_gemini_H02",
+    "packet": {
+      "current_memory": {
+        "character_id": "model_04",
+        "revision": 3,
+        "traits": [
+          {
+            "id": "m3",
+            "text": "The user enjoys skating."
+          }
+        ],
+        "relationships": [
+          {
+            "id": "m1",
+            "text": "The user's neighbor is Theo."
+          }
+        ],
+        "experiences": [
+          {
+            "id": "m2",
+            "text": "The user broke an arm during a skating accident in 2024."
+          }
+        ],
+        "intentions": [
+          {
+            "id": "m4",
+            "text": "The user plans to join a beginner skating class."
+          }
+        ]
+      },
+      "session": {
+        "id": "H02",
+        "character_id": "model_04",
+        "ended_at": "2026-09-05T20:00:00+09:00",
+        "timezone": "Asia/Seoul",
+        "messages": [
+          {
+            "id": "H02_m1",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "Please forget the accident I told you about. I only want that accident removed from your memory. Keep my skating interest and class plan, and do not touch anything about Theo."
+          }
+        ]
+      },
+      "limits": {
+        "max_items": 60,
+        "max_item_chars": 240,
+        "max_bytes": 20000
+      }
+    },
+    "content": "{\n  \"operations\": [\n    {\n      \"op\": \"delete\",\n      \"id\": \"m2\",\n      \"category\": null,\n      \"text\": null,\n      \"source_message_ids\": [\"H02_m1\"]\n    }\n  ]\n}",
+    "expected": {
+      "character_id": "model_04",
+      "revision": 4,
+      "traits": [
+        {
+          "id": "m3",
+          "text": "The user enjoys skating."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "m1",
+          "text": "The user's neighbor is Theo."
+        }
+      ],
+      "experiences": [],
+      "intentions": [
+        {
+          "id": "m4",
+          "text": "The user plans to join a beginner skating class."
+        }
+      ]
+    }
+  },
+  {
+    "name": "demo_v2_update_A1",
+    "packet": {
+      "current_memory": {
+        "character_id": "model_04",
+        "revision": 0,
+        "traits": [],
+        "relationships": [],
+        "experiences": [],
+        "intentions": []
+      },
+      "session": {
+        "id": "A1",
+        "character_id": "model_04",
+        "ended_at": "2026-09-05T20:00:00+09:00",
+        "timezone": "Asia/Seoul",
+        "messages": [
+          {
+            "id": "A1_m1",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "I am building a small balcony herb garden. My sister Hana gave me the basil, and I promised to show her a photo when it grows. I prefer a few low-maintenance plants. I plan to buy mint this Sunday, September 6."
+          },
+          {
+            "id": "A1_m2",
+            "role": "assistant",
+            "origin": "model",
+            "delivery": "complete",
+            "content": "A few herbs could make a pleasant little corner."
+          },
+          {
+            "id": "A1_m3",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "Yes, and the basil has already produced its first new leaves today."
+          }
+        ]
+      },
+      "limits": {
+        "max_items": 60,
+        "max_item_chars": 240,
+        "max_bytes": 20000
+      }
+    },
+    "content": "{\n  \"operations\": [\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"traits\",\n      \"text\": \"Prefers a few low-maintenance plants.\",\n      \"source_message_ids\": [\"A1_m1\"]\n    },\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"relationships\",\n      \"text\": \"Has a sister named Hana.\",\n      \"source_message_ids\": [\"A1_m1\"]\n    },\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"intentions\",\n      \"text\": \"Plans to buy mint on Sunday, September 6, 2026.\",\n      \"source_message_ids\": [\"A1_m1\"]\n    },\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"intentions\",\n      \"text\": \"Promised to show sister Hana a photo of the basil when it grows.\",\n      \"source_message_ids\": [\"A1_m1\"]\n    },\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"experiences\",\n      \"text\": \"Started building a small balcony herb garden with basil gifted by sister Hana, which sprouted its first new leaves on September 5, 2026.\",\n      \"source_message_ids\": [\"A1_m1\", \"A1_m3\"]\n    }\n  ]\n}",
+    "expected": {
+      "character_id": "model_04",
+      "revision": 1,
+      "traits": [
+        {
+          "id": "mem_d185d6820154cb6c9e6c",
+          "text": "Prefers a few low-maintenance plants."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "mem_23bf2bd29d699ff29957",
+          "text": "Has a sister named Hana."
+        }
+      ],
+      "experiences": [
+        {
+          "id": "mem_cdd4b8434accc220ff86",
+          "text": "Started building a small balcony herb garden with basil gifted by sister Hana, which sprouted its first new leaves on September 5, 2026."
+        }
+      ],
+      "intentions": [
+        {
+          "id": "mem_efb051ffac3eb4f8b78e",
+          "text": "Plans to buy mint on Sunday, September 6, 2026."
+        },
+        {
+          "id": "mem_820f2555a518422b6418",
+          "text": "Promised to show sister Hana a photo of the basil when it grows."
+        }
+      ]
+    }
+  },
+  {
+    "name": "demo_v2_update_A2",
+    "packet": {
+      "current_memory": {
+        "character_id": "model_04",
+        "experiences": [
+          {
+            "id": "mem_cdd4b8434accc220ff86",
+            "text": "Started building a small balcony herb garden with basil gifted by sister Hana, which sprouted its first new leaves on September 5, 2026."
+          }
+        ],
+        "intentions": [
+          {
+            "id": "mem_efb051ffac3eb4f8b78e",
+            "text": "Plans to buy mint on Sunday, September 6, 2026."
+          },
+          {
+            "id": "mem_820f2555a518422b6418",
+            "text": "Promised to show sister Hana a photo of the basil when it grows."
+          }
+        ],
+        "relationships": [
+          {
+            "id": "mem_23bf2bd29d699ff29957",
+            "text": "Has a sister named Hana."
+          }
+        ],
+        "revision": 1,
+        "traits": [
+          {
+            "id": "mem_d185d6820154cb6c9e6c",
+            "text": "Prefers a few low-maintenance plants."
+          }
+        ]
+      },
+      "session": {
+        "id": "A2",
+        "character_id": "model_04",
+        "ended_at": "2026-09-05T20:00:00+09:00",
+        "timezone": "Asia/Seoul",
+        "messages": [
+          {
+            "id": "A2_m1",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "A correction about the garden: Hana is my cousin, not my sister. I decided not to buy mint because it spreads too much. I sent Hana the basil photo this afternoon, so that promise is done."
+          },
+          {
+            "id": "A2_m2",
+            "role": "assistant",
+            "origin": "model",
+            "delivery": "complete",
+            "content": "Maybe the mint is already taking over your balcony."
+          },
+          {
+            "id": "A2_m3",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "No, I never bought any mint. The basil is still doing well."
+          }
+        ]
+      },
+      "limits": {
+        "max_items": 60,
+        "max_item_chars": 240,
+        "max_bytes": 20000
+      }
+    },
+    "content": "{\n  \"operations\": [\n    {\n      \"op\": \"update\",\n      \"id\": \"mem_23bf2bd29d699ff29957\",\n      \"category\": \"relationships\",\n      \"text\": \"Has a cousin named Hana.\",\n      \"source_message_ids\": [\"A2_m1\"]\n    },\n    {\n      \"op\": \"update\",\n      \"id\": \"mem_cdd4b8434accc220ff86\",\n      \"category\": \"experiences\",\n      \"text\": \"Started building a small balcony herb garden with basil gifted by cousin Hana, which sprouted its first new leaves on September 5, 2026.\",\n      \"source_message_ids\": [\"A2_m1\"]\n    },\n    {\n      \"op\": \"update\",\n      \"id\": \"mem_efb051ffac3eb4f8b78e\",\n      \"category\": \"experiences\",\n      \"text\": \"Decided not to buy mint because it spreads too much.\",\n      \"source_message_ids\": [\"A2_m1\", \"A2_m3\"]\n    },\n    {\n      \"op\": \"update\",\n      \"id\": \"mem_820f2555a518422b6418\",\n      \"category\": \"experiences\",\n      \"text\": \"Sent cousin Hana a photo of the basil on the afternoon of September 5, 2026.\",\n      \"source_message_ids\": [\"A2_m1\"]\n    }\n  ]\n}",
+    "expected": {
+      "character_id": "model_04",
+      "experiences": [
+        {
+          "id": "mem_cdd4b8434accc220ff86",
+          "text": "Started building a small balcony herb garden with basil gifted by cousin Hana, which sprouted its first new leaves on September 5, 2026."
+        },
+        {
+          "id": "mem_efb051ffac3eb4f8b78e",
+          "text": "Decided not to buy mint because it spreads too much."
+        },
+        {
+          "id": "mem_820f2555a518422b6418",
+          "text": "Sent cousin Hana a photo of the basil on the afternoon of September 5, 2026."
+        }
+      ],
+      "intentions": [],
+      "relationships": [
+        {
+          "id": "mem_23bf2bd29d699ff29957",
+          "text": "Has a cousin named Hana."
+        }
+      ],
+      "revision": 2,
+      "traits": [
+        {
+          "id": "mem_d185d6820154cb6c9e6c",
+          "text": "Prefers a few low-maintenance plants."
+        }
+      ]
+    }
+  },
+  {
+    "name": "demo_v2_update_B1",
+    "packet": {
+      "current_memory": {
+        "character_id": "model_03",
+        "revision": 0,
+        "traits": [],
+        "relationships": [],
+        "experiences": [],
+        "intentions": []
+      },
+      "session": {
+        "id": "B1",
+        "character_id": "model_03",
+        "ended_at": "2026-09-05T20:00:00+09:00",
+        "timezone": "Asia/Seoul",
+        "messages": [
+          {
+            "id": "B1_m1",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "I am learning basic astronomy. My friend Leo and I plan to observe Saturn next Saturday, September 12, using his telescope. I learn best with diagrams rather than formulas."
+          },
+          {
+            "id": "B1_m2",
+            "role": "assistant",
+            "origin": "model",
+            "delivery": "complete",
+            "content": "A diagram can help separate the tilt of the rings from the orbit."
+          },
+          {
+            "id": "B1_m3",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "We have not chosen a viewing place yet."
+          }
+        ]
+      },
+      "limits": {
+        "max_items": 60,
+        "max_item_chars": 240,
+        "max_bytes": 20000
+      }
+    },
+    "content": "{\n  \"operations\": [\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"traits\",\n      \"text\": \"Learns best with diagrams rather than formulas.\",\n      \"source_message_ids\": [\"B1_m1\"]\n    },\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"relationships\",\n      \"text\": \"Is learning basic astronomy.\",\n      \"source_message_ids\": [\"B1_m1\"]\n    },\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"relationships\",\n      \"text\": \"Has a friend named Leo who owns a telescope.\",\n      \"source_message_ids\": [\"B1_m1\"]\n    },\n    {\n      \"op\": \"add\",\n      \"id\": null,\n      \"category\": \"intentions\",\n      \"text\": \"Plans to observe Saturn with Leo using Leo's telescope on September 12, 2026, with viewing location not yet chosen.\",\n      \"source_message_ids\": [\"B1_m1\", \"B1_m3\"]\n    }\n  ]\n}",
+    "expected": {
+      "character_id": "model_03",
+      "revision": 1,
+      "traits": [
+        {
+          "id": "mem_de82a40a6186711c1a66",
+          "text": "Learns best with diagrams rather than formulas."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "mem_0db10fb8aab919dc9095",
+          "text": "Is learning basic astronomy."
+        },
+        {
+          "id": "mem_10fa0fd47d5485c17627",
+          "text": "Has a friend named Leo who owns a telescope."
+        }
+      ],
+      "experiences": [],
+      "intentions": [
+        {
+          "id": "mem_85e7046eae0d5b8e2fb3",
+          "text": "Plans to observe Saturn with Leo using Leo's telescope on September 12, 2026, with viewing location not yet chosen."
+        }
+      ]
+    }
+  },
+  {
+    "name": "refinement_gemini_R01",
+    "packet": {
+      "current_memory": {
+        "character_id": "model_04",
+        "revision": 2,
+        "traits": [
+          {
+            "id": "m3",
+            "text": "The user prefers train travel."
+          }
+        ],
+        "relationships": [
+          {
+            "id": "m4",
+            "text": "Mina is the user's neighbor."
+          }
+        ],
+        "experiences": [],
+        "intentions": [
+          {
+            "id": "m1",
+            "text": "The user plans to take a weekend trip to Jeju."
+          },
+          {
+            "id": "m2",
+            "text": "The user plans to finish a watercolor painting."
+          }
+        ]
+      },
+      "session": {
+        "id": "R01",
+        "character_id": "model_04",
+        "ended_at": "2026-09-05T20:00:00+09:00",
+        "timezone": "Asia/Seoul",
+        "messages": [
+          {
+            "id": "R01_m1",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "I decided not to take the Jeju trip because the ferry was too expensive. I still plan to finish the watercolor painting."
+          }
+        ]
+      },
+      "limits": {
+        "max_items": 60,
+        "max_item_chars": 240,
+        "max_bytes": 20000
+      }
+    },
+    "content": "{\n  \"operations\": [\n    {\n      \"op\": \"update\",\n      \"id\": \"m1\",\n      \"category\": \"experiences\",\n      \"text\": \"The user decided against taking the weekend trip to Jeju because the ferry was too expensive.\",\n      \"source_message_ids\": [\"R01_m1\"]\n    }\n  ]\n}",
+    "expected": {
+      "character_id": "model_04",
+      "revision": 3,
+      "traits": [
+        {
+          "id": "m3",
+          "text": "The user prefers train travel."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "m4",
+          "text": "Mina is the user's neighbor."
+        }
+      ],
+      "experiences": [
+        {
+          "id": "m1",
+          "text": "The user decided against taking the weekend trip to Jeju because the ferry was too expensive."
+        }
+      ],
+      "intentions": [
+        {
+          "id": "m2",
+          "text": "The user plans to finish a watercolor painting."
+        }
+      ]
+    }
+  },
+  {
+    "name": "refinement_gemini_R02",
+    "packet": {
+      "current_memory": {
+        "character_id": "model_04",
+        "revision": 2,
+        "traits": [
+          {
+            "id": "m3",
+            "text": "The user prefers train travel."
+          }
+        ],
+        "relationships": [
+          {
+            "id": "m4",
+            "text": "Mina is the user's neighbor."
+          }
+        ],
+        "experiences": [],
+        "intentions": [
+          {
+            "id": "m1",
+            "text": "The user plans to take a weekend trip to Jeju."
+          },
+          {
+            "id": "m2",
+            "text": "The user plans to finish a watercolor painting."
+          }
+        ]
+      },
+      "session": {
+        "id": "R02",
+        "character_id": "model_04",
+        "ended_at": "2026-09-05T20:00:00+09:00",
+        "timezone": "Asia/Seoul",
+        "messages": [
+          {
+            "id": "R02_m1",
+            "role": "user",
+            "origin": "learner",
+            "delivery": "complete",
+            "content": "Cancel the Jeju trip plan and forget it completely. Do not keep any record of that trip or of my decision to cancel it. Keep my painting plan, travel preference, and everything about Mina unchanged."
+          }
+        ]
+      },
+      "limits": {
+        "max_items": 60,
+        "max_item_chars": 240,
+        "max_bytes": 20000
+      }
+    },
+    "content": "{\n  \"operations\": [\n    {\n      \"op\": \"delete\",\n      \"id\": \"m1\",\n      \"category\": null,\n      \"text\": null,\n      \"source_message_ids\": [\"R02_m1\"]\n    }\n  ]\n}",
+    "expected": {
+      "character_id": "model_04",
+      "revision": 3,
+      "traits": [
+        {
+          "id": "m3",
+          "text": "The user prefers train travel."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "m4",
+          "text": "Mina is the user's neighbor."
+        }
+      ],
+      "experiences": [],
+      "intentions": [
+        {
+          "id": "m2",
+          "text": "The user plans to finish a watercolor painting."
+        }
+      ]
+    }
+  }
+]

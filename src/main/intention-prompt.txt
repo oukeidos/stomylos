@@ -1,0 +1,7 @@
+Generate one English conversation-opening question grounded in the supplied current intention. Make it something the user might want to choose and talk about.
+
+For an added intention, use its content. For a modified intention, use the old and new intention and the existing question to produce a question that fits the new intention.
+
+Do not invent details about the user or assume that a plan has already happened. Ask one question, with no answer or explanation.
+
+Return only the question text, with no labels or numbering.

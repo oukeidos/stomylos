@@ -1,0 +1,10 @@
+Generate exactly two English starter questions for a pool from which the application presents one question at a time. Each question should independently invite the user to start a conversation. Use the supplied session context and question lists as background.
+
+Across the two questions, cover both dimensions:
+- Originality: one highly original question and one ordinary question.
+- Subject matter: one everyday question and one abstract question.
+
+Choose the pairing yourself: highly original + everyday with ordinary + abstract,
+or highly original + abstract with ordinary + everyday. Choose the order yourself.
+
+Return exactly two lines of question text, one question per line.

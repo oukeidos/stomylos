@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>English conversation field guide</title>
+<style>
+:root {
+  --paper:#f5f3ed;
+  --surface:#fffefa;
+  --ink:#203c35;
+  --muted:#60716b;
+  --accent:#245c4d;
+  --soft:#eaf0e9;
+  --border:#d9dfd5;
+  --correction:#874526;
+  --correction-bg:#f5e8dc;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.6 system-ui,sans-serif; }
+main { max-width:1140px; padding:48px 32px 32px; margin:auto; }
+h1,h2,h3,p { margin:0; }
+h1,h2,h3 { font-family:Georgia,'Times New Roman',serif; font-weight:normal; }
+h1 { font-size:clamp(36px,5vw,60px); line-height:1.1; margin:12px 0 24px; }
+h2 { font-size:clamp(26px,3vw,32px); line-height:1.2; margin:8px 0 12px; }
+h3 { font-size:26px; line-height:1.3; }
+p { max-width:65ch; }
+.kicker,.label { font-size:13px; font-weight:650; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.intro { max-width:68ch; }
+.intro p + p { margin-top:12px; }
+nav { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:32px 0 24px; }
+button,summary { -webkit-tap-highlight-color:transparent; }
+button { font:inherit; cursor:pointer; border:1px solid var(--border); border-radius:8px; color:var(--accent); background:var(--surface); min-height:48px; padding:12px 16px; }
+button:hover { border-color:var(--accent); }
+button:focus-visible,summary:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
+nav button { text-align:left; display:flex; gap:12px; align-items:baseline; }
+nav button[aria-pressed="true"] { background:var(--accent); color:var(--surface); border-color:var(--accent); }
+.nav-number { font-size:13px; }
+.nav-title { font-weight:650; }
+.nav-meta { display:block; font-size:13px; font-weight:400; }
+.panel { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:32px; box-shadow:0 4px 16px #203c3505; }
+.unit-head { margin-bottom:24px; }
+.unit-head p { color:var(--muted); }
+.columns { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:32px; align-items:start; }
+.pair { margin:16px 0 24px; }
+.pair-row + .pair-row { margin-top:16px; }
+.pair-row .label { display:block; margin-bottom:8px; }
+.original-mark { color:var(--correction); background:var(--correction-bg); padding:0 3px; border-radius:3px; }
+.revision-mark { color:var(--accent); background:var(--soft); padding:0 3px; border-radius:3px; font-weight:650; }
+.rule { background:var(--soft); border-left:4px solid var(--accent); padding:16px 24px; border-radius:0 8px 8px 0; }
+.rule h3 { margin:8px 0 12px; }
+.rule p + p { margin-top:12px; }
+.practice { border:1px solid var(--border); border-radius:8px; padding:24px; }
+.practice h3 { margin:8px 0 12px; }
+.practice .prompt { margin:16px 0; font-weight:600; }
+.choices { display:grid; gap:8px; }
+.choices button { text-align:left; }
+.choices button[aria-pressed="true"] { border:2px solid var(--accent); padding:11px 15px; background:var(--soft); }
+.feedback { margin-top:16px; padding:16px; border-radius:8px; background:var(--soft); }
+.feedback.retry { background:var(--correction-bg); color:var(--correction); }
+.feedback:empty { display:none; }
+.cue { margin-top:16px; color:var(--muted); }
+details { margin-top:24px; border-top:1px solid var(--border); }
+summary { cursor:pointer; color:var(--accent); padding:16px 0; font-weight:600; min-height:48px; }
+.detail-body { padding:0 0 8px; }
+.detail-body p + p { margin-top:12px; }
+.record { padding:16px 0; border-bottom:1px solid var(--border); }
+.record:last-child { border-bottom:0; }
+.record .pair { margin:12px 0 0; }
+.record .pair-row + .pair-row { margin-top:8px; }
+.record .pair-row .label { display:inline; margin-right:8px; }
+.small { font-size:13px; color:var(--muted); }
+footer { margin-top:24px; color:var(--muted); }
+footer details { margin-top:16px; }
+footer .detail-body { max-width:70ch; }
+footer ul { padding-left:24px; margin:12px 0; }
+footer li + li { margin-top:8px; }
+@media(max-width:720px) {
+  main { padding:32px 20px 24px; }
+  nav { grid-template-columns:1fr; gap:8px; margin-top:24px; }
+  nav button { align-items:center; padding:12px 16px; }
+  .nav-meta { display:inline; margin-left:8px; }
+  .panel { padding:24px 16px; }
+  .columns { grid-template-columns:1fr; gap:24px; }
+  .rule { padding:16px; }
+  .practice { padding:16px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  *,*::before,*::after { scroll-behavior:auto!important; transition:none!important; animation:none!important; }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="kicker">Conversation field guide · 2 July–10 August 2026</div>
+  <h1>Three useful things to notice</h1>
+  <div class="intro">
+    <p>The supplied records from 40 sessions support three recurring error patterns: marking finished past events, ordering embedded questions, and counting uncountable nouns.</p>
+    <p>Choose a focus below. Each includes a source example and an optional quick application. These are priorities to notice—not a measure of your overall accuracy.</p>
+  </div>
+</header>
+
+<nav aria-label="Choose a conversation focus">
+  <button type="button" aria-pressed="true" aria-controls="focus" data-focus="0">
+    <span class="nav-number">01</span><span><span class="nav-title">Finished past events</span><span class="nav-meta">10 sessions</span></span>
+  </button>
+  <button type="button" aria-pressed="false" aria-controls="focus" data-focus="1">
+    <span class="nav-number">02</span><span><span class="nav-title">Questions inside sentences</span><span class="nav-meta">7 sessions</span></span>
+  </button>
+  <button type="button" aria-pressed="false" aria-controls="focus" data-focus="2">
+    <span class="nav-number">03</span><span><span class="nav-title">Counting pieces, not plurals</span><span class="nav-meta">8 sessions</span></span>
+  </button>
+</nav>
+
+<section id="focus" class="panel" aria-labelledby="focus-title"></section>
+
+<footer>
+  <p>You can switch focuses or stop here. No practice is required.</p>
+  <details>
+    <summary>How the evidence was chosen</summary>
+    <div class="detail-body">
+      <p>Each selected pattern appears in at least three distinct supplied sessions. The navigation counts sessions with a supporting error record, not all occasions when you used that structure.</p>
+      <p>There are 10 supporting records for past events, 7 for embedded questions, and 8 for uncountable nouns—one per supporting session within each focus. Identical examples from different sessions are grouped in the source lists. Unchanged records do not provide a full denominator for calculating an error rate.</p>
+      <p>Not every proposed change is a necessary correction:</p>
+      <ul>
+        <li>The eight “very like” records all come from one session (M21-U03–M21-U10), so they do not establish a recurring pattern across sessions.</li>
+        <li>“I think the plan is pretty good” and “The person who I spoke to was friendly” are acceptable conversational English (M06-U03; M30-U04).</li>
+        <li>“Because I was tired” is an acceptable answer to the recorded question “Why did you stop?” (M12-U04).</li>
+        <li>“I have a little time this evening” matches the intended meaning of some available time (M18-U03). “I am looking forward to seeing you” is already correct (M24-U04).</li>
+      </ul>
+      <p>Source pairs below reproduce the supplied wording. Applications are newly written teaching examples, not additional evidence.</p>
+    </div>
+  </details>
+</footer>
+</main>
+<script>
+const old = t => `<span class="original-mark">${t}</span>`;
+const revised = t => `<span class="revision-mark">${t}</span>`;
+const memory = " I remember that day clearly.";
+const data = [
+{
+  title:"Let the event carry the past tense",
+  count:"10 supporting records across 10 sessions",
+  purpose:"Useful when telling someone what happened yesterday, last week, or on a finished trip.",
+  records:[
+    {ids:"M04-U03 · M28-U03",o:`Yesterday I ${old("go")} to the market.${memory}`,r:`Yesterday I ${revised("went")} to the market.${memory}`},
+    {ids:"M08-U03 · M32-U03",o:`Last Friday I ${old("buy")} a used bicycle.${memory}`,r:`Last Friday I ${revised("bought")} a used bicycle.${memory}`},
+    {ids:"M12-U03 · M36-U03",o:`I ${old("see")} that film last night.${memory}`,r:`I ${revised("saw")} that film last night.${memory}`},
+    {ids:"M16-U03 · M40-U03",o:`Two days ago I ${old("meet")} my old neighbor.${memory}`,r:`Two days ago I ${revised("met")} my old neighbor.${memory}`},
+    {ids:"M20-U03",o:`Last month I ${old("take")} a short trip.${memory}`,r:`Last month I ${revised("took")} a short trip.${memory}`},
+    {ids:"M24-U03",o:`I ${old("send")} the letter yesterday.${memory}`,r:`I ${revised("sent")} the letter yesterday.${memory}`}
+  ],
+  rule:"Finished event → past-tense verb",
+  explain:"For these completed events at a definite past time, use the simple past: <strong>go → went</strong>. “Yesterday” tells us when; it does not replace the past form of the verb.",
+  keep:"<strong>Keep “I remember that day clearly.”</strong> The event happened then, but the remembering is true now. You do not need to move every verb into the past.",
+  prompt:"Choose the verb for a completed meeting:",
+  sentence:"Two days ago I ___ my cousin.",
+  choices:["meet","met","have met"],
+  correct:1,
+  feedback:[
+    "Use “met.” “Meet” is the present/base form, but this meeting is a completed event two days ago.",
+    "Yes: “Two days ago I met my cousin.” The finished time and past verb work together.",
+    "Use “met.” In standard usage, the present perfect (“have met”) does not pair with the definite finished time “two days ago.”"
+  ],
+  cue:"For your next story: “Last weekend I…”—then choose the past form of the event verb.",
+  boundaryTitle:"A useful boundary: did + base form",
+  boundary:`<p><span class="label">New teaching examples</span></p><p>“I <strong>went</strong> yesterday.”<br>“<strong>Did</strong> you <strong>go</strong> yesterday?”<br>“I <strong>didn’t go</strong> yesterday.”</p><p>In simple-past questions and negatives with <strong>did</strong>, that auxiliary carries the past tense. The main verb stays in its base form.</p>`
+},
+{
+  title:"Keep the question opening; reorder the inside",
+  count:"7 supporting records across 7 sessions",
+  purpose:"Useful for asking politely, wondering aloud, and asking for explanations.",
+  records:[
+    {ids:"M02-U03 · M26-U03",o:`Could you tell me where ${old("is the station")}?`,r:`Could you tell me where ${revised("the station is")}?`},
+    {ids:"M08-U04 · M32-U04",o:`I wonder why ${old("did she leave")} early.`,r:`I wonder why ${revised("she left")} early.`},
+    {ids:"M14-U03 · M38-U03",o:`Do you know when ${old("does the shop close")}?`,r:`Do you know when ${revised("the shop closes")}?`},
+    {ids:"M20-U05",o:`Can you explain how ${old("does this machine work")}?`,r:`Can you explain how ${revised("this machine works")}?`}
+  ],
+  rule:"Inside the sentence: question word + subject + verb",
+  explain:"A direct question is “Where is the station?” After “Could you tell me…”, the embedded clause uses statement order: <strong>where + the station + is</strong>.",
+  keep:"<strong>Keep “Could you tell me…?”</strong> The outer question stays a question. Inside, remove question-form <strong>do/does/did</strong> and put tense or agreement on the main verb: “why she <strong>left</strong>,” “when the shop <strong>closes</strong>.”",
+  prompt:"Complete the polite question:",
+  sentence:"Do you know ___?",
+  choices:["when does the bus leave","when the bus leave","when the bus leaves"],
+  correct:2,
+  feedback:[
+    "Use “when the bus leaves.” The outer “Do you know…?” is already the question frame; the embedded clause needs subject–verb order.",
+    "The order is right. Add the verb ending: “the bus leaves.” Removing “does” does not remove third-person singular agreement.",
+    "Yes: “Do you know when the bus leaves?” Keep the question frame outside and subject–verb order inside."
+  ],
+  cue:"Before asking, try this frame: “Could you tell me where + [the place] + is?”",
+  boundaryTitle:"A useful boundary: when “who” is the subject",
+  boundary:`<p><span class="label">New teaching examples</span></p><p>Direct: “<strong>Who called?</strong>”<br>Embedded: “Do you know <strong>who called</strong>?”</p><p>Here, “who” itself is the subject, so the words already have the right order. Do not add another subject or a question-form “did.”</p>`
+},
+{
+  title:"Count a piece; keep the noun unchanged",
+  count:"8 supporting records across 8 sessions",
+  purpose:"Useful when talking about advice, information, furniture, and equipment.",
+  records:[
+    {ids:"M05-U03 · M35-U03",o:`She gave me two useful ${old("advices")}.`,r:`She gave me two useful ${revised("pieces of advice")}.`},
+    {ids:"M10-U03 · M40-U04",o:`I found ${old("many informations")} about the route.`,r:`I found ${revised("a lot of information")} about the route.`},
+    {ids:"M15-U03",o:`We bought three ${old("furnitures")} for the room.`,r:`We bought three ${revised("pieces of furniture")} for the room.`},
+    {ids:"M20-U04",o:`I need ${old("an advice")} about my interview.`,r:`I need ${revised("some advice")} about my interview.`},
+    {ids:"M25-U03",o:`This equipment is useful, but we need two more ${old("equipments")}.`,r:`This equipment is useful, but we need two more ${revised("pieces of equipment")}.`},
+    {ids:"M30-U03",o:`The guide shared several helpful ${old("informations")}.`,r:`The guide shared several helpful ${revised("pieces of information")}.`}
+  ],
+  rule:"An amount: some advice. A count: two pieces of advice.",
+  explain:"In their ordinary meanings here, <strong>advice, information, furniture, and equipment</strong> are uncountable. Do not add plural <strong>-s</strong> or use <strong>a/an</strong> directly before them. For a number, count “pieces” or “items” instead.",
+  keep:"<strong>No exact count needed?</strong> Use “some” or “a lot of” with the unchanged noun. The recorded phrase “This equipment is useful” is already correct.",
+  prompt:"You mean exactly two separate suggestions. Choose the phrase:",
+  sentence:"My colleague gave me ___.",
+  choices:["two useful advices","two useful pieces of advice","some useful advice"],
+  correct:1,
+  feedback:[
+    "Use “two useful pieces of advice.” “Advice” stays uncountable; “pieces” carries the plural and the number.",
+    "Yes: “two useful pieces of advice” preserves the exact count while leaving “advice” unchanged.",
+    "“Some useful advice” is grammatical, but it does not specify two. For this meaning, choose “two useful pieces of advice.”"
+  ],
+  cue:"When speaking, decide: do I mean an amount, or an exact number of items?",
+  boundaryTitle:"What can stay unchanged: “a coffee”",
+  boundary:`<p><span class="label">Source example · M36-U04</span></p><p>“I bought a coffee before the train.”</p><p>This is already acceptable: the context says you ordered one cup. “A coffee” can mean one serving. The proposed change to “coffee” is unnecessary; do not extend the rule for “advice” to every noun.</p><p><span class="label">Another unchanged source · M01-U02</span></p><p>“I asked a friend for advice, and the conversation helped me decide what to do next.”</p><p>“For advice” needs neither an article nor a counting phrase here.</p>`
+}
+];
+const saved = [null,null,null];
+let current = 0;
+const panel = document.getElementById("focus");
+
+function pair(record) {
+  return `<div class="pair">
+    <div class="pair-row"><span class="label">Original</span><p>${record.o}</p></div>
+    <div class="pair-row"><span class="label">Revision</span><p>${record.r}</p></div>
+  </div>`;
+}
+function render(index) {
+  current=index;
+  const d=data[index];
+  document.querySelectorAll("[data-focus]").forEach((b,i)=>b.setAttribute("aria-pressed",String(i===index)));
+  panel.innerHTML=`
+    <header class="unit-head">
+      <div class="kicker">Focus 0${index+1} · ${d.count}</div>
+      <h2 id="focus-title">${d.title}</h2>
+      <p>${d.purpose}</p>
+    </header>
+    <div class="columns">
+      <div class="teaching">
+        <div class="label">From the supplied record</div>
+        ${pair(d.records[0])}
+        <div class="rule">
+          <div class="label">Reusable rule</div>
+          <h3>${d.rule}</h3>
+          <p>${d.explain}</p>
+          <p>${d.keep}</p>
+        </div>
+      </div>
+      <aside class="practice" aria-labelledby="practice-title">
+        <div class="label">Optional application · New teaching example</div>
+        <h3 id="practice-title">Try it in conversation</h3>
+        <p>${d.prompt}</p>
+        <p class="prompt">${d.sentence}</p>
+        <div class="choices" role="group" aria-label="Choose a completion">
+          ${d.choices.map((c,i)=>`<button type="button" data-answer="${i}" aria-pressed="false">${c}</button>`).join("")}
+        </div>
+        <div class="feedback" role="status" aria-live="polite" aria-atomic="true"></div>
+        <p class="cue">${d.cue}</p>
+      </aside>
+    </div>
+    <details>
+      <summary>${d.boundaryTitle}</summary>
+      <div class="detail-body">${d.boundary}</div>
+    </details>
+    <details>
+      <summary>Source trail · All supporting records</summary>
+      <div class="detail-body">
+        <p class="small">Source IDs identify the supplied records. Identical pairs are grouped; each ID is a separate supporting record.</p>
+        ${d.records.map(r=>`<article class="record"><div class="label">${r.ids}</div>${pair(r)}</article>`).join("")}
+      </div>
+    </details>`;
+  panel.querySelectorAll("[data-answer]").forEach(b=>b.addEventListener("click",()=>answer(Number(b.dataset.answer))));
+  if(saved[index]!==null) showFeedback(saved[index]);
+}
+function showFeedback(choice) {
+  const d=data[current];
+  panel.querySelectorAll("[data-answer]").forEach((b,i)=>b.setAttribute("aria-pressed",String(i===choice)));
+  const feedback=panel.querySelector(".feedback");
+  feedback.classList.toggle("retry",choice!==d.correct);
+  feedback.innerHTML=`<strong>${choice===d.correct?"Good fit.":"Notice the distinction."}</strong> ${d.feedback[choice]}`;
+}
+function answer(choice) {
+  saved[current]=choice;
+  showFeedback(choice);
+}
+document.querySelectorAll("[data-focus]").forEach(b=>b.addEventListener("click",()=>render(Number(b.dataset.focus))));
+render(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+{
+  "starter_question": "What would you like to talk about today?",
+  "router_cases": [
+    {
+      "id": "taste-explicit",
+      "text": "Which ordinary cup would you personally choose, and what small detail makes you like it? I want to compare your taste with mine, not buy anything.",
+      "required": [
+        "model_08"
+      ],
+      "allowed": [
+        "model_04",
+        "model_08"
+      ]
+    },
+    {
+      "id": "taste-paraphrase",
+      "text": "Tell me about the kind of cup you like using. What makes it appealing to you? I like hearing how our preferences differ.",
+      "required": [
+        "model_08"
+      ],
+      "allowed": [
+        "model_04",
+        "model_08"
+      ],
+      "variant_of": "taste-explicit"
+    },
+    {
+      "id": "taste-implied",
+      "text": "I like a cracker with slightly soft edges but a crisp middle. My friend wants every bit crunchy. I wonder where your own line would be.",
+      "required": [
+        "model_08"
+      ],
+      "allowed": [
+        "model_04",
+        "model_08"
+      ]
+    },
+    {
+      "id": "taste-rough",
+      "text": "You like which cracker? I like soft edge but middle crispy. Where yours become too soft for you?",
+      "required": [
+        "model_08"
+      ],
+      "allowed": [
+        "model_04",
+        "model_08"
+      ],
+      "variant_of": "taste-implied"
+    },
+    {
+      "id": "taste-different",
+      "text": "My favorite seat is a plain park bench. Pick your own favorite place to sit; it can be different from mine. What would make your choice less enjoyable?",
+      "required": [
+        "model_08"
+      ],
+      "allowed": [
+        "model_04",
+        "model_08"
+      ]
+    },
+    {
+      "id": "rice-explain",
+      "text": "Rice is already on my left and I eat left-handed, so I am comfortable. Both bowls stay on the table. Explain why a right-handed diner might keep that arrangement.",
+      "required": [
+        "model_03"
+      ],
+      "allowed": [
+        "model_03"
+      ]
+    },
+    {
+      "id": "factual-comparison",
+      "text": "Explain the physical difference between heat conduction and convection using a cup of tea. I want the mechanism, not personal preferences.",
+      "required": [
+        "model_03"
+      ],
+      "allowed": [
+        "model_03"
+      ]
+    },
+    {
+      "id": "debate",
+      "text": "I think public museums should always be free because shared history should be accessible. Challenge that argument and help me revise it.",
+      "required": [
+        "model_01"
+      ],
+      "allowed": [
+        "model_01",
+        "model_02"
+      ]
+    },
+    {
+      "id": "explore",
+      "text": "I think my attachment to old objects is about continuity rather than nostalgia. Help me develop this interpretation and see what follows from it.",
+      "required": [
+        "model_02"
+      ],
+      "allowed": [
+        "model_02",
+        "model_03"
+      ]
+    },
+    {
+      "id": "imagine",
+      "text": "Describe the light on a chipped cup through a vivid, playful image. I want a striking way to see it.",
+      "required": [
+        "model_05"
+      ],
+      "allowed": [
+        "model_04",
+        "model_05"
+      ]
+    },
+    {
+      "id": "stories",
+      "text": "Tell me a small everyday episode of your own, with a scene and specific details I can ask about.",
+      "required": [
+        "model_07"
+      ],
+      "allowed": [
+        "model_04",
+        "model_07"
+      ]
+    },
+    {
+      "id": "chat",
+      "text": "A friend cancelled dinner and I feel disappointed, although I know they were exhausted. Stay with me in that feeling for a bit; I do not want advice or analysis.",
+      "required": [
+        "model_04"
+      ],
+      "allowed": [
+        "model_04"
+      ]
+    },
+    {
+      "id": "low-greeting",
+      "text": "Hi.",
+      "required": [],
+      "allowed": []
+    },
+    {
+      "id": "low-topic",
+      "text": "I had a sandwich.",
+      "required": [],
+      "allowed": []
+    }
+  ],
+  "chat_turns": [
+    "I like plain mugs. What ordinary cup would you choose, and what specific detail makes it appealing to you?",
+    "I prefer a thin rim, even if your preference is different. Keep your own choice and tell me what matters most about it.",
+    "What small change would make your chosen cup less enjoyable? Also, what kind of place did I say I enjoy visiting?"
+  ],
+  "search_input": "Search the official Python release pages and tell me the latest stable Python 3 release available today, with its exact version, release date and official source link.",
+  "memory_cases": []
+}

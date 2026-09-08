@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Stomylos
+Comment=English conversation practice with post-chat grammar analysis
+Exec=stomylos
+Icon=stomylos
+Terminal=false
+Categories=Education;Languages;
+StartupWMClass=stomylos
+X-Stomylos-Managed=true

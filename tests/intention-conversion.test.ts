@@ -1,0 +1,33 @@
+import { convertToCurrent, currentTestSchema } from './conversion-chain';
+import { afterEach, beforeEach, expect, it } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import Database from 'better-sqlite3';
+import { Store } from '../src/main/database';
+import { StarterStore } from '../src/main/starter-store';
+import { emptyMemory, memoryHash, memoryJson } from '../src/main/memory-updater';
+// @ts-expect-error Standalone external converter.
+import { convertIntentionStarters } from '../scripts/convert-intention-starters.mjs';
+let directory: string, store: Store | undefined;
+const native = resolve('native/advisory-lock.node');
+beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-intention-conversion-')); });
+afterEach(() => { store?.close(); store = undefined; rmSync(directory, { recursive: true, force: true }); });
+it('preserves the exact v9-to-v10 conversion before opening the current schema without backfill', () => {
+  const path = join(directory, 'old.sqlite3'), old = new Database(path);
+  old.exec(readFileSync('tests/fixtures/schema-v9-before-intentions.sql', 'utf8')); new StarterStore(old).initialize();
+  const memory = memoryJson(emptyMemory('shared')); old.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run(memory, memoryHash(memory)); old.pragma('user_version=9'); old.close();
+  const bytes = readFileSync(path), report = convertIntentionStarters(path, { prepareOnly: true });
+  expect(readFileSync(path)).toEqual(bytes); expect(report).toMatchObject({ status: 'prepared', source_version: 9, target_version: 10 });
+  expect(() => convertIntentionStarters(path, { expectedSourceHash: '0'.repeat(64) })).toThrow('source_changed_since_acceptance');
+  expect(() => convertIntentionStarters(path, { replace() { throw new Error('injected'); } })).toThrow('injected'); expect(readFileSync(path)).toEqual(bytes);
+  const result = convertIntentionStarters(path); expect(result.source_sha256).toBe(report.source_sha256);
+  const converted = new Database(path, { readonly: true });
+  expect(converted.pragma('user_version', { simple: true })).toBe(10);
+  expect(converted.prepare("SELECT name FROM sqlite_master WHERE name='session_bookmarks'").get()).toBeUndefined();
+  converted.close(); convertToCurrent(path);
+  writeFileSync(join(directory, 'stomylos.sqlite3'), readFileSync(path));
+  store = new Store(directory, native); const raw = (store as unknown as { db: Database.Database }).db;
+  expect(raw.pragma('user_version', { simple: true })).toBe(currentTestSchema); expect(raw.prepare('SELECT COUNT(*) n FROM intention_question_jobs').get()).toEqual({ n: 0 });
+  expect(store.integrity().foreignKeys).toEqual([]);
+});

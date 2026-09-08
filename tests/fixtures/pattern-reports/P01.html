@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Three small shifts for your next conversation</title>
+<style>
+:root{--paper:#f6f4ee;--white:#fffefa;--ink:#20352f;--muted:#586860;--line:#d6ddd3;--green:#23654f;--pale:#e8f0e7;--gold:#f4e8cc}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.6}
+button{font:inherit;cursor:pointer}
+button:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid #b67525;outline-offset:4px}
+button{touch-action:manipulation}
+.wrap{max-width:1130px;margin:auto;padding:28px 36px 44px}
+.topline{display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:1px solid var(--line);padding-bottom:18px}
+.brand{font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+.quiet{border:1px solid var(--line);border-radius:30px;padding:7px 16px;background:transparent;color:var(--muted);font-size:13px}
+.quiet:hover{background:var(--pale)}
+header{max-width:810px;padding:36px 0 27px}
+.eyebrow{color:var(--green);font-size:12px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;margin:0 0 12px}
+h1{font-family:Georgia,serif;font-weight:400;letter-spacing:-.035em;font-size:clamp(36px,5vw,56px);line-height:1.1;margin:0 0 18px}
+header p{font-size:17px;color:var(--muted);max-width:700px;margin:0}
+.layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:28px;align-items:start}
+.nav-label{font-size:12px;color:var(--muted);margin:0 0 10px}
+.tabs{display:grid;gap:10px}
+.tab{position:relative;width:100%;text-align:left;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--ink);padding:17px 18px}
+.tab:hover{background:#edf0e7}
+.tab[aria-selected=true]{background:var(--ink);color:white;border-color:var(--ink)}
+.tab .index{display:block;font-size:11px;letter-spacing:.12em;opacity:.75;margin-bottom:4px}
+.tab strong{display:block;font-size:17px;font-weight:650}
+.tab small{display:block;font-size:12px;margin-top:7px;opacity:.8}
+.side-note{font-size:12px;line-height:1.6;color:var(--muted);margin:16px 4px}
+.panel{background:var(--white);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.panel-head{padding:28px 30px 22px;border-bottom:1px solid var(--line)}
+h2{font-family:Georgia,serif;font-weight:400;font-size:31px;line-height:1.2;letter-spacing:-.02em;margin:5px 0 12px}
+.intro{margin:0;color:var(--muted);font-size:15px}
+.rule{margin:20px 0 0;background:var(--pale);border-radius:9px;padding:14px 17px;font-size:16px}
+.rule strong{color:var(--green)}
+.section{padding:24px 30px;border-bottom:1px solid var(--line)}
+.section:last-child{border-bottom:0}
+h3{font-size:14px;margin:0 0 14px;font-weight:750}
+.example{display:grid;gap:8px}
+.example-line{display:grid;grid-template-columns:85px 1fr;gap:12px;align-items:baseline}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.quote{font-size:17px;margin:0}
+.fix{color:var(--green)}
+mark{background:var(--gold);color:inherit;padding:0 3px;border-radius:3px}
+.note{font-size:13px;color:var(--muted);margin:13px 0 0}
+.source-link{font-size:12px;color:var(--green);text-underline-offset:3px}
+.mini-rule{margin-top:15px;display:flex;gap:7px;flex-wrap:wrap}
+.chip{background:var(--paper);border:1px solid #e4e5de;border-radius:5px;padding:4px 9px;font-size:13px}
+.practice{background:#fcfbf7}
+.practice-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.tag{font-size:11px;color:var(--muted)}
+.prompt{margin:0 0 15px;font-size:17px}
+.options{display:grid;gap:8px}
+.option{border:1px solid #c8d2c8;background:var(--white);color:var(--ink);border-radius:8px;padding:11px 14px;text-align:left;font-size:15px}
+.option:hover{border-color:var(--green);background:var(--pale)}
+.option.selected{border:2px solid var(--green);padding:10px 13px;background:var(--pale)}
+.feedback{font-size:14px;margin-top:12px;padding:12px 15px;border-left:3px solid var(--green);background:var(--pale)}
+.feedback:empty{display:none}
+.speak{margin-top:22px;padding-top:18px;border-top:1px dashed var(--line)}
+.speak p{font-size:14px;margin:0 0 12px}
+details{font-size:14px}
+summary{cursor:pointer;color:var(--green);font-weight:600}
+.model{padding:12px 14px;background:var(--pale);border-radius:8px;margin-top:10px}
+.evidence{padding:18px 30px}
+.evidence summary{font-size:13px}
+.evidence-list{margin-top:18px;display:grid;gap:18px}
+.record{border-top:1px solid var(--line);padding-top:12px}
+.record-id{font-size:11px;color:var(--muted);letter-spacing:.04em;margin-bottom:6px}
+.record p{font-size:13px;margin:4px 0;overflow-wrap:anywhere}
+.record .why{color:var(--muted)}
+footer{padding-top:25px;font-size:12px;color:var(--muted);max-width:880px}
+footer summary{font-size:12px;font-weight:500;color:var(--muted)}
+footer p{margin:10px 0}
+[hidden]{display:none!important}
+.paused{max-width:560px;margin:15vh auto;padding:35px}
+.paused h1{font-size:40px}
+.primary{background:var(--ink);border:0;border-radius:8px;color:white;padding:12px 20px}
+@media(max-width:780px){
+.wrap{padding:20px 20px 35px}.layout{grid-template-columns:1fr;gap:18px}
+.tabs{grid-template-columns:repeat(3,1fr);gap:7px}.tab{padding:12px 10px}
+.tab strong{font-size:14px}.tab small{font-size:11px}.tab .index{font-size:10px}
+.side-note{margin:10px 0 0}.panel-head,.section{padding:22px}
+.evidence{padding:18px 22px}header{padding-top:28px}
+}
+@media(max-width:440px){
+.wrap{padding:16px 14px}.brand{font-size:10px}.quiet{font-size:12px;padding:6px 12px}
+.tab strong{font-size:13px}.tab small{line-height:1.4}.example-line{grid-template-columns:1fr;gap:0}
+.quote{font-size:16px}.panel-head,.section{padding:20px}.practice-top{align-items:start}
+h2{font-size:28px}
+}
+@media(prefers-reduced-motion:no-preference){button{transition:background .15s,border-color .15s}}
+</style>
+</head>
+<body>
+<div class="wrap" id="report">
+<div class="topline">
+<div class="brand">Conversation notes / English</div>
+<button class="quiet" id="closeReport">Set aside</button>
+</div>
+<header>
+<p class="eyebrow">July 2–13, 2026 · 12 sessions</p>
+<h1>Three small shifts.<br>More precise conversation.</h1>
+<p>These patterns recur across your recorded sessions. Start with finished past events, or choose whichever topic fits your next conversation. Each has one short, optional practice.</p>
+</header>
+<div class="layout">
+<aside aria-label="Choose a learning focus">
+<p class="nav-label" id="focus-label">YOUR THREE FOCUSES</p>
+<div class="tabs" role="tablist" aria-labelledby="focus-label">
+<button class="tab" id="tab-0" role="tab" aria-selected="true" aria-controls="focus-panel" tabindex="0" data-index="0"><span class="index">01 / TELLING A STORY</span><strong>Finished past events</strong><small>6 records across 6 sessions</small></button>
+<button class="tab" id="tab-1" role="tab" aria-selected="false" aria-controls="focus-panel" tabindex="-1" data-index="1"><span class="index">02 / NAMING QUANTITIES</span><strong>Count the pieces</strong><small>6 records across 6 sessions</small></button>
+<button class="tab" id="tab-2" role="tab" aria-selected="false" aria-controls="focus-panel" tabindex="-1" data-index="2"><span class="index">03 / ASKING INDIRECTLY</span><strong>Subject before verb</strong><small>4 records across 4 sessions</small></button>
+</div>
+<p class="side-note">These are counts of supporting records, not error rates. The patterns appear in separate sessions—not just repeatedly in one conversation.</p>
+</aside>
+<main class="panel" id="focus-panel" role="tabpanel" aria-labelledby="tab-0" tabindex="0"></main>
+</div>
+<footer>
+<details>
+<summary>About these notes</summary>
+<p>This report uses the supplied original sentences, suggested corrections and context notes. It focuses on three recurring, actionable patterns. The available records are not full transcripts, so they do not show how often you used each structure correctly. Repeated unchanged records are not treated as a denominator.</p>
+<p>“Recorded example” means wording from the supplied evidence. Practice questions and model responses are newly written learning examples. Open the source records under each focus to trace the examples and corrections.</p>
+</details>
+</footer>
+</div>
+<section id="paused" class="paused" hidden aria-labelledby="pause-title">
+<p class="eyebrow">Notes set aside</p>
+<h1 id="pause-title" tabindex="-1">Leave it here for now.</h1>
+<p>You can close this view, or return to the notes whenever you like.</p>
+<button class="primary" id="reopen">Return to the report</button>
+</section>
+<script>
+const data = [
+{
+title:"Let the verb carry the past.",
+kicker:"01 / Finished past events",
+intro:"When a finished event is anchored by “yesterday,” “last Friday” or “ago,” use the past form of the verb. The time phrase gives the clue; the verb still needs to change.",
+rule:"<strong>Finished past time → past verb</strong><br>Yesterday I <strong>went</strong>… · Last Friday I <strong>bought</strong>…",
+original:'Yesterday I <mark>go</mark> to the market.',
+corrected:'Yesterday I <strong>went</strong> to the market.',
+note:"The market trip is finished. “Yesterday” does not replace the past-tense ending or irregular past form.",
+chips:["go → went","buy → bought","see → saw","meet → met","take → took","send → sent"],
+question:"You are describing a completed visit. Which sentence fits?",
+options:["Two days ago I meet a friend for lunch.","Two days ago I met a friend for lunch."],
+answer:1,
+feedback:[
+"“Two days ago” places the meeting in the finished past. Change meet to met.",
+"Yes. Met carries the past tense, matching “two days ago.”"
+],
+speak:"Tell a friend one thing you did yesterday. Choose a past verb before you begin.",
+model:"“Yesterday I went to a café and met a friend.”",
+records:[
+["S01-U02","July 2","Yesterday I go to the market.","Yesterday I went to the market.","The trip happened yesterday and is finished; go needs the past form went."],
+["S03-U02","July 4","Last Friday I buy a used bicycle.","Last Friday I bought a used bicycle.","The purchase is a completed event on a named past day."],
+["S05-U02","July 6","I see that film last night.","I saw that film last night.","A completed viewing last night requires the past form saw."],
+["S07-U02","July 8","Two days ago I meet my old neighbor.","Two days ago I met my old neighbor.","The meeting was a completed past event."],
+["S09-U02","July 10","Last month I take a short trip.","Last month I took a short trip.","The trip occurred in the finished period last month."],
+["S11-U02","July 12","I send the letter yesterday.","I sent the letter yesterday.","The letter was sent at a definite completed past time."]
+]
+},
+{
+title:"Count a unit, not the noun.",
+kicker:"02 / Uncountable nouns",
+intro:"Advice, information, furniture and equipment are uncountable in the everyday meanings used here. Keep these nouns without a plural -s. To give an exact number, add a countable unit.",
+rule:"<strong>General amount:</strong> some advice · a lot of information<br><strong>Exact count:</strong> a piece of advice · two pieces of equipment",
+original:'She gave me <mark>two useful advices</mark>.',
+corrected:'She gave me <strong>two useful pieces of advice</strong>.',
+note:"The number belongs to pieces, so pieces becomes plural; advice stays unchanged. For one unit, use “a piece of advice,” not “an advice.”",
+chips:["some furniture","a lot of information","three pieces of furniture","two items of equipment"],
+question:"You received exactly two suggestions. Which sentence works?",
+options:["I received two useful pieces of advice.","I received two useful advices."],
+answer:0,
+feedback:[
+"Yes. Pieces is countable and plural after two. Advice stays uncountable.",
+"Advice does not take a plural -s here. Count two pieces of advice instead."
+],
+speak:"Ask for help with an interview. Use advice without specifying a number.",
+model:"“Could you give me some advice about my interview?”",
+records:[
+["S02-U02","July 3","She gave me two useful advices.","She gave me two useful pieces of advice.","Advice is a mass noun in this ordinary sense; count pieces of advice."],
+["S04-U02","July 5","I found many informations about the route.","I found a lot of information about the route.","Information is uncountable here, so informations and many information are not suitable."],
+["S06-U02","July 7","We bought three furnitures for the room.","We bought three pieces of furniture for the room.","Furniture is uncountable in this ordinary household sense."],
+["S08-U02","July 9","I need an advice about my interview.","I need some advice about my interview.","Use some advice or a piece of advice, not an advice."],
+["S10-U02","July 11","This equipment is useful, but we need two more equipments.","This equipment is useful, but we need two more pieces of equipment.","Equipment is a mass noun; the intended count is of individual items."],
+["S12-U02","July 13","The guide shared several helpful informations.","The guide shared several helpful pieces of information.","Information is not pluralized in ordinary usage."]
+]
+},
+{
+title:"Inside the question, use statement order.",
+kicker:"03 / Embedded questions",
+intro:"After “Could you tell me…,” “Do you know…” or “I wonder…,” the inner question uses subject–verb order. The outer phrase can ask the question; the inner clause does not need question inversion.",
+rule:"Could you tell me <strong>where + the station + is</strong>?<br><strong>Question word → subject → verb</strong>",
+original:'Could you tell me <mark>where is the station</mark>?',
+corrected:'Could you tell me <strong>where the station is</strong>?',
+note:"With be, move the subject before the verb. With question-form do, does or did, remove that helper and put the tense or agreement on the main verb: “why she left,” “when the shop closes.”",
+chips:["where the station is","why she left","when the shop closes","how this machine works"],
+question:"Ask about a café’s opening time. Which sentence works?",
+options:["Do you know when does the café open?","Do you know when the café opens?"],
+answer:1,
+feedback:[
+"The outer “Do you know…?” already forms the question. Inside, use “when the café opens”: subject before verb, no question-form does.",
+"Yes. The café comes before opens. Removing does means opens carries the present-tense -s."
+],
+speak:"Ask someone how a ticket machine works. Begin with “Can you explain…?”",
+model:"“Can you explain how this ticket machine works?”",
+records:[
+["S03-U03","July 4","Could you tell me where is the station?","Could you tell me where the station is?","An embedded question uses subject before verb, unlike the direct question Where is the station?"],
+["S06-U03","July 7","I wonder why did she leave early.","I wonder why she left early.","The embedded clause after wonder uses statement word order, without question do-support."],
+["S09-U03","July 10","Do you know when does the shop close?","Do you know when the shop closes?","The embedded question after know uses subject-verb order; does is removed and closes carries agreement."],
+["S12-U03","July 13","Can you explain how does this machine work?","Can you explain how this machine works?","The embedded how-clause needs statement order rather than direct-question inversion."]
+]
+}
+];
+let current=0;
+const state=data.map(()=>({choice:null,model:false,evidence:false}));
+const panel=document.getElementById('focus-panel');
+const tabs=Array.from(document.querySelectorAll('.tab'));
+function escapeText(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function render(i){
+current=i;
+const d=data[i],s=state[i];
+tabs.forEach((t,n)=>{t.setAttribute('aria-selected',String(n===i));t.tabIndex=n===i?0:-1;});
+panel.setAttribute('aria-labelledby','tab-'+i);
+panel.innerHTML=`
+<div class="panel-head">
+<p class="eyebrow">${d.kicker}</p>
+<h2>${d.title}</h2><p class="intro">${d.intro}</p>
+<div class="rule">${d.rule}</div>
+</div>
+<section class="section" aria-label="Recorded example">
+<h3>Notice the change</h3>
+<div class="example">
+<div class="example-line"><span class="label">Recorded</span><p class="quote">${d.original}</p></div>
+<div class="example-line"><span class="label">Correction</span><p class="quote fix">${d.corrected}</p></div>
+</div>
+<p class="note">${d.note}</p>
+<div class="mini-rule">${d.chips.map(x=>`<span class="chip">${x}</span>`).join('')}</div>
+<p style="margin:12px 0 0"><a class="source-link" href="#evidence" id="traceLink">Source: ${d.records[0][0]} · View record</a></p>
+</section>
+<section class="section practice" aria-label="Optional practice">
+<div class="practice-top"><h3>Try it, if you like</h3><span class="tag">New learning example</span></div>
+<p class="prompt">${d.question}</p>
+<div class="options" role="group" aria-label="Choose a sentence">
+${d.options.map((x,n)=>`<button class="option${s.choice===n?' selected':''}" data-choice="${n}" aria-pressed="${s.choice===n}">${x}</button>`).join('')}
+</div>
+<div class="feedback" id="feedback" role="status" aria-live="polite">${s.choice===null?'':d.feedback[s.choice]}</div>
+<div class="speak">
+<h3>Take it into conversation</h3><p>${d.speak}</p>
+<details id="model"${s.model?' open':''}><summary>See a possible response</summary><div class="model"><span class="label">New model response</span><br>${d.model}</div></details>
+</div>
+</section>
+<details class="evidence" id="evidence"${s.evidence?' open':''}>
+<summary>Source records · ${d.records.length} records in ${d.records.length} sessions</summary>
+<p class="note">Original wording, supplied correction and context. Dates are in 2026.</p>
+<div class="evidence-list">${d.records.map(r=>`
+<article class="record">
+<div class="record-id">${r[0]} · ${r[1]}, 2026</div>
+<p><strong>Recorded:</strong> ${escapeText(r[2])}</p>
+<p class="fix"><strong>Correction:</strong> ${escapeText(r[3])}</p>
+<p class="why"><strong>Context:</strong> ${escapeText(r[4])}</p>
+</article>`).join('')}</div>
+</details>`;
+panel.querySelectorAll('[data-choice]').forEach(b=>b.addEventListener('click',()=>{
+const choice=Number(b.dataset.choice);state[i].choice=choice;
+panel.querySelectorAll('[data-choice]').forEach(o=>{const selected=o===b;o.classList.toggle('selected',selected);o.setAttribute('aria-pressed',String(selected));});
+document.getElementById('feedback').textContent=d.feedback[choice];
+}));
+document.getElementById('model').addEventListener('toggle',e=>{state[i].model=e.target.open;});
+document.getElementById('evidence').addEventListener('toggle',e=>{state[i].evidence=e.target.open;});
+document.getElementById('traceLink').addEventListener('click',e=>{
+e.preventDefault();
+const evidence=document.getElementById('evidence');
+evidence.open=true;
+evidence.querySelector('summary').focus();
+evidence.scrollIntoView({block:'nearest'});
+});
+}
+tabs.forEach((tab,i)=>{
+tab.addEventListener('click',()=>render(i));
+tab.addEventListener('keydown',e=>{
+let next=i;
+if(e.key==='ArrowRight'||e.key==='ArrowDown')next=(i+1)%tabs.length;
+else if(e.key==='ArrowLeft'||e.key==='ArrowUp')next=(i+tabs.length-1)%tabs.length;
+else if(e.key==='Home')next=0;
+else if(e.key==='End')next=tabs.length-1;
+else return;
+e.preventDefault();render(next);tabs[next].focus();
+});
+});
+document.getElementById('closeReport').addEventListener('click',()=>{
+document.getElementById('report').hidden=true;
+document.getElementById('paused').hidden=false;
+document.getElementById('pause-title').focus();
+});
+document.getElementById('reopen').addEventListener('click',()=>{
+document.getElementById('paused').hidden=true;
+document.getElementById('report').hidden=false;
+tabs[current].focus();
+});
+render(0);
+</script>
+</body>
+</html>

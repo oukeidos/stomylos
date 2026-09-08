@@ -1,0 +1,66 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+import type { AppEvent, AppSnapshot, DesktopApi } from '../src/shared/types';
+vi.mock('react', () => ({ useSyncExternalStore: (_subscribe: unknown, get: () => unknown) => get() }));
+let receive: (event: AppEvent) => void; let command: ReturnType<typeof vi.fn>;
+const snapshot = (revision: number) => ({ revision, activity: {}, sessions: [] } as unknown as AppSnapshot);
+beforeEach(() => {
+  vi.resetModules(); command = vi.fn().mockResolvedValue(snapshot(0));
+  const api = { command, subscribe(listener: (event: AppEvent) => void) { receive = listener; return () => {}; } } as unknown as DesktopApi;
+  vi.stubGlobal('window', { stomylos: api }); vi.stubGlobal('requestAnimationFrame', vi.fn().mockReturnValue(1));
+});
+it('does not let late snapshot or stream events replace newer visible text', async () => {
+  const client = await import('../src/renderer/client'); await Promise.resolve();
+  receive({ type: 'snapshot', snapshot: snapshot(10) }); receive({ type: 'snapshot', snapshot: snapshot(2) });
+  expect(client.useApp()?.revision).toBe(10);
+  const stream = (revision: number, text: string) => receive({ type: 'stream', revision, sessionId: 's', requestId: 'r', messageId: 'm', text });
+  stream(12, 'Newer text'); stream(11, 'Older text');
+  expect(client.useStream('m', '', true)).toBe('Newer text');
+  receive({ type: 'snapshot', snapshot: { ...snapshot(11), activity: { streamingMessageId: 'm', streamingText: 'Older snapshot text' } } as AppSnapshot });
+  expect(client.useStream('m', '', true)).toBe('Newer text');
+});
+it('refetches an in-flight view invalidated by a newer commit instead of caching stale rows', async () => {
+  const client = await import('../src/renderer/client'); await Promise.resolve();
+  let complete!: (value: unknown) => void;
+  command.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  const pending = client.loadView('s'); receive({ type: 'session-changed', sessionId: 's', revision: 4 });
+  const fresh = { session: { id: 's', draft: 'Fresh text' }, messages: [], requests: [], units: [] };
+  command.mockResolvedValueOnce(fresh); complete({ session: { id: 's', draft: 'Stale text' } });
+  expect(await pending).toEqual(fresh); expect(await client.loadView('s')).toEqual(fresh);
+});
+it('keeps a newer edit unsaved when an older draft acknowledgement arrives', async () => {
+  const drafts = await import('../src/renderer/drafts'); drafts.initializeDraft('s', ''); drafts.editDraft('s', 'First');
+  let acknowledge!: (value: unknown) => void;
+  command.mockImplementationOnce(() => new Promise(resolve => { acknowledge = resolve; }));
+  const pending = drafts.flushDraft('s'); const first = drafts.currentDraft('s').revision;
+  drafts.editDraft('s', 'Newer'); acknowledge({ revision: first }); await pending;
+  expect(drafts.currentDraft('s').text).toBe('Newer');
+  expect(drafts.currentDraft('s').saved).toBe(first); expect(drafts.currentDraft('s').revision).toBeGreaterThan(first);
+  drafts.submittedDraft('s', first); expect(drafts.currentDraft('s').text).toBe('Newer');
+});
+
+it('refreshes every cached model view after a shared memory update', async () => {
+  const client = await import('../src/renderer/client'); await Promise.resolve();
+  const a = { session: { id: 'a', character: 'model_04' }, memory: { current: { revision: 0 } } };
+  const b = { session: { id: 'b', character: 'model_03' }, memory: { current: { revision: 0 } } };
+  command.mockResolvedValueOnce(a).mockResolvedValueOnce(b);
+  await client.loadView('a'); await client.loadView('b');
+  const changed = vi.fn(); client.onViewChanged(changed);
+  receive({ type: 'memory-changed', characterId: 'model_04', revision: 5 });
+  const fresh = { ...a, memory: { current: { revision: 1 } } }, other = { ...b, memory: fresh.memory }; command.mockResolvedValueOnce(fresh).mockResolvedValueOnce(other);
+  expect(await client.loadView('a')).toEqual(fresh); expect(await client.loadView('b')).toEqual(other);
+  expect(changed.mock.calls).toEqual([['a'], ['b']]);
+});
+
+it('discards a late view and draft acknowledgement after deleting their chat', async () => {
+  const client = await import('../src/renderer/client'); const drafts = await import('../src/renderer/drafts'); await Promise.resolve();
+  let finishView!: (value: unknown) => void, finishDraft!: (value: unknown) => void;
+  command.mockImplementationOnce(() => new Promise(resolve => { finishView = resolve; }));
+  const view = client.loadView('s'); const rejected = expect(view).rejects.toThrow('session_not_found');
+  drafts.initializeDraft('s', ''); drafts.editDraft('s', 'Private draft');
+  command.mockImplementationOnce(() => new Promise(resolve => { finishDraft = resolve; }));
+  const save = drafts.flushDraft('s');
+  receive({ type: 'session-deleted', sessionId: 's', revision: 7 }); drafts.forgetDraft('s');
+  finishView({ session: { id: 's' }, messages: [] }); finishDraft({ revision: 1 });
+  await rejected; await save; expect(drafts.currentDraft('s')).toBeUndefined();
+  await expect(client.loadView('s')).rejects.toThrow('session_not_found');
+});

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your English field guide</title>
+<style>
+:root {
+  --paper: #f5f3ed;
+  --surface: #fffefa;
+  --ink: #203c35;
+  --muted: #60716b;
+  --accent: #245c4d;
+  --soft-accent: #eaf0e9;
+  --border: #d9dfd5;
+  --correction: #874526;
+  --correction-bg: #f5e8dc;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 16px/1.6 system-ui, sans-serif;
+}
+main { max-width: 1140px; margin: auto; padding: 48px 32px; }
+h1, h2, h3, p { margin: 0; }
+h1, h2 { font-family: Georgia, 'Times New Roman', serif; font-weight: normal; }
+h1 { font-size: clamp(36px, 5vw, 60px); line-height: 1.12; margin: 8px 0 24px; }
+h2 { font-size: 30px; line-height: 1.25; margin: 8px 0 24px; }
+h3 { font-size: 18px; line-height: 1.4; }
+p { max-width: 65ch; }
+.kicker, .label { font-size: 13px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.intro { max-width: 65ch; }
+.focus-nav { display: flex; gap: 12px; margin: 24px 0; }
+button {
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 48px;
+  padding: 12px 16px;
+  text-align: left;
+}
+button:hover { border-color: var(--accent); }
+button:focus-visible, summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
+.focus-nav button { flex: 1; font-weight: 650; }
+.focus-nav button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.nav-sub { display: block; font-size: 13px; font-weight: normal; margin-top: 8px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px #203c3505; }
+.unit-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 32px; align-items: start; }
+.source-pair { border-left: 2px solid var(--border); padding-left: 16px; }
+.source-pair p { margin-top: 8px; }
+.source-pair .revision { margin-top: 16px; }
+.sentence { font-size: 18px; }
+.original-change { background: var(--correction-bg); color: var(--correction); padding: 0 3px; border-radius: 3px; }
+.revised-change { color: var(--accent); background: var(--soft-accent); padding: 0 3px; border-radius: 3px; font-weight: 650; }
+.rule { margin: 24px 0 12px; padding: 16px; background: var(--soft-accent); border-radius: 8px; }
+.rule strong { display: block; font-size: 23px; line-height: 1.4; margin-top: 8px; color: var(--accent); }
+.explanation p + p { margin-top: 12px; }
+.practice { border: 1px solid var(--border); border-radius: 8px; padding: 24px; }
+.practice h3 { margin: 8px 0 12px; }
+.practice .prompt { margin: 16px 0; }
+.answers { display: grid; gap: 8px; }
+.answers button { width: 100%; }
+.answers button[aria-pressed="true"] { border: 2px solid var(--accent); background: var(--soft-accent); padding: 11px 15px; }
+.feedback { margin-top: 16px; padding: 12px; border-radius: 8px; background: var(--soft-accent); }
+.feedback.corrective { color: var(--correction); background: var(--correction-bg); }
+.small { font-size: 13px; color: var(--muted); }
+details { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 12px; }
+summary { cursor: pointer; color: var(--accent); padding: 8px 0; min-height: 44px; font-weight: 600; }
+.detail-content { margin-top: 12px; }
+.detail-content p + p { margin-top: 12px; }
+.sources { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.source-id { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.note { margin-top: 24px; }
+footer { margin-top: 24px; color: var(--muted); font-size: 13px; }
+[hidden] { display: none !important; }
+@media (max-width: 720px) {
+  main { padding: 32px 20px; }
+  .panel { padding: 24px; }
+  .unit-grid, .sources { grid-template-columns: 1fr; gap: 24px; }
+  .focus-nav { flex-direction: column; }
+  h2 { font-size: 26px; }
+  .practice { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="kicker">Conversation field guide · 2–11 July 2026</p>
+  <h1>Two useful verb patterns</h1>
+  <p class="intro">Across these 10 sessions, two correction patterns recur in at least three distinct sessions. Both concern the form that follows an expression. Some other suggested changes are optional—or would change a correct original.</p>
+  <p class="note small">Choose a focus. Each has one optional application; you can switch or stop at any time.</p>
+</header>
+
+<nav class="focus-nav" aria-label="Choose a learning focus">
+  <button type="button" id="nav-suggest" aria-pressed="true" aria-controls="focus-suggest" data-focus="suggest">
+    1 · Suggesting an action
+    <span class="nav-sub">“suggest that…” · evidence in 4 sessions</span>
+  </button>
+  <button type="button" id="nav-interested" aria-pressed="false" aria-controls="focus-interested" data-focus="interested">
+    2 · Naming an interest
+    <span class="nav-sub">“interested in doing…” · evidence in 3 sessions</span>
+  </button>
+</nav>
+
+<section class="panel" id="focus-suggest" aria-labelledby="heading-suggest">
+  <p class="kicker">Focus 1 · Verb structure</p>
+  <h2 id="heading-suggest">Suggest an action, not “someone to…”</h2>
+  <div class="unit-grid">
+    <div>
+      <div class="source-pair">
+        <p class="label">Original · from your records</p>
+        <p class="sentence">She suggested <span class="original-change">me to take</span> a break.</p>
+        <p class="label revision">Revision</p>
+        <p class="sentence">She suggested <span class="revised-change">that I take</span> a break.</p>
+      </div>
+      <div class="rule">
+        <span class="label">Reusable rule</span>
+        <strong>suggest + that + person + verb</strong>
+      </div>
+      <div class="explanation">
+        <p>For a recommendation, <b>suggest</b> does not normally take <b>someone + to + verb</b>. Use a <b>that</b>-clause to say who should act. Here, <b>that I take</b> makes it clear that I am the person taking the break.</p>
+        <p><b>“She suggested taking a break”</b> also works when the person doing it is clear from context. Keep <b>suggested</b>: the problem is the structure after it, not its past tense.</p>
+      </div>
+    </div>
+    <aside class="practice" aria-labelledby="practice-suggest">
+      <p class="label">Optional application · new teaching example</p>
+      <h3 id="practice-suggest">Pass on a recommendation</h3>
+      <p>Your colleague thinks you should contact the hotel. Choose the sentence that fits.</p>
+      <p class="prompt"><b>“My colleague suggested…”</b></p>
+      <div class="answers" role="group" aria-label="Complete the recommendation">
+        <button type="button" aria-pressed="false" data-question="suggest" data-answer="a">A · me to call the hotel.</button>
+        <button type="button" aria-pressed="false" data-question="suggest" data-answer="b">B · that I call the hotel.</button>
+      </div>
+      <div id="feedback-suggest" class="feedback" role="status" hidden></div>
+    </aside>
+  </div>
+  <details>
+    <summary>Source trail &amp; a useful alternative</summary>
+    <div class="detail-content sources">
+      <div>
+        <h3>Where this appears</h3>
+        <p>The same original/revision pair shown above is recorded in four distinct sessions. This is recurrence of one sentence, not four different sentence examples.</p>
+        <p class="source-id">Sources: N01-U03 · N04-U03 · N07-U03 · N10-U03</p>
+      </div>
+      <div>
+        <h3>Another valid form</h3>
+        <p><b>“She suggested that I should take a break”</b> is also possible. The key distinction remains: use a clause after <b>suggest</b>, not <b>me to take</b>.</p>
+        <p class="small">New teaching alternative based on the source sentence.</p>
+      </div>
+    </div>
+  </details>
+</section>
+
+<section class="panel" id="focus-interested" aria-labelledby="heading-interested" hidden>
+  <p class="kicker">Focus 2 · After a preposition</p>
+  <h2 id="heading-interested">After “interested in,” use an -ing form</h2>
+  <div class="unit-grid">
+    <div>
+      <div class="source-pair">
+        <p class="label">Original · from your records</p>
+        <p class="sentence">I am interested in <span class="original-change">learn</span> more about plants.</p>
+        <p class="label revision">Revision</p>
+        <p class="sentence">I am interested in <span class="revised-change">learning</span> more about plants.</p>
+      </div>
+      <div class="rule">
+        <span class="label">Reusable rule</span>
+        <strong>interested in + verb-ing</strong>
+      </div>
+      <div class="explanation">
+        <p>When a verb follows the preposition <b>in</b>, use its <b>-ing</b> form. Here, <b>learning</b> names the activity you are interested in; it does not mean the activity is happening right now.</p>
+        <p>Keep <b>“I am interested in”</b> and the rest of the sentence. A noun can follow <b>in</b> too: <b>“I am interested in plants.”</b> <span class="small">(New teaching example.)</span></p>
+      </div>
+    </div>
+    <aside class="practice" aria-labelledby="practice-interested">
+      <p class="label">Optional application · new teaching example</p>
+      <h3 id="practice-interested">Talk about a possible hobby</h3>
+      <p>You want to try photography. Choose the form that fits after <b>in</b>.</p>
+      <p class="prompt"><b>“I’m interested in…”</b></p>
+      <div class="answers" role="group" aria-label="Complete the interest statement">
+        <button type="button" aria-pressed="false" data-question="interested" data-answer="a">A · taking photos of birds.</button>
+        <button type="button" aria-pressed="false" data-question="interested" data-answer="b">B · take photos of birds.</button>
+      </div>
+      <div id="feedback-interested" class="feedback" role="status" hidden></div>
+    </aside>
+  </div>
+  <details>
+    <summary>Source trail &amp; a correct form to keep</summary>
+    <div class="detail-content sources">
+      <div>
+        <h3>Where this appears</h3>
+        <p>The same original/revision pair shown above is recorded in three distinct sessions. The evidence supports this specific expression; it does not establish a problem with every preposition.</p>
+        <p class="source-id">Sources: N02-U03 · N05-U03 · N08-U03</p>
+      </div>
+      <div>
+        <h3>Keep “looking forward to seeing”</h3>
+        <p>Your recorded sentence <b>“I am looking forward to seeing you”</b> is correct. In <b>look forward to</b>, <b>to</b> is a preposition, so <b>seeing</b> is the right form. The proposed change to <b>see</b> should not be used.</p>
+        <p class="source-id">Sources: N04-U01 · N10-U01</p>
+      </div>
+    </div>
+  </details>
+</section>
+
+<details class="note">
+  <summary>Why only these two focuses?</summary>
+  <div class="detail-content sources">
+    <div>
+      <h3>Recurrence means separate sessions</h3>
+      <p>The past-tense corrections <b>go → went</b>, <b>buy → bought</b>, and <b>see → saw</b> are valid for those completed past events. But all three come from one session, so they are not treated as a recurring pattern here.</p>
+      <p class="source-id">Sources: N06-U03 · N06-U04 · N06-U05</p>
+    </div>
+    <div>
+      <h3>A suggestion is not always a correction</h3>
+      <p><b>“I think the plan is pretty good”</b> is grammatical casual English. <b>“Because I was tired”</b> is a natural answer to “Why did you stop?” Neither needs the proposed expansion or formal wording.</p>
+      <p class="source-id">Sources: N01-U01 · N07-U01; N02-U01 · N08-U01</p>
+      <p><b>“I have a little time this evening”</b> correctly means some time is available. Removing <b>a</b> would change that meaning to almost none.</p>
+      <p class="source-id">Sources: N03-U01 · N09-U01</p>
+    </div>
+  </div>
+</details>
+<footer>Based on the supplied sentence records and context notes, not full conversation transcripts. Session counts describe the evidence, not an error rate.</footer>
+</main>
+<script>
+(function () {
+  const navButtons = document.querySelectorAll('[data-focus]');
+  navButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      const focus = button.dataset.focus;
+      navButtons.forEach(function (other) {
+        const active = other.dataset.focus === focus;
+        other.setAttribute('aria-pressed', String(active));
+        document.getElementById('focus-' + other.dataset.focus).hidden = !active;
+      });
+    });
+  });
+
+  const feedback = {
+    suggest: {
+      correct: 'b',
+      a: 'Use B: “that I call the hotel.” With suggest, “me to call” is not the normal recommendation structure. The that-clause identifies who should call.',
+      b: 'Yes: “that I call the hotel.” The that-clause names the person who should act. “Suggested calling the hotel” also works if that person is clear from context.'
+    },
+    interested: {
+      correct: 'a',
+      a: 'Yes: “taking photos of birds.” After the preposition in, use the -ing form to name the activity. You can be interested in it even if you have not tried it yet.',
+      b: 'Use A: “taking photos of birds.” The preposition in needs the -ing form here, not the bare verb take. Keep “I’m interested in” unchanged.'
+    }
+  };
+
+  document.querySelectorAll('[data-question]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const question = button.dataset.question;
+      const answer = button.dataset.answer;
+      document.querySelectorAll('[data-question="' + question + '"]').forEach(function (other) {
+        other.setAttribute('aria-pressed', String(other === button));
+      });
+      const box = document.getElementById('feedback-' + question);
+      const correct = answer === feedback[question].correct;
+      box.className = 'feedback' + (correct ? '' : ' corrective');
+      box.hidden = false;
+      box.textContent = (correct ? 'Why it works — ' : 'Adjustment — ') + feedback[question][answer];
+    });
+  });
+})();
+</script>
+</body>
+</html>

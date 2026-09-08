@@ -1,0 +1,22 @@
+{
+  "v2-P02-a": {
+    "source": "experiments/EXP-019-interactive-pattern-reports/style-v2-data/reports/revised1_P02.html",
+    "sha256": "a4e426337f58a461b38273f03c513f09015a5250f79b31a11177705f0372feb3"
+  },
+  "v2-P02-b": {
+    "source": "experiments/EXP-019-interactive-pattern-reports/style-v2-data/reports/revised2_P02.html",
+    "sha256": "6adbe550cba0890e6493d37e4c08643e76a09eace43522d487610b93caa41eb6"
+  },
+  "v2-P01": {
+    "source": "experiments/EXP-019-interactive-pattern-reports/style-v2-expansion/reports/expanded1_P01.html",
+    "sha256": "ec5733dfb33487ff11415983c8c4956a9c07e86b0cc19f8a9e5e2dd910ee945b"
+  },
+  "v2-P03": {
+    "source": "experiments/EXP-019-interactive-pattern-reports/style-v2-expansion/reports/expanded1_P03.html",
+    "sha256": "9e7555cc9bdfc1e95ce201245f0e2f63300123a6fe9839b494035f65ab283f15"
+  },
+  "v2-P04": {
+    "source": "experiments/EXP-019-interactive-pattern-reports/style-v2-expansion/reports/expanded1_P04.html",
+    "sha256": "0cfa28093b45cc8f357b1e245824b7aa99a820489e259a2015e836c4e5fbe5a5"
+  }
+}

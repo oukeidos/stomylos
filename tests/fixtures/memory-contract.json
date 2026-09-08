@@ -1,0 +1,47 @@
+{
+  "status": "selected_experimental_contract_not_product_integration",
+  "model": "google/gemini-3.8-flash",
+  "accepted_response_models": [
+    "google/gemini-3.8-flash-20260902",
+    "google/gemini-3.8-flash"
+  ],
+  "provider": {
+    "only": [
+      "google-ai-studio"
+    ],
+    "allow_fallbacks": false,
+    "require_parameters": true,
+    "data_collection": "deny"
+  },
+  "expected_response_provider": "Google AI Studio",
+  "reasoning": {
+    "effort": "medium",
+    "exclude": true
+  },
+  "stream": false,
+  "max_tokens": 8192,
+  "temperature": "omitted",
+  "response_format_name": "exp017_memory_delta_v1",
+  "strict": true,
+  "prompt_file": "prompt-v2.txt",
+  "schema_file": "schema-compatible.json",
+  "sha256_files": {
+    "prompt-v2.txt": "70cd5eb6c475351caab4ade0c867ab3a1e11a847914e7f8125a0fb91e7bd9958",
+    "schema-compatible.json": "e413427a77de63deed538df1940a4116c83485de00c46d99def45e62f8f389a3",
+    "memory.py": "3d8f0050f8141f2e740044a0b5dbeb50d9ac270c635bf51a2aa10abee5c32fe5"
+  },
+  "memory_limits": {
+    "max_items": 60,
+    "max_item_chars": 240,
+    "max_bytes": 20000
+  },
+  "max_operations": 120,
+  "memory_scope": "Stable character ID, independent of model API slug and display name. Ended genuine learner messages only. Full four-list injection, no retrieval.",
+  "prototype": "memory.py; isolated experimental SQLite only",
+  "refinement_hash": "1a5ebb0ad44b12c8adfd7e0e2b1bead21c4383677d1e22ee15a7c544b8134a4b",
+  "evidence": {
+    "model_selection": "Nine distinct v1 synthetic development cases; matched Sonnet comparison uses compatible schema and restored calls.",
+    "selected_prompt_v2": "Two new targeted regression cases and three connected updater calls; same three conversation probes repeated. Not a nine-case v2 rerun.",
+    "scope": "Single attempts with disclosed diagnostic recoveries; no independent blinding or statistical reliability claim."
+  }
+}

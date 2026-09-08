@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "reply": {
+      "type": "string"
+    },
+    "suggested_text": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "reply",
+    "suggested_text"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,24 @@
+{
+  "model": "openai/gpt-5.6-luna",
+  "accepted_models": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-luna-20260709"
+  ],
+  "provider": {
+    "only": [
+      "openai"
+    ],
+    "require_parameters": true,
+    "allow_fallbacks": false,
+    "data_collection": "deny"
+  },
+  "expected_provider": "OpenAI",
+  "reasoning": {
+    "effort": "medium",
+    "exclude": true
+  },
+  "max_tokens": 4096,
+  "stream": false,
+  "timeout_seconds": 120,
+  "prompt_sha256": "bc477e67de42a0dedccf8127a617b89596848b4b6d4bb975f52c90e193f118b1"
+}

@@ -1,0 +1,51 @@
+The following composition and visual rules constrain the earlier design freedom;
+within them, adapt teaching and interactions to the supplied evidence.
+
+Begin with a brief evidence-calibrated overview and clear focus choices. For
+multiple substantial patterns, show one focus at a time with direct navigation.
+If no recurring pattern is supported, say so directly and keep the report short;
+do not manufacture lessons or practice to fill a structure.
+
+Compose each focus as a compact learning unit. Keep an authentic original/revision
+pair, a short visually prominent reusable rule, and its immediate explanation
+together. Place one visible optional application alongside them when desktop
+width permits, so the learner can consult the example and rule while answering.
+Use a compact stacked layout on narrow screens, preserving that proximity.
+Do not center a narrow, tall reading column inside an otherwise empty wide panel.
+
+Give the learning distinction the strongest explanatory emphasis. Keep essential
+qualifications and what can stay unchanged beside the rule. A brief conversation
+cue or speaking stem can sit with the application; it should not separate the
+source pair from the explanation or compete with the rule. Combine overlapping
+roles instead of giving every cue, explanation and takeaway a separate large block.
+
+Make the first useful application visible without opening a disclosure. Optional
+means the learner can skip it, not that it must be hidden. Provide explanatory
+feedback and label new teaching examples. Put additional source records, further
+practice and useful boundary exploration on demand when they would crowd the
+main unit. Preserve necessary nuance without repetitive checks or fixed quotas.
+Maintain consistent hierarchy across focuses, while choosing their internal
+arrangement to clarify the relationship between evidence, rule and use.
+No exercise completion is required to navigate or leave.
+
+Use a calm editorial field-guide style consistently across reports. Define and
+reuse these CSS colors: paper #f5f3ed, surface #fffefa, ink #203c35, muted text
+#60716b, accent #245c4d, soft accent #eaf0e9, border #d9dfd5, and correction
+contrast #874526 on #f5e8dc. Use accent for navigation and useful revisions;
+use correction contrast only for relevant original spans or corrective feedback.
+Pair color with explicit labels or other non-color cues.
+
+Use Georgia, 'Times New Roman', serif for the report title and main teaching
+headings; use system-ui, sans-serif for body text and controls. Keep body text
+at 16px or larger with 1.6 line height, secondary labels at least 13px, the title
+responsive from 36 to 60px, and teaching headings from 26 to 32px. Limit long prose lines to around 65 characters; shorter teaching columns are
+appropriate for adjacent explanation and practice. Keep the page within 1140px,
+with 32px desktop and 20px narrow-screen gutters.
+
+Use an 8/12/16/24/32/48px spacing scale, 16px main-panel corners, 8px control
+corners, thin borders and restrained shadows. Separate sections primarily with
+space and typography. Keep original/revision labels and placement consistent;
+highlight only the relevant change. Give selected navigation a solid accent
+background with light text. Keep controls keyboard-operable with visible focus
+and comfortable targets. Stack columns on narrow screens without shrinking
+text; honor reduced motion. Adapt diagrams and layout within this visual system.

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your English conversation notes</title>
+<style>
+:root {
+  --paper: #f6f4ed;
+  --card: #fffefb;
+  --ink: #243c3b;
+  --muted: #5c6e6b;
+  --teal: #24695d;
+  --teal-light: #e9f2ed;
+  --line: #d7ded5;
+  --amber: #87521f;
+  --amber-light: #fbefdd;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+button, input { font: inherit; }
+button, summary, a { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+button:focus-visible, summary:focus-visible, a:focus-visible {
+  outline: 3px solid #a35c28;
+  outline-offset: 4px;
+}
+a { color: var(--teal); text-underline-offset: 4px; }
+button { color: var(--ink); }
+.page { width: min(1060px, calc(100% - 48px)); margin: auto; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 24px 0; border-bottom: 1px solid var(--line);
+}
+.brand { font-size: .8rem; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+.quiet-button {
+  border: 1px solid var(--line); background: transparent; border-radius: 100px;
+  padding: 8px 18px; font-size: .87rem;
+}
+.quiet-button:hover { background: #e8ece3; }
+.hero { padding: 48px 0 30px; }
+.eyebrow { color: var(--teal); font-size: .8rem; letter-spacing: .09em; text-transform: uppercase; font-weight: 750; margin: 0 0 12px; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { font-family: Georgia, serif; font-weight: 400; font-size: clamp(2.4rem, 5.5vw, 3.8rem); line-height: 1.1; letter-spacing: -.035em; margin-bottom: 20px; max-width: 800px; }
+.lead { max-width: 760px; font-size: 1.12rem; color: var(--muted); margin-bottom: 12px; }
+.scope { color: var(--muted); font-size: .87rem; max-width: 800px; }
+.route { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 18px 0 36px; }
+.route a {
+  display: flex; gap: 12px; align-items: flex-start; padding: 18px;
+  border: 1px solid var(--line); border-radius: 12px; text-decoration: none;
+  background: var(--card); color: var(--ink);
+}
+.route a:hover { border-color: var(--teal); background: var(--teal-light); }
+.route .route-num { color: var(--teal); font-family: Georgia, serif; font-size: 1.5rem; line-height: 1.2; }
+.route strong { display: block; font-size: .98rem; }
+.route small { display: block; color: var(--muted); font-size: .79rem; margin-top: 3px; }
+.permission {
+  padding: 19px 23px; background: var(--teal-light); border-radius: 12px;
+  margin-bottom: 36px; border-left: 4px solid var(--teal);
+}
+.permission p { margin: 0; }
+.permission strong { color: var(--teal); }
+.pattern {
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+  padding: 30px; margin: 0 0 24px; scroll-margin-top: 20px;
+}
+.section-head { display: flex; gap: 18px; align-items: flex-start; margin-bottom: 24px; }
+.section-num {
+  flex: 0 0 46px; height: 46px; display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%; font-family: Georgia, serif; font-size: 1.5rem;
+}
+h2 { font-family: Georgia, serif; font-size: clamp(1.55rem, 3.4vw, 2rem); font-weight: 400; line-height: 1.2; margin-bottom: 8px; }
+.recurrence { margin: 0; color: var(--muted); font-size: .82rem; }
+.recurrence span { color: var(--teal); font-weight: 700; }
+.lesson-grid { display: grid; grid-template-columns: 1.12fr 1fr; gap: 28px; align-items: start; }
+.label { display: block; font-size: .73rem; text-transform: uppercase; letter-spacing: .075em; font-weight: 750; color: var(--muted); margin-bottom: 7px; }
+.quote { padding: 15px 18px; background: #f3f3ed; border-radius: 9px; margin-bottom: 10px; }
+.quote p { font-size: 1.05rem; margin: 0; }
+.quote.fixed { background: var(--teal-light); }
+.quote.fixed .label { color: var(--teal); }
+.flag { text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: #b07a49; text-underline-offset: 5px; }
+.fixed strong { color: var(--teal); }
+.teaching h3 { font-size: 1rem; margin-bottom: 7px; }
+.teaching p { margin-bottom: 14px; }
+.formula { padding: 12px 15px; border-left: 3px solid var(--teal); background: #f5f7f2; font-weight: 650; margin: 16px 0; }
+.tip { font-size: .91rem; color: var(--muted); }
+details { margin-top: 16px; }
+summary { cursor: pointer; width: fit-content; max-width: 100%; font-weight: 650; }
+summary::marker { color: var(--teal); }
+.sources { font-size: .83rem; color: var(--muted); }
+.sources summary { font-weight: 500; }
+.source-body { border-left: 2px solid var(--line); padding: 10px 0 0 14px; margin-top: 8px; }
+.source-body p { margin-bottom: 8px; }
+.ids { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .8rem; overflow-wrap: anywhere; color: var(--ink); }
+.practice { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 25px; }
+.practice > summary { color: var(--teal); font-size: .96rem; }
+.practice-content { padding-top: 18px; max-width: 780px; }
+.exercise-label { font-size: .75rem; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 8px; }
+.prompt { font-size: 1.1rem; margin-bottom: 12px; }
+.choices { display: flex; flex-wrap: wrap; gap: 9px; }
+.choice {
+  background: var(--card); border: 1px solid #aebfb5; border-radius: 9px;
+  padding: 11px 17px; min-height: 46px; text-align: left;
+}
+.choice:hover { background: #f0f4ed; border-color: var(--teal); }
+.choice[aria-pressed="true"] { background: var(--ink); color: white; border-color: var(--ink); }
+.feedback { padding: 14px 17px; background: var(--amber-light); border-radius: 9px; margin: 14px 0 0; }
+.feedback.correct { background: var(--teal-light); }
+.transfer { margin: 14px 0 0; font-size: .9rem; color: var(--muted); }
+.past-examples { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.past-heading { background: #f0f2eb; padding: 10px 15px; font-size: .76rem; color: var(--muted); }
+.past-row { padding: 14px 15px; border-top: 1px solid var(--line); }
+.past-row p { margin: 0; }
+.past-row .repair { color: var(--teal); font-weight: 650; margin-top: 4px; }
+.past-row .repair::before { content: "→ "; }
+.keep { margin: 42px 0; }
+.keep > p { color: var(--muted); max-width: 730px; }
+.keep-list { border-top: 1px solid var(--line); }
+.keep-item { border-bottom: 1px solid var(--line); padding: 17px 0; margin: 0; }
+.keep-item summary { font-weight: 500; }
+.keep-item summary::marker { color: var(--teal); }
+.keep-content { max-width: 780px; padding: 13px 0 2px 21px; color: var(--muted); font-size: .94rem; }
+.keep-content p { margin-bottom: 8px; }
+.takeaway { background: var(--ink); color: #fffef6; border-radius: 18px; padding: 30px; margin-bottom: 28px; }
+.takeaway .eyebrow { color: #b8d9be; }
+.takeaway h2 { margin-bottom: 12px; }
+.takeaway > p { color: #d5e3db; }
+.take-options { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0; }
+.take-button { background: transparent; color: #fffef6; border: 1px solid #8aa19a; border-radius: 100px; padding: 9px 16px; }
+.take-button:hover { background: #35534e; }
+.take-button[aria-pressed="true"] { background: #e6edce; color: var(--ink); border-color: #e6edce; }
+.take-note { background: #35504b; padding: 18px; border-radius: 10px; }
+.take-note p { margin: 0; }
+.take-note .label { color: #c0d7c5; }
+.footer { color: var(--muted); font-size: .8rem; padding-bottom: 32px; }
+.closed { width: min(520px, calc(100% - 40px)); margin: 15vh auto; padding: 35px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); text-align: center; }
+.closed h1 { font-size: 2rem; }
+.closed button { margin-top: 10px; background: var(--teal); color: white; border: none; border-radius: 100px; padding: 12px 24px; }
+@media (max-width: 720px) {
+  .page { width: min(100% - 28px, 580px); }
+  .hero { padding-top: 32px; }
+  .route { grid-template-columns: 1fr; gap: 8px; }
+  .route a { padding: 13px 16px; }
+  .route small { margin-top: 0; }
+  .pattern { padding: 22px 18px; }
+  .lesson-grid { grid-template-columns: 1fr; gap: 21px; }
+  .section-head { gap: 12px; }
+  .section-num { flex-basis: 36px; height: 36px; font-size: 1.2rem; }
+  .choices { flex-direction: column; align-items: stretch; }
+  .takeaway { padding: 24px 20px; }
+  .brand { font-size: .7rem; letter-spacing: .08em; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div id="report" class="page">
+  <header class="topbar">
+    <span class="brand">Conversation notebook / English</span>
+    <button type="button" class="quiet-button" id="close-report">Close report</button>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="title">
+      <p class="eyebrow">July 2–11, 2026 · 10 sessions</p>
+      <h1 id="title">Three small patterns to carry into conversation.</h1>
+      <p class="lead">Focus on the form just after <strong>suggest</strong> and <strong>interested in</strong>, then check the verb when telling a finished past story.</p>
+      <p class="scope">The first two patterns recur across sessions. The past-tense examples are clustered in one session. These notes describe the recorded examples—not how often you make errors overall.</p>
+    </section>
+
+    <nav class="route" aria-label="Choose a focus">
+      <a href="#suggest"><span class="route-num">01</span><span><strong>Passing on a suggestion</strong><small>Use “suggested that I…”</small></span></a>
+      <a href="#interested"><span class="route-num">02</span><span><strong>Talking about interests</strong><small>Use “interested in learning”</small></span></a>
+      <a href="#past"><span class="route-num">03</span><span><strong>Telling a past story</strong><small>Match the verb to the time</small></span></a>
+    </nav>
+
+    <aside class="permission">
+      <p><strong>Not every suggested change is a correction.</strong> Several of your original sentences were already natural. Keep those choices; there is no need to make casual conversation more formal. <a href="#keep">See what to keep.</a></p>
+    </aside>
+
+    <section class="pattern" id="suggest" aria-labelledby="suggest-title">
+      <div class="section-head">
+        <span class="section-num" aria-hidden="true">1</span>
+        <div>
+          <h2 id="suggest-title">Suggest an action—not “someone to do”</h2>
+          <p class="recurrence"><span>Recurring across sessions</span> · 4 records in 4 sessions</p>
+        </div>
+      </div>
+      <div class="lesson-grid">
+        <div>
+          <div class="quote">
+            <span class="label">From your record · original</span>
+            <p>She suggested <span class="flag">me to take</span> a break.</p>
+          </div>
+          <div class="quote fixed">
+            <span class="label">Recommended correction</span>
+            <p>She suggested <strong>that I take</strong> a break.</p>
+          </div>
+          <details class="sources">
+            <summary>Source trail · 4 sessions</summary>
+            <div class="source-body">
+              <p>The same original sentence and correction appear in all four records. They support a repeated sentence pattern, not four different types of error.</p>
+              <p class="ids">N01-U03 · N04-U03 · N07-U03 · N10-U03</p>
+            </div>
+          </details>
+        </div>
+        <div class="teaching">
+          <h3>A useful frame to remember</h3>
+          <p>When you name the person who should act, use <strong>suggest + that + person + verb</strong>.</p>
+          <div class="formula">She suggested that I take a break.</div>
+          <p>Use <strong>take</strong> here, without <strong>to</strong>. The past form <strong>suggested</strong> tells us when the suggestion happened.</p>
+          <p class="tip">Another option: “She suggested taking a break.” This focuses on the action without explicitly naming who should take the break.</p>
+        </div>
+      </div>
+      <details class="practice">
+        <summary>Try it in a different conversation · optional</summary>
+        <div class="practice-content" data-exercise="suggest">
+          <p class="exercise-label">New learning example · not from your history</p>
+          <p class="prompt">A colleague gave us an idea. Complete the sentence:<br><strong>“He suggested ___ before the meeting.”</strong></p>
+          <div class="choices" role="group" aria-label="Choose a completion">
+            <button class="choice" type="button" data-answer="object" aria-pressed="false">us to check the figures</button>
+            <button class="choice" type="button" data-answer="that" aria-pressed="false">that we check the figures</button>
+          </div>
+          <div class="feedback" role="status" hidden></div>
+          <p class="transfer">Make it yours, if you like: think of advice someone gave you. Start with “They suggested that I…”</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="pattern" id="interested" aria-labelledby="interested-title">
+      <div class="section-head">
+        <span class="section-num" aria-hidden="true">2</span>
+        <div>
+          <h2 id="interested-title">After “interested in,” use an -ing action</h2>
+          <p class="recurrence"><span>Recurring across sessions</span> · 3 records in 3 sessions</p>
+        </div>
+      </div>
+      <div class="lesson-grid">
+        <div>
+          <div class="quote">
+            <span class="label">From your record · original</span>
+            <p>I am interested in <span class="flag">learn</span> more about plants.</p>
+          </div>
+          <div class="quote fixed">
+            <span class="label">Recommended correction</span>
+            <p>I am interested in <strong>learning</strong> more about plants.</p>
+          </div>
+          <details class="sources">
+            <summary>Source trail · 3 sessions</summary>
+            <div class="source-body">
+              <p>The same sentence appears in each of these records. The actionable change is from “learn” to “learning” after the preposition “in.”</p>
+              <p class="ids">N02-U03 · N05-U03 · N08-U03</p>
+            </div>
+          </details>
+        </div>
+        <div class="teaching">
+          <h3>Keep “in” attached to what follows</h3>
+          <p>You can be interested in a thing, such as <strong>plants</strong>. When you name an action after <strong>in</strong>, use its <strong>-ing</strong> form.</p>
+          <div class="formula">interested in + learning / trying / visiting</div>
+          <p class="tip">A helpful connection: your sentence “I am looking forward to seeing you” already uses this kind of structure correctly. In “look forward to,” <strong>to</strong> is a preposition, so keep <strong>seeing</strong>.</p>
+          <details class="sources">
+            <summary>Source trail · the correct connection</summary>
+            <div class="source-body">
+              <p>Original in both records: “I am looking forward to seeing you.” The proposed change to “see” should not be used.</p>
+              <p class="ids">N04-U01 · N10-U01</p>
+            </div>
+          </details>
+        </div>
+      </div>
+      <details class="practice">
+        <summary>Choose the next word · optional</summary>
+        <div class="practice-content" data-exercise="interested">
+          <p class="exercise-label">New learning example · not from your history</p>
+          <p class="prompt">You want to try a new hobby:<br><strong>“I'm interested in ___ a pottery class.”</strong></p>
+          <div class="choices" role="group" aria-label="Choose a verb form">
+            <button class="choice" type="button" data-answer="take" aria-pressed="false">take</button>
+            <button class="choice" type="button" data-answer="to-take" aria-pressed="false">to take</button>
+            <button class="choice" type="button" data-answer="taking" aria-pressed="false">taking</button>
+          </div>
+          <div class="feedback" role="status" hidden></div>
+          <p class="transfer">Make it yours, if you like: “I'm interested in…” + an activity you might try.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="pattern" id="past" aria-labelledby="past-title">
+      <div class="section-head">
+        <span class="section-num" aria-hidden="true">3</span>
+        <div>
+          <h2 id="past-title">Let the time cue change the verb</h2>
+          <p class="recurrence"><span>Clustered in one session</span> · 3 records, all from July 7</p>
+        </div>
+      </div>
+      <div class="lesson-grid">
+        <div>
+          <div class="past-examples">
+            <div class="past-heading">From your record: original → recommended correction</div>
+            <div class="past-row">
+              <p>Yesterday I <span class="flag">go</span> to the market.</p>
+              <p class="repair">Yesterday I went to the market.</p>
+            </div>
+            <div class="past-row">
+              <p>Last Friday I <span class="flag">buy</span> a used bicycle.</p>
+              <p class="repair">Last Friday I bought a used bicycle.</p>
+            </div>
+            <div class="past-row">
+              <p>I <span class="flag">see</span> that film last night.</p>
+              <p class="repair">I saw that film last night.</p>
+            </div>
+          </div>
+          <details class="sources">
+            <summary>Source trail · 1 session</summary>
+            <div class="source-body">
+              <p>The notes describe all three events as completed in the past. This supports a useful past-tense check, but does not establish recurrence across sessions.</p>
+              <p class="ids">Market: N06-U03<br>Bicycle: N06-U04<br>Film: N06-U05</p>
+            </div>
+          </details>
+        </div>
+        <div class="teaching">
+          <h3>“Yesterday” is a cue—not a substitute</h3>
+          <p>For a completed event, the time expression and the verb work together. Even with <strong>yesterday</strong> or <strong>last night</strong>, use the past form in these statements.</p>
+          <div class="formula">go → went &nbsp; · &nbsp; buy → bought &nbsp; · &nbsp; see → saw</div>
+          <p class="tip">Before telling a past story, bring its main verb to mind: “Yesterday… went.” These three verbs have irregular past forms; adding <strong>-ed</strong> won't work.</p>
+        </div>
+      </div>
+      <details class="practice">
+        <summary>Tell a tiny past story · optional</summary>
+        <div class="practice-content" data-exercise="past">
+          <p class="exercise-label">New learning example · not from your history</p>
+          <p class="prompt">Choose the pair for a completed trip:<br><strong>“Last Saturday I ___ to the bookshop and ___ a novel.”</strong></p>
+          <div class="choices" role="group" aria-label="Choose the two verbs">
+            <button class="choice" type="button" data-answer="present" aria-pressed="false">go / buy</button>
+            <button class="choice" type="button" data-answer="mixed" aria-pressed="false">went / buy</button>
+            <button class="choice" type="button" data-answer="past" aria-pressed="false">went / bought</button>
+          </div>
+          <div class="feedback" role="status" hidden></div>
+          <p class="transfer">Make it yours, if you like: say one sentence about yesterday using <strong>went</strong>, <strong>bought</strong>, or <strong>saw</strong>.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="keep" id="keep" aria-labelledby="keep-title">
+      <p class="eyebrow">Keep your natural English</p>
+      <h2 id="keep-title">These originals do not need fixing.</h2>
+      <p>The context matters. Open any sentence to see why the proposed change is unnecessary—or would change your meaning.</p>
+      <div class="keep-list">
+        <details class="keep-item">
+          <summary>“I have a little time this evening.”</summary>
+          <div class="keep-content">
+            <p>You meant that you had <strong>some time available</strong>. “A little time” expresses that. “Little time,” without <strong>a</strong>, suggests almost none, so it would change your message.</p>
+            <p class="ids">Original sentence · N03-U01 · N09-U01</p>
+          </div>
+        </details>
+        <details class="keep-item">
+          <summary>“I am looking forward to seeing you.”</summary>
+          <div class="keep-content">
+            <p>This is correct as written. In this expression, <strong>to</strong> is a preposition: use <strong>seeing</strong>, not “see.”</p>
+            <p class="ids">Original sentence · N04-U01 · N10-U01</p>
+          </div>
+        </details>
+        <details class="keep-item">
+          <summary>“Because I was tired.”</summary>
+          <div class="keep-content">
+            <p>The recorded context was an answer to “Why did you stop?” In that exchange, this short answer is natural and complete enough. “I stopped because I was tired” is an optional expansion.</p>
+            <p class="ids">Original answer and recorded context · N02-U01 · N08-U01</p>
+          </div>
+        </details>
+        <details class="keep-item">
+          <summary>“I bought a coffee before the train.”</summary>
+          <div class="keep-content">
+            <p>You ordered one cup. <strong>A coffee</strong> is normal when referring to one serving; you do not need to remove the article.</p>
+            <p class="ids">Original sentence · N06-U01</p>
+          </div>
+        </details>
+        <details class="keep-item">
+          <summary>“I think the plan is pretty good.”</summary>
+          <div class="keep-content">
+            <p>This is grammatical, natural casual English. “I believe the plan is quite good” is an optional change in wording and tone, not a necessary correction.</p>
+            <p class="ids">Original sentence · N01-U01 · N07-U01</p>
+          </div>
+        </details>
+        <details class="keep-item">
+          <summary>“The person who I spoke to was friendly.”</summary>
+          <div class="keep-content">
+            <p>This is ordinary conversational English. “The person to whom I spoke…” is more formal; it is not required in casual conversation.</p>
+            <p class="ids">Original sentence · N05-U01</p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="takeaway" aria-labelledby="takeaway-title">
+      <p class="eyebrow">One thing is enough</p>
+      <h2 id="takeaway-title">Choose a cue for your next conversation.</h2>
+      <p>No need to hold all three rules in mind. Pick the one you're most likely to use.</p>
+      <div class="take-options" role="group" aria-label="Choose a conversation reminder">
+        <button type="button" class="take-button" data-cue="suggest" aria-pressed="false">Giving suggestions</button>
+        <button type="button" class="take-button" data-cue="interested" aria-pressed="false">Sharing interests</button>
+        <button type="button" class="take-button" data-cue="past" aria-pressed="false">Talking about yesterday</button>
+      </div>
+      <div class="take-note" role="status" id="take-note">
+        <p>Select a focus to display a short speaking reminder.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    Source trails use the IDs from your conversation records. Counts refer to listed records and distinct sessions, not error rates. Practice prompts are newly written learning examples.
+  </footer>
+</div>
+
+<section class="closed" id="closed" hidden aria-labelledby="closed-title">
+  <p class="eyebrow">Conversation notebook</p>
+  <h1 id="closed-title" tabindex="-1">Report closed.</h1>
+  <p>You can leave it here, or return whenever you want.</p>
+  <button type="button" id="reopen">Return to the report</button>
+</section>
+
+<script>
+(function () {
+  const feedback = {
+    suggest: {
+      object: {
+        correct: false,
+        text: 'Try the “that” frame. In this sense, suggest does not use “us to check.” Say: “He suggested that we check the figures before the meeting.”'
+      },
+      that: {
+        correct: true,
+        text: 'Yes: “He suggested that we check the figures before the meeting.” “That we check” names who should act, without an extra “to.”'
+      }
+    },
+    interested: {
+      take: {
+        correct: false,
+        text: 'After the preposition “in,” the action needs the -ing form: “I’m interested in taking a pottery class.” Try choosing that form.'
+      },
+      'to-take': {
+        correct: false,
+        text: 'Keep “in” and follow it with an -ing form, not a to-infinitive: “I’m interested in taking a pottery class.”'
+      },
+      taking: {
+        correct: true,
+        text: 'Yes: “I’m interested in taking a pottery class.” Remember the small unit “in taking,” just like “in learning.”'
+      }
+    },
+    past: {
+      present: {
+        correct: false,
+        text: 'The trip and purchase are both finished. Change both verbs to the past: “Last Saturday I went to the bookshop and bought a novel.”'
+      },
+      mixed: {
+        correct: false,
+        text: '“Went” fits the past trip. The purchase also happened last Saturday, so use “bought” too: “I went to the bookshop and bought a novel.”'
+      },
+      past: {
+        correct: true,
+        text: 'Yes. Both completed actions use past forms: “Last Saturday I went to the bookshop and bought a novel.”'
+      }
+    }
+  };
+
+  document.querySelectorAll('[data-exercise]').forEach(function (exercise) {
+    const buttons = exercise.querySelectorAll('.choice');
+    const output = exercise.querySelector('.feedback');
+    buttons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b === button)); });
+        const response = feedback[exercise.dataset.exercise][button.dataset.answer];
+        output.hidden = false;
+        output.classList.toggle('correct', response.correct);
+        output.textContent = response.text;
+      });
+    });
+  });
+
+  const cues = {
+    suggest: ['My speaking cue', 'Name the person with “that”: “They suggested that I…” Then add the action: take, try, go.'],
+    interested: ['My speaking cue', 'Keep the pair together: “interested in” + an -ing action. Start with “I’m interested in learning…”'],
+    past: ['My speaking cue', 'Finished yesterday? Check the main verb: go → went, buy → bought, see → saw.']
+  };
+  const cueButtons = document.querySelectorAll('[data-cue]');
+  cueButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      cueButtons.forEach(function (b) { b.setAttribute('aria-pressed', String(b === button)); });
+      const note = document.getElementById('take-note');
+      const cue = cues[button.dataset.cue];
+      note.replaceChildren();
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = cue[0];
+      const text = document.createElement('p');
+      text.textContent = cue[1];
+      note.append(label, text);
+    });
+  });
+
+  const report = document.getElementById('report');
+  const closed = document.getElementById('closed');
+  const closeButton = document.getElementById('close-report');
+  closeButton.addEventListener('click', function () {
+    report.hidden = true;
+    closed.hidden = false;
+    document.getElementById('closed-title').focus();
+  });
+  document.getElementById('reopen').addEventListener('click', function () {
+    closed.hidden = true;
+    report.hidden = false;
+    closeButton.focus();
+  });
+})();
+</script>
+</body>
+</html>

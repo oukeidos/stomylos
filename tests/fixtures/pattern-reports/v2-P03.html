@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>English field notes — A brief checkpoint</title>
+<style>
+:root {
+  --paper: #f5f3ed;
+  --surface: #fffefa;
+  --ink: #203c35;
+  --muted: #60716b;
+  --accent: #245c4d;
+  --soft-accent: #eaf0e9;
+  --border: #d9dfd5;
+  --correction: #874526;
+  --correction-bg: #f5e8dc;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+main {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 48px 32px;
+}
+.eyebrow, .label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+h1, h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 400;
+  line-height: 1.15;
+}
+h1 {
+  font-size: clamp(36px, 5vw, 60px);
+  margin: 12px 0 24px;
+}
+h2 { font-size: 28px; margin: 0 0 16px; }
+p { margin: 0 0 16px; max-width: 65ch; }
+.overview { font-size: 18px; }
+.panel {
+  margin-top: 32px;
+  padding: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(32, 60, 53, .03);
+}
+.decision {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+.decision p:last-child { margin-bottom: 0; }
+.status {
+  display: inline-block;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  background: var(--soft-accent);
+  color: var(--accent);
+  font-weight: 650;
+}
+.muted { color: var(--muted); }
+details {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+}
+summary {
+  padding: 16px 8px;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 650;
+  border-radius: 8px;
+  min-height: 48px;
+}
+summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
+.records {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 8px;
+}
+article {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+}
+h3 { margin: 8px 0 16px; font-size: 18px; font-weight: 650; }
+.source { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.label { display: block; margin-bottom: 8px; }
+.original, .revision { margin-bottom: 16px; }
+mark { padding: 0 4px; border-radius: 3px; }
+.original mark { background: var(--correction-bg); color: var(--correction); }
+.revision mark { background: var(--soft-accent); color: var(--accent); font-weight: 650; }
+.note { color: var(--muted); margin-bottom: 0; }
+.scope { font-size: 13px; color: var(--muted); margin-top: 16px; margin-bottom: 0; }
+@media (max-width: 680px) {
+  main { padding: 32px 20px; }
+  .panel { padding: 24px; }
+  .decision, .records { grid-template-columns: 1fr; gap: 24px; }
+  article { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">English field notes · July 2–6, 2026</div>
+    <h1>A brief checkpoint</h1>
+    <p class="overview">No recurring error pattern is supported by these five sessions. The record contains two isolated corrections, but neither appears across three distinct sessions.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="decision-title">
+    <div class="decision">
+      <div>
+        <span class="status">No practice focus selected</span>
+        <h2 id="decision-title">Too little repetition to prioritize</h2>
+        <p>A useful recurring focus needs supporting examples from at least three sessions. These notes do not meet that threshold.</p>
+      </div>
+      <div>
+        <p>You can stop here, or review the two source observations below. They are individual wording notes—not established habits to work on.</p>
+        <p class="muted">The unchanged examples do not tell us how often you had opportunities to use each structure, so they cannot establish an accuracy rate.</p>
+      </div>
+    </div>
+
+    <details>
+      <summary>Review the two isolated observations</summary>
+      <p class="muted">These are authentic original/revision pairs from the supplied record, not new practice examples.</p>
+      <div class="records">
+        <article aria-labelledby="duration-title">
+          <div class="source">Source L01-U02 · Session L01 · July 2, 2026</div>
+          <h3 id="duration-title">A duration phrase</h3>
+          <div class="original">
+            <span class="label">Original</span>
+            I have lived here <mark>since</mark> three years.
+          </div>
+          <div class="revision">
+            <span class="label">Revision</span>
+            I have lived here <mark>for</mark> three years.
+          </div>
+          <p class="note">“Three years” names a duration, which explains the change to “for.” This issue is recorded in one supplied session.</p>
+        </article>
+        <article aria-labelledby="plural-title">
+          <div class="source">Source L04-U02 · Session L04 · July 5, 2026</div>
+          <h3 id="plural-title">A plural noun phrase</h3>
+          <div class="original">
+            <span class="label">Original</span>
+            There <mark>is</mark> two small parks nearby.
+          </div>
+          <div class="revision">
+            <span class="label">Revision</span>
+            There <mark>are</mark> two small parks nearby.
+          </div>
+          <p class="note">“Two small parks” takes “are” in standard written English. This issue is recorded in one supplied session.</p>
+        </article>
+      </div>
+      <p class="scope">Evidence scope: supplied sessions L01–L05. The two observations concern different structures; combining them would not establish one recurring pattern.</p>
+    </details>
+  </section>
+</main>
+</body>
+</html>

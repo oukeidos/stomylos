@@ -1,0 +1,108 @@
+{
+  "name": "stomylos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "English conversation practice with post-chat grammar analysis",
+  "author": "Stomylos",
+  "license": "UNLICENSED",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "preview": "node scripts/preview.mjs",
+    "typecheck": "tsc --noEmit",
+    "build:native": "node scripts/build-native.mjs",
+    "build": "npm run build:native && npm run typecheck && electron-vite build",
+    "start": "bash run.sh",
+    "test:launch": "node scripts/verify-source-launch.mjs",
+    "test": "node scripts/test.mjs",
+    "test:all": "node scripts/test.mjs --all",
+    "test:conversion": "node scripts/test.mjs --conversion",
+    "package": "npm run build && electron-builder --linux --dir",
+    "test:e2e": "node scripts/verify-native.mjs",
+    "test:models": "node scripts/verify-models.mjs",
+    "test:scroll": "node scripts/verify-scroll.mjs",
+    "test:bookmarks": "node scripts/verify-bookmarks.mjs",
+    "test:package": "node scripts/verify-package.mjs",
+    "test:source-parity": "node scripts/export-parity.mjs --check",
+    "test:continuity": "node scripts/test.mjs --conversion",
+    "release:archive": "node scripts/archive-release.mjs",
+    "test:install": "node scripts/verify-install.mjs",
+    "test:tts": "node scripts/verify-tts.mjs",
+    "test:asr": "node scripts/verify-asr.mjs",
+    "test:asr:soak": "node scripts/verify-asr-limits.mjs",
+    "test:genie": "node scripts/verify-genie.mjs",
+    "test:patterns": "node scripts/verify-pattern-reports.mjs",
+    "assets:icon": "node scripts/render-icon.mjs",
+    "test:model-switching": "node scripts/verify-model-switching.mjs",
+    "artifacts:prune": "python3 scripts/prune-artifacts.py",
+    "test:retention": "python3 tests/artifact-retention.test.py"
+  },
+  "build": {
+    "appId": "io.github.oukeidos.stomylos",
+    "productName": "Stomylos",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**",
+      "native/*.node",
+      "package.json",
+      "!node_modules/node-addon-api/**",
+      "!node_modules/libflacjs/doc/**",
+      "!node_modules/libflacjs/src/**",
+      "!node_modules/libflacjs/**/*.map",
+      "!node_modules/better-sqlite3/deps/**",
+      "!node_modules/better-sqlite3/src/**",
+      "!node_modules/better-sqlite3/prebuilds/darwin-*.node",
+      "!node_modules/better-sqlite3/prebuilds/linux-arm64.node",
+      "!node_modules/better-sqlite3/prebuilds/linuxmusl-*.node",
+      "!node_modules/better-sqlite3/prebuilds/win32-*.node"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "linux": {
+      "target": "dir",
+      "category": "Education",
+      "executableName": "stomylos",
+      "icon": "assets/icon.png"
+    },
+    "extraFiles": [
+      "run.sh",
+      "install-desktop.sh",
+      "stomylos.desktop",
+      "README.md",
+      {
+        "from": "assets/icon.png",
+        "to": "icon.png"
+      },
+      "CHANGELOG.md",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "npmRebuild": true
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3",
+    "libflacjs": "5.6.0"
+  },
+  "devDependencies": {
+    "@radix-ui/react-dialog": "1.1.23",
+    "@radix-ui/react-dropdown-menu": "2.1.24",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.4.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "44.1.1",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "playwright-core": "1.62.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "typescript": "7.0.2",
+    "vite": "7.3.6",
+    "vitest": "5.0.0"
+  }
+}
