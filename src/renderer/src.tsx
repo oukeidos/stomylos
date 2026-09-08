@@ -470,6 +470,7 @@ function App() {
         <div className="transcript">{view.messages.filter(message => !(canChangeOpening && message.origin === 'starter')).map(message => <Bubble key={message.id} message={message} metadata={view.requests.find(r => r.id === message.request_id) ? JSON.parse(view.requests.find(r => r.id === message.request_id)!.metadata) : undefined} partner="Partner" />)}</div>
 
         {app.activity.sessionId === view.session.id && app.activity.phase === 'routing' && <p className="note" role="status">Choosing your conversation partner…</p>}
+        {app.activity.sessionId === view.session.id && app.activity.phase === 'preparing' && <p className="note" role="status">Preparing your reply…</p>}
         {view.session.state === 'ended' && <>
           <div className="ended-marker">{labels[view.session.analysis_state]}{view.session.draft && <button className="icon-button retained-draft-link" aria-label="View unsent draft" title="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></button>}</div>
           {['failed', 'pending'].includes(view.session.analysis_state) && <button className="analysis-retry" onClick={() => act(() => window.stomylos.command('retryAnalysis', { sessionId: view.session.id }))}>Try analysis again</button>}

@@ -386,7 +386,7 @@ export class Coordinator {
     if (view.session.state === 'ended' || last?.role === 'user' || last?.delivery === 'interrupted') throw new AppFailure('asr_session_unavailable');
   }
   private startReply(id: string, kind: 'send' | 'retry' | 'different_model' | 'retry_selection' = 'send') {
-    this.activity = { ...this.activity, sessionId: id, requestId: null, phase: 'routing', error: null, streamingMessageId: null, streamingText: '' };
+    this.activity = { ...this.activity, sessionId: id, requestId: null, phase: 'preparing', error: null, streamingMessageId: null, streamingText: '' };
     const abort = new AbortController();
     const promise = this.reply(id, abort.signal, kind).catch(error => { this.activity.error = failureCode(error); }).finally(async () => {
       this.activity.phase = 'idle'; this.activity.requestId = null; this.interactive = null; await this.publish(id).catch(() => undefined);
@@ -404,7 +404,7 @@ export class Coordinator {
         try {
           if (signal.aborted) throw new AppFailure('request_cancelled');
           await this.write('dispatch', request.id);
-          this.activity.requestId = request.id; await this.publish(id);
+          this.activity.phase = 'routing'; this.activity.requestId = request.id; await this.publish(id);
           const source = view.messages.find(isLearner)!; const snapshot = JSON.parse(request.config);
           const result = await this.gateway.complete(routerBody(view.session.starter_text, source.content, JSON.parse(view.session.chat_config)), snapshot.response_identity, signal, 10_000);
           scores = routerScores(result.content, JSON.parse(view.session.chat_config)); await this.write('finishRequest', request.id, result.content, result.metadata);
@@ -423,7 +423,7 @@ export class Coordinator {
         try {
           if (signal.aborted) throw new AppFailure('request_cancelled');
           await this.write('dispatch', route.id);
-          this.activity.requestId = route.id; await this.publish(id);
+          this.activity.phase = 'routing'; this.activity.requestId = route.id; await this.publish(id);
           const snapshot = JSON.parse(route.config);
           const result = await this.gateway.complete(partnerRouterBody(snapshot), snapshot.response_identity, signal, snapshot.timeout_seconds * 1000);
           if (signal.aborted) throw new AppFailure('request_cancelled');
@@ -435,6 +435,9 @@ export class Coordinator {
       }
     }
     if (signal.aborted) return;
+    if (this.activity.phase === 'routing') {
+      this.activity.phase = 'preparing'; this.activity.requestId = null; await this.publish(id);
+    }
     await routeSearch({
       view: () => this.db.call('searchView', id),
       prepare: () => this.write('searchPrepare', id),

@@ -59,7 +59,7 @@ export interface Starter { id: string; text: string; version: string }
 export interface Character { id: string; label: string; description: string; model: string; reasoning?: Json }
 export interface Settings { keyPresent: boolean; keyPath: string; dataPath: string; appVersion: string; development: boolean; simulation?: boolean; credentials?: import('./credentials').KeyStatus }
 export interface Activity {
-  sessionId: string | null; requestId: string | null; phase: 'idle' | 'routing' | 'reply';
+  sessionId: string | null; requestId: string | null; phase: 'idle' | 'preparing' | 'routing' | 'reply';
   streamingMessageId: string | null; streamingText: string;
   storageError: string | null; error: string | null; closing: boolean;
   deletionCleanupPending?: boolean;

@@ -35,13 +35,14 @@ let patternCalls: Json[], holdPattern: boolean, latePattern: boolean;
 let patternPolicies: { identity: unknown; timeout: number | undefined }[];
 let intentionCalls: Json[], intentionFailures: string[], holdIntention: boolean, intentionRelease: (() => void) | null;
 let searchCalls: Json[];
+let searchPhases: AppSnapshot['activity']['phase'][];
 const patternHtml='<!DOCTYPE html><html><head><title>Patterns</title></head><body>No recurring pattern established.</body></html>';
 let holdMemory: boolean, memoryOutput: (packet: Json) => string;
 const waitFor = async (fn: () => boolean) => { await vi.waitFor(() => expect(fn()).toBe(true), { timeout: 3000, interval: 5 }); };
 beforeEach(async () => {
   holdRouter = false;
   intentionCalls = []; intentionFailures = []; holdIntention = false; intentionRelease = null;
-  searchCalls = [];
+  searchCalls = []; searchPhases = [];
   directory = mkdtempSync(join(tmpdir(), 'stomylos-controller-')); store = new Store(directory, resolve('native/advisory-lock.node'));
   patternCalls=[];patternPolicies=[];holdPattern=false;latePattern=false; lateGrammar = false; calls = []; snapshots = []; failMethod = null; loseAck = null; routerFails = false; grammarFails = false; holdStream = false; holdGrammar = false; streamReady = null;
   streamFails = false;
@@ -97,7 +98,7 @@ beforeEach(async () => {
     },
     async stream(body, signal, onText) {
       // Search gates are separate from the conversation/character call accounting below.
-      if (body.response_format?.type === 'json_object') { searchCalls.push(body); return { content: '{"search":false}', metadata: { usage: { cost: 0.00001 } } }; }
+      if (body.response_format?.type === 'json_object') { searchCalls.push(body); searchPhases.push(snapshots.at(-1)!.activity.phase); return { content: '{"search":false}', metadata: { usage: { cost: 0.00001 } } }; }
       calls.push(body); onText('Partial response'); streamReady?.();
       if (streamFails) throw new CompletionFailure('response_length_limit', 'Partial response', {
         id: 'public-generation', model: body.model, finish_reason: 'length', usage: { completion_tokens: 8192, completion_tokens_details: { reasoning_tokens: 8000 } }
@@ -768,17 +769,26 @@ const routerCalls = () => calls.filter(body => body.response_format?.json_schema
 
 it('continues a manual switch through ordinary Send and one-shot Auto excludes the effective model', async () => {
   const id = activeId(); await send(id); await idle();
+  expect(snapshots.some(s => s.activity.phase === 'routing')).toBe(true);
   const first = chatCalls()[0], original = store.session(id).character;
   const target = JSON.parse(store.session(id).chat_config).characters.find((c: Json) => c.id !== original);
   await switchPartner(id, target.id);
+  let snapshotStart = snapshots.length;
   expect(chatCalls()).toHaveLength(1); expect(routerCalls()).toHaveLength(1);
   await send(id, 'A different topic.', 2); await idle();
+  expect(snapshots.slice(snapshotStart).some(s => s.activity.phase === 'routing')).toBe(false);
   expect(chatCalls()[1].model).toBe(target.model); expect(routerCalls()).toHaveLength(1);
   expect(chatCalls()[1].messages.slice(1, first.messages.length)).toEqual(first.messages.slice(1));
-  await switchPartner(id, null); await send(id, 'Actually, focus on the recent correction.', 3); await idle();
+  await switchPartner(id, null); snapshotStart = snapshots.length;
+  await send(id, 'Actually, focus on the recent correction.', 3); await idle();
+  expect(snapshots.slice(snapshotStart).some(s => s.activity.phase === 'routing')).toBe(true);
   expect(chatCalls()[2].model).not.toBe(target.model); expect(routerCalls()).toHaveLength(2);
   expect(JSON.parse(routerCalls()[1].messages[1].content).at(-1)).toEqual({ role: 'user', content: 'Actually, focus on the recent correction.' });
+  snapshotStart = snapshots.length;
   await send(id, 'Continue with that.', 4); await idle();
+  expect(snapshots.slice(snapshotStart).some(s => s.activity.phase === 'routing')).toBe(false);
+  expect(snapshots.slice(snapshotStart).some(s => s.activity.phase === 'preparing')).toBe(true);
+  expect(searchPhases).toEqual(['preparing', 'preparing', 'preparing', 'preparing']);
   expect(chatCalls()[3].model).toBe(chatCalls()[2].model); expect(routerCalls()).toHaveLength(2);
   expect(store.messages(id).filter(m => m.origin === 'learner')).toHaveLength(4);
   expect(store.session(id).character).toBe(original); expect(memoryCalls).toHaveLength(0);
@@ -801,8 +811,10 @@ it('keeps failed Auto explicit and retries its frozen selection without duplicat
 it('keeps original Retry independent of pending replacement and never reroutes that retry', async () => {
   const id = activeId(); streamFails = true; await send(id); await idle();
   const original = chatCalls()[0]; await switchPartner(id, null);
+  const snapshotStart = snapshots.length;
   await controller.command('retryReply', { sessionId: id });
   await waitFor(() => store.requests(id).filter(r => r.role === 'chat' && r.status === 'failed').length === 2); await idle();
+  expect(snapshots.slice(snapshotStart).some(s => s.activity.phase === 'routing')).toBe(false);
   expect(chatCalls()[1]).toEqual(original); expect(routerCalls()).toHaveLength(1);
   streamFails = false; await controller.command('useSelectedPartner', { sessionId: id }); await idle();
   expect(chatCalls()[2].model).not.toBe(original.model); expect(routerCalls()).toHaveLength(2);
