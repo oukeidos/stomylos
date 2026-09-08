@@ -1,3 +1,4 @@
+import { EndProcessingDialog } from './end-processing';
 import { Explainable, ExplainHistory, ExplainDialog } from './explain';
 import { SearchSources, SearchCost, SearchAttempts } from './search';
 import type { PatternCard } from '../shared/pattern-report';
@@ -182,10 +183,9 @@ function endSummary(view: SessionView) {
   return stages.some(([, state]) => ['failed', 'interrupted'].includes(String(state)))
     ? 'Chat saved · Processing needs attention' : 'Finishing chat · Preparing updates';
 }
-function EndProcessingDetails({ view, act }: { view: SessionView; act: (fn: () => Promise<unknown>) => void }) {
+function EndProcessingDetails({ view }: { view: SessionView }) {
   const processing = view.endProcessing;
   if (!processing) return null;
-  const running = Object.values(processing.stages).some(state => state === 'running');
   const stateLabels: Record<string, string> = { pending: 'Waiting', running: 'Working…', completed: 'Done', skipped: 'Not needed', failed: 'Needs attention', interrupted: 'Interrupted', cancelled: 'Cancelled' };
   return <section className="end-details" aria-label="Processing stages">
     <h3>After this chat</h3><p className="note" role="status">{endSummary(view)}</p>
@@ -193,10 +193,7 @@ function EndProcessingDetails({ view, act }: { view: SessionView; act: (fn: () =
       <div><span>{endStageLabels[stage]}</span><span>{stateLabels[String(state)] ?? String(state)}</span></div>
       {processing.details?.[stage]?.failure && <p className="note">{errorText(processing.details[stage].failure)}</p>}
     </li>)}</ul>
-    {!processing.complete && <><p className="note">A new chat can start once these updates finish. You can browse saved chats while waiting.</p>
-      <div className="dialog-actions">{!running && <button onClick={() => act(() => window.stomylos.command('continueEnd', { sessionId: view.session.id }))}>Continue processing</button>}
-      <button onClick={() => act(() => window.stomylos.command('cancelEnd', { sessionId: view.session.id }))}>Force cancel</button></div>
-      <p className="note">Force cancel keeps completed results and discards remaining work and any unsaved memory update.</p></>}
+
   </section>;
 }
 function Renewal({ view, onToggle, act, initialOpen = false }: { view: SessionView; onToggle: () => void; act: (fn: () => Promise<unknown>) => void; initialOpen?: boolean }) {
@@ -406,6 +403,9 @@ function App() {
     return () => { alive = false; unsubscribe(); };
   }, [selected]);
   useEffect(() => onClose(() => act(async () => { await closeGenieForApp(); if (!await beforeDictationNavigation()) return; await flushAllDrafts(); await window.stomylos.command('close', undefined); })), [act]);
+  useLayoutEffect(() => {
+    if (app?.endBlocker) { setDetails(false); setSettings(false); setNewDialog(false); setDeleteTarget(null); }
+  }, [app?.endBlocker]);
   if (!app) return <div className="startup"><strong>Stomylos</strong><p>{startupError ? 'Your conversations could not be loaded.' : 'Opening your conversations…'}</p>{startupError && <button onClick={reloadSnapshot}>Try loading again</button>}</div>;
   const unfinished = app.unfinished; const partner = (view ? JSON.parse(view.session.chat_config).characters as Character[] : app.characters).find(c => c.id === view?.session.character)?.label ?? 'Partner';
   const history = library.sessions;
@@ -438,9 +438,9 @@ function App() {
     const args = { sessionId: view.session.id, operationId: crypto.randomUUID(), expectedQuestionId: view.session.starter_id!, expectedRevision: view.session.opening_revision };
     act(async () => { if (await beforeDictationNavigation()) { await flushDraft(args.sessionId); await window.stomylos.command('replaceStarter', args); } });
   }}><Icon name="refresh" /></button>;
-  return <div className={`app ${historyOpen ? '' : 'history-collapsed'}`}><header className="app-header" inert={genie.locked}>
+  return <div inert={!!app.endBlocker} className={`app ${historyOpen ? '' : 'history-collapsed'}`}><header className="app-header" inert={genie.locked}>
     <div className="app-navigation" aria-label="App navigation">
-      <IconButton className="new-chat lifecycle-action" label="New chat" icon="plus" onClick={() => unfinished ? setNewDialog(true) : act(startNew)} />
+      <IconButton className="new-chat lifecycle-action" label="New chat" icon="plus" disabled={!!app.endBlocker} onClick={() => unfinished ? setNewDialog(true) : act(startNew)} />
       <IconButton className="history-toggle" label={historyOpen ? 'Hide history' : 'Show history'} tooltip={historyOpen ? 'Hide library' : 'Show library'} icon="sidebar" aria-expanded={historyOpen} aria-controls="conversation-sidebar" onClick={() => setHistoryOpen(open => !open)} />
       <IconButton ref={settingsTrigger} label="Settings" icon="settings" onClick={() => setSettings(true)} />
     </div>
@@ -487,7 +487,7 @@ function App() {
       <span>{maintenanceNotices(view).map(notice => notice.text).join(' · ')}</span>
       <button onClick={() => { setDetailsSection(maintenanceNotices(view)[0].section); setDetails(true); }}>Review updates</button>
     </div>}
-    {app.endBlocker && app.endBlocker !== view?.session.id && <div className="notice" role="status">Finish end processing before starting another chat. <button onClick={() => act(async () => { await show(app.endBlocker!); setDetailsSection(null); setDetails(true); })}>View processing</button>{(app.endBlockers?.length ?? 0) > 1 && <details><summary>Chats awaiting processing ({app.endBlockers!.length})</summary><ul>{app.endBlockers!.map(item => <li key={item.sessionId}><button onClick={() => act(() => show(item.sessionId))}>{item.title}</button></li>)}</ul></details>}</div>}
+
     <main inert={genie.locked} ref={scroll.scroller} tabIndex={0} aria-label="Conversation">
       <div className="page" ref={scroll.content}>{view ? <>
         <div className="transcript">{view.messages.filter(message => !(canChangeOpening && message.origin === 'starter')).map(message => <Bubble key={message.id} message={message} metadata={view.requests.find(r => r.id === message.request_id) ? JSON.parse(view.requests.find(r => r.id === message.request_id)!.metadata) : undefined} partner="Partner" />)}</div>
@@ -515,6 +515,7 @@ function App() {
       <div ref={setReviewControls} className="review-controls" />
       <>{unfinished && <IconButton label="Return to current chat" icon="back" onClick={() => act(() => show(unfinished.id))} />}</></footer>}</div>
   </div>
+  {app.endBlocker && <EndProcessingDialog key={app.endBlocker} sessionId={app.endBlocker} storageError={app.activity.storageError ?? null} errorText={errorText} />}
   <ExplainDialog sessionId={view?.session.id ?? null} />
   <DictationNavigationDialog />
   <Modal open={!!deleteTarget} onOpenChange={open => { if (!open && !deleting) setDeleteTarget(null); }} title="Delete this chat?">
@@ -529,7 +530,7 @@ function App() {
     <div className="dialog-actions"><button disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button><button className="delete-confirm" disabled={deleting} onClick={() => void confirmDelete()}>{deleting ? 'Deleting…' : 'Delete chat'}</button></div>
   </Modal>
   <Modal open={details} onOpenChange={setDetails} title="Conversation details">{view && <>
-    <EndProcessingDetails view={view} act={act} />
+    <EndProcessingDetails view={view} />
     <MemoryDetails view={view} act={act} initialOpen={detailsSection === 'memory'} openShared={() => { setDetails(false); setSettingsTab('memory'); setSettings(true); }} show={async id => { setDetails(false); await show(id); }} />
     <RequestDetails view={view} onToggle={() => undefined} />
     <Renewal initialOpen={detailsSection === 'starter'} view={view} onToggle={() => undefined} act={act} />

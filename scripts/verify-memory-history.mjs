@@ -49,27 +49,45 @@ try {
   const second = await begin('I visited a quiet museum. Forget the friend detail. I enjoy astronomy.');
   await command('endSession', { sessionId: second });
   await wait(async () => (await command('loadSession', { sessionId: second })).memory.job?.state === 'running', 'Second update did not start');
+  const modal = page.locator('.end-processing-dialog');
+  await modal.waitFor();
+  await modal.locator('.end-stage-state.running').first().waitFor();
+  assert.equal(await modal.getByRole('heading').evaluate(node => node === document.activeElement), true);
+  assert.equal(await modal.locator('li').last().getByRole('img').getAttribute('aria-label'), 'Waiting');
+  assert.equal(await page.locator('.app').evaluate(node => node.inert), true);
+  assert.equal(await page.locator('.new-chat').isDisabled(), true);
+  await page.keyboard.press('Escape'); assert.equal(await modal.isVisible(), true);
+  await page.mouse.click(8, 100); assert.equal(await modal.isVisible(), true);
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press('Tab');
+    assert.equal(await modal.evaluate(node => node.contains(document.activeElement)), true);
+  }
+  assert.equal(await modal.getByRole('button', { name: 'Try again', exact: true }).count(), 0);
+  for (const [width, height] of [[1180, 860], [760, 620]]) {
+    await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(...size), [width, height]);
+    assert.equal(await modal.evaluate(node => node.scrollWidth > node.clientWidth), false);
+    await page.screenshot({ path: `${output}/processing-${width}.png` });
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  assert.equal(await modal.locator('.end-spinner').first().evaluate(node => getComputedStyle(node).animationName), 'none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  report.checks.push('Automatic live modal blocks background and New chat; Escape/outside click cannot dismiss; keyboard stays inside; wide/narrow layout and reduced motion pass');
+  releaseUpdate();
+  await modal.waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('.app').evaluate(node => node.inert), false);
+  assert.equal(await button('New chat').isEnabled(), true);
   if (await button('Show history').count()) await button('Show history').click();
   const snapshot = await command('snapshot');
   await page.locator('.history-item').nth(snapshot.sessions.findIndex(session => session.id === second)).click();
-  await button('Processing details').click();
-  await page.getByRole('region', { name: 'Processing stages' }).waitFor();
-  assert.equal(await page.locator('.maintenance-summary').count(), 0);
-  assert.equal(await button('View processing').count(), 0);
-  await page.keyboard.press('Escape');
   await button('Conversation details').click();
-  await page.getByRole('dialog', { name: 'Conversation details' }).waitFor();
-  report.checks.push('Single end summary; processing and header detail buttons open a visible dialog');
   await page.getByRole('button', { name: /^Shared memory/ }).click();
   await button('Changes from this chat').click();
-  await page.getByText('Updating memory. Changes will appear when the update completes.', { exact: true }).waitFor();
-  releaseUpdate();
   await page.getByText('Added 1 · Updated 1 · Deleted 1', { exact: true }).waitFor();
   assert.equal(await page.locator('.memory-change-list > li').count(), 3);
   await page.getByText('Traits → Experiences', { exact: false }).waitFor();
   assert.match(await page.locator('.memory-changes').innerText(), /Prefers quiet museums\./);
   assert.match(await page.locator('.memory-changes').innerText(), /Visited a quiet museum\./);
-  report.checks.push('Open details refreshes from running to committed history without reopening; add/update/delete and category movement render');
+  report.checks.push('Completion automatically unlocks the app; saved add/update/delete history remains accessible');
   for (const [width, height] of [[1180, 860], [760, 620]]) {
     await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(...size), [width, height]);
     await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))));

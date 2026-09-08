@@ -2,7 +2,7 @@
 
 ## Unreleased — 2026-09-09
 
-- Simplify post-chat progress and fix access to processing details.
+- Show live post-chat progress in a blocking dialog with retry and cancel controls.
 
 ## 0.2.0 — 2026-09-09
 

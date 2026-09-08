@@ -61,9 +61,9 @@ npm start
 
 ## After a chat
 
-Ending a chat saves it and runs grammar analysis, question generation and memory
-updates. A compact status below the conversation shows progress. Choose
-**Processing details**, or the **Conversation details** information button in the
-upper right, to see individual stages and recover unfinished work. You can browse
-saved chats while processing; starting another chat waits until it finishes or you
-choose **Force cancel**. Cancellation keeps completed results.
+Ending a chat saves it and opens a progress dialog while grammar analysis, new
+questions and memory updates finish. The main window stays disabled until the
+dialog closes automatically. If processing fails, choose **Try again** or
+**Cancel remaining**. Cancellation keeps completed results and discards unfinished
+work. Restarting the app reopens unfinished processing without automatically
+sending requests again. Completed stages remain in **Conversation details**.
