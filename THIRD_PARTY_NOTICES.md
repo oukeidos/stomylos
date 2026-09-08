@@ -2,7 +2,9 @@
 
 Stomylos uses the components listed below. Versions are from `package-lock.json`
 for the 0.1.0 source release (2026-09-08). Each component keeps its own license.
-This file does not grant a license to Stomylos itself.
+Stomylos itself is licensed under the MIT License, copyright (c) 2026 oukeidos;
+see `LICENSE` in the source repository or `LICENSE.stomylos.txt` in a portable
+bundle. This does not replace any third-party license or attribution below.
 
 This inventory covers the Electron runtime, application npm dependencies and
 their dependency trees, including React, Radix UI and Markdown code bundled into

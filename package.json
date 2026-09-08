@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "description": "English conversation practice with post-chat grammar analysis",
-  "author": "Stomylos",
-  "license": "UNLICENSED",
+  "author": "oukeidos",
+  "license": "MIT",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -77,6 +77,10 @@
         "to": "icon.png"
       },
       "CHANGELOG.md",
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.stomylos.txt"
+      },
       "THIRD_PARTY_NOTICES.md"
     ],
     "npmRebuild": true

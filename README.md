@@ -62,3 +62,10 @@ Cached audio playback does not generate a new charge.
 Cost records contain no conversation text and survive chat deletion. They and
 the budget stay on this computer when exporting or restoring history backups;
 those backups do not include them. Earlier usage is not reconstructed.
+
+## License
+
+Copyright (c) 2026 oukeidos. Stomylos is licensed under the MIT License; see
+[LICENSE](LICENSE) in the source repository or `LICENSE.stomylos.txt` in a
+portable bundle. Third-party components retain their own licenses; see
+[Third-Party Notices](THIRD_PARTY_NOTICES.md).
