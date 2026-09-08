@@ -93,10 +93,10 @@ describe('durable session transactions', () => {
     const { session, learner } = answer('I like it.'); reply(session.id);
     const second = store.submit(session.id, learner.content); store.end(session.id);
     const request = store.createRequest(session.id, 'grammar', grammarSnapshot()); store.dispatch(request.id);
-    const unit = { text: learner.content, corrected_text: learner.content, explanation: '' };
+    const unit = { index: 0, corrected_text: learner.content, explanation: '' };
     expect(() => store.saveAnalysis(request.id, JSON.stringify({ units: [unit] }), {})).toThrow('grammar_source_count');
     expect(store.units(session.id)).toEqual([]); expect(store.request(request.id).status).toBe('dispatched');
-    const content = JSON.stringify({ units: [unit, unit] });
+    const content = JSON.stringify({ units: [unit, { ...unit, index: 1 }] });
     store.saveAnalysis(request.id, content, {}); store.saveAnalysis(request.id, content, {});
     expect(store.units(session.id).map(u => [u.source_message_id, u.ordinal])).toEqual([[learner.id, 0], [second.id, 1]]);
     expect(store.session(session.id).analysis_state).toBe('completed');
@@ -160,4 +160,16 @@ it('retains a saved C session while new sessions receive reciprocal v6', () => {
   expect(next.version).toBe('stomylos_conversation_v7');
   expect(next.system_prompt).toBe(config.conversationPrompt);
   expect(next.seed_template).toBe(config.conversation.seed_template);
+});
+
+it('recovers a frozen legacy grammar response across restart without changing its format', () => {
+  const {session,learner}=answer();reply(session.id);store.end(session.id);
+  const old=goldens.legacy.grammar_snapshot;
+  const request=store.createRequest(session.id,'grammar',old);store.dispatch(request.id);
+  const content=JSON.stringify({units:[{text:learner.content,corrected_text:learner.content,explanation:''}]});
+  store.receiveEndResponse(session.id,'grammar',request.id,content,{});
+  store.close();store=new Store(directory,native);
+  expect(store.request(request.id).config).toBe(JSON.stringify(old));
+  store.resumeEndResponse(session.id,'grammar');
+  expect(store.units(session.id)[0]).toMatchObject({text:learner.content,source_message_id:learner.id});
 });

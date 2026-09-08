@@ -110,3 +110,17 @@ for (const kind of ['direct', 'starter', 'reselection']) {
     readFileSync(`../experiments/EXP-002-character-router-selection/prompt-compression-no-independent-2026-09-08/compact-${kind}.txt`));
 }
 console.log('All three compact Auto prompts exactly match the selected no-independent experiment.');
+
+const grammarV1 = JSON.parse(readFileSync('src/main/grammar-v1-config.json', 'utf8'));
+assert.equal(grammarV1.grammarPrompt, goldens.grammar.prompt);
+assert.deepEqual(grammarV1.grammar.request_parameters, goldens.legacy.grammar_snapshot.parameters);
+assert.equal(current.grammarPrompt, readFileSync('../experiments/EXP-009-authentic-conversation-grammar/context-ablation-2026-09-08/index-prompt.txt', 'utf8'));
+assert.equal(current.grammar.contract_version, 'stomylos_grammar_analysis_v2');
+assert.deepEqual(current.grammar.request_parameters.reasoning, { exclude: true, effort: 'low' });
+const expectedGrammar = structuredClone(goldens.legacy.grammar_snapshot.parameters);
+expectedGrammar.reasoning.effort = 'low';
+const grammarItem = expectedGrammar.response_format.json_schema.schema.properties.units.items;
+grammarItem.properties = { index: { type: 'integer' }, corrected_text: { type: 'string' }, explanation: { type: 'string' } };
+grammarItem.required = ['index', 'corrected_text', 'explanation'];
+assert.deepEqual(current.grammar.request_parameters, expectedGrammar);
+console.log('Grammar v2 exact index prompt/settings match selection; frozen v1 remains exact.');

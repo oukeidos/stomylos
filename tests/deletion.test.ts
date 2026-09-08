@@ -25,7 +25,7 @@ function rows(table: string) { return raw.prepare(`SELECT rowid,* FROM ${table} 
 it('deletes all owned records atomically while preserving shared questions, memory and other chats', () => {
   const id = end();
   const grammar = store.createRequest(id, 'grammar', grammarSnapshot()); store.dispatch(grammar.id);
-  store.saveAnalysis(grammar.id, JSON.stringify({ units: [{ text: 'I enjoy quiet museums.', corrected_text: 'I enjoy quiet museums.', explanation: 'No change needed.' }] }), {});
+  store.saveAnalysis(grammar.id, JSON.stringify({ units: [{ index: 0, corrected_text: 'I enjoy quiet museums.', explanation: 'No change needed.' }] }), {});
   const memory = store.prepareMemory(id, 'memory-public'); store.dispatchMemory(memory.id);
   const packet = JSON.parse(memory.input_json);
   store.saveMemory(memory.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet museums.', source_message_ids: [packet.session.messages.find((m: any) => m.origin === 'learner').id] }] }), {});

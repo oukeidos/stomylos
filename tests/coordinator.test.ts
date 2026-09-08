@@ -94,7 +94,7 @@ beforeEach(async () => {
       if (!router && grammarFails) throw new AppFailure('response_identity');
       if (!router && holdGrammar) await new Promise<void>((resolve, reject) => signal.addEventListener('abort', () => lateGrammar ? resolve() : reject(new AppFailure('request_cancelled')), { once: true }));
       return { metadata: {}, content: JSON.stringify(router ? Object.fromEntries(body.response_format.json_schema.schema.required.map((id: string) => [id, ['informative_generalist', 'model_03'].includes(id) ? 2 : 1])) :
-        { units: JSON.parse(body.messages[1].content).filter((m: Json) => m.role === 'user').map((m: Json) => ({ text: m.content, corrected_text: m.content, explanation: '' })) }) };
+        { units: JSON.parse(body.messages[1].content).filter((m: Json) => m.role === 'user').map((m: Json) => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) }) };
     },
     async stream(body, signal, onText) {
       // Search gates are separate from the conversation/character call accounting below.
@@ -403,30 +403,46 @@ it('rejects a stale draft save after send and preserves a newer edit', async () 
   await expect(send(id, 'Stale source.', 4)).rejects.toThrow('draft_changed');
   expect(store.session(id).draft).toBe('New unsent draft.'); await controller.command('close', undefined);
 });
-it('keeps grammar independent from a new chat and leaves queued analysis undispatched on close', async () => {
-  const first = activeId(); await send(first); await idle(); holdGrammar = true;
-  await controller.command('endSession', { sessionId: first });
-  await waitFor(() => calls.length === 3);
-  const second = await controller.command('newSession', undefined); await send(second, 'New chat.', 2); await idle();
-  await controller.command('endSession', { sessionId: second });
-  expect(store.session(first).analysis_state).toBe('running');
-  expect(store.requests(second).find(r => r.role === 'grammar')?.status).toBe('queued');
+it.each(['queued', 'dispatched'])('blocks new chats during %s grammar and preserves recovery without replay on close', async status => {
+  const id = activeId(); await send(id); await idle();
+  if (status === 'queued') {
+    // A durable request that has not yet reached the coordinator's dispatcher.
+    store.end(id); store.createRequest(id, 'grammar', JSON.parse(store.session(id).grammar_config!));
+  } else {
+    holdGrammar = true; await controller.command('endSession', { sessionId: id });
+    await waitFor(() => store.requests(id).some(r => r.role === 'grammar' && r.status === 'dispatched'));
+    await waitFor(() => store.starterJob(id)?.state === 'completed' && store.memoryJob(id)?.state === 'completed');
+  }
+  expect(store.requests(id).find(r => r.role === 'grammar')?.status).toBe(status);
+  await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
+  expect(store.endBlocker()).toBe(id);
   const requestCount = calls.length; await controller.command('close', undefined);
   store = new Store(directory, resolve('native/advisory-lock.node'));
-  expect(store.session(first).analysis_state).toBe('failed'); expect(store.session(second).analysis_state).toBe('pending');
+  expect(store.session(id).analysis_state).toBe(status === 'queued' ? 'pending' : 'failed');
+  expect(store.endBlocker()).toBe(id);
   expect(calls).toHaveLength(requestCount);
 });
 it('runs renewal despite grammar failure and retries a failed renewal without changing its frozen request', async () => {
   const first = activeId(); await send(first); await idle(); grammarFails = true;
   await controller.command('endSession', { sessionId: first });
   await waitFor(() => store.starterJob(first)?.state === 'completed' && store.session(first).analysis_state === 'failed');
-  const second = await controller.command('newSession', undefined); grammarFails = false; renewalFails = true;
+  await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
+  const renewalCount = renewalCalls.length; grammarFails = false;
+  await controller.command('retryAnalysis', { sessionId: first });
+  await waitFor(() => store.endStatus(first)?.complete === true);
+  expect(renewalCalls).toHaveLength(renewalCount);
+  const second = await controller.command('newSession', undefined); renewalFails = true;
   await send(second); await idle(); await controller.command('endSession', { sessionId: second });
-  await waitFor(() => store.starterJob(second)?.state === 'failed' && store.session(second).analysis_state === 'completed');
-  const frozen = store.starterJob(second)!; const body = renewalCalls.at(-1); renewalFails = false;
+  await waitFor(() => store.starterAttempts(store.starterJob(second)!.id).length === 2 && store.starterJob(second)?.state === 'failed' && store.session(second).analysis_state === 'completed');
+  const frozen = store.starterJob(second)!; const body = renewalCalls.at(-1);
+  expect(renewalCalls).toHaveLength(renewalCount + 2);
+  expect(renewalCalls.at(-2)).toEqual(body);
+  const grammarCount = store.requests(second).filter(r => r.role === 'grammar').length;
+  renewalFails = false;
   await controller.command('retryStarterRenewal', { sessionId: second });
   await waitFor(() => store.starterJob(second)?.state === 'completed');
-  expect(renewalCalls.at(-1)).toEqual(body); expect(renewalCalls).toHaveLength(3);
+  expect(renewalCalls.at(-1)).toEqual(body); expect(renewalCalls).toHaveLength(renewalCount + 3);
+  expect(store.requests(second).filter(r => r.role === 'grammar')).toHaveLength(grammarCount);
   expect(store.starterJob(second)).toMatchObject({ config: frozen.config, input_json: frozen.input_json, model: frozen.model });
   await expect(controller.command('retryStarterRenewal', { sessionId: second })).rejects.toThrow('starter_not_retryable');
   await controller.command('close', undefined);
@@ -437,7 +453,7 @@ it('retains malformed visible output and usage without admitting candidates or c
   await waitFor(() => store.starterJob(id)?.state === 'failed' && store.session(id).analysis_state === 'completed');
   const attempt = store.starterAttempts(store.starterJob(id)!.id)[0];
   expect(attempt).toMatchObject({ failure: 'starter_output_format', response_content: renewalContent, accepted_count: 0 });
-  expect(JSON.parse(attempt.metadata)).toMatchObject({ usage: { cost: 0.001 }, source_turns: 2 });
+  expect(JSON.parse(attempt.metadata)).toMatchObject({ usage: { cost: 0.001 }, source_turns: 1 });
   expect(store.starterInventory().queued).toEqual([]); await controller.command('close', undefined);
 });
 it.each(['dispatchStarter', 'saveStarter', 'end'])('recovers a lost %s acknowledgement without a second generator call', async method => {
@@ -488,7 +504,7 @@ it('generates for an explicitly ended skipped draft but not an untouched draft',
   await controller.command('close', undefined);
 });
 
-it('keeps memory independent of chat and grammar and freezes the first-reply snapshot across a later commit', async () => {
+it('runs memory independently within the end gate and preserves chat snapshots across later commits', async () => {
   const first = activeId();
   await controller.command('selectPartner', { sessionId: first, character: 'model_04' });
   await send(first, 'I enjoy botanical gardens.'); await idle();
@@ -496,26 +512,32 @@ it('keeps memory independent of chat and grammar and freezes the first-reply sna
   memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys botanical gardens.', source_message_ids: [packet.session.messages.find((m: Json) => m.origin === 'learner').id] }] });
   await controller.command('endSession', { sessionId: first });
   await waitFor(() => memoryCalls.length === 1 && memoryRelease !== null);
-  await waitFor(() => store.session(first).analysis_state === 'completed');
+  await waitFor(() => store.session(first).analysis_state === 'completed' && store.starterJob(first)?.state === 'completed');
+  await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
+  holdMemory = false; memoryRelease!();
+  await waitFor(() => store.endStatus(first)?.complete === true);
   const second = await controller.command('newSession', undefined);
   await controller.command('selectPartner', { sessionId: second, character: 'model_04' });
   await send(second, 'A fresh topic.', 2); await idle();
   const before = store.requests(second).find(r => r.role === 'chat')!;
-  expect(JSON.parse(before.config).memory_context.traits).toEqual([]);
-  holdMemory = false; memoryRelease!();
-  await waitFor(() => store.memoryJob(first)?.state === 'completed');
-  await send(second, 'Continue this conversation.', 3); await idle();
+  const frozenMemory = JSON.parse(before.config).memory_context;
+  expect(frozenMemory.traits[0].text).toBe('Enjoys botanical gardens.');
+  await send(second, 'I enjoy quiet libraries.', 3); await idle();
   const after = store.requests(second).findLast(r => r.role === 'chat')!;
-  expect(JSON.parse(after.config).memory_context).toEqual(JSON.parse(before.config).memory_context);
-  expect(store.view(second).memory.current?.traits[0].text).toBe('Enjoys botanical gardens.');
+  expect(JSON.parse(after.config).memory_context).toEqual(frozenMemory);
   expect(memoryCalls).toHaveLength(1);
-  memoryOutput = () => '{"operations":[]}'; await controller.command('endSession', { sessionId: second });
-  await waitFor(() => store.memoryJob(second)?.state === 'completed');
+  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet libraries.', source_message_ids: [packet.session.messages.findLast((m: Json) => m.origin === 'learner').id] }] });
+  await controller.command('endSession', { sessionId: second });
+  await waitFor(() => store.endStatus(second)?.complete === true);
   expect(JSON.parse(memoryCalls[1].messages[1].content).current_memory.revision).toBe(1);
+  expect(store.requests(second).find(r => r.id === before.id)?.config).toBe(before.config);
+  expect(store.requests(second).find(r => r.id === after.id)?.config).toBe(after.config);
+  expect(store.view(second).memory.current?.traits.map(t => t.text)).toContain('Enjoys quiet libraries.');
   const third = await controller.command('newSession', undefined);
   await controller.command('selectPartner', { sessionId: third, character: 'model_04' });
   await send(third, 'Do you remember my interests?', 4); await idle();
-  expect(calls.filter(c => c.stream).at(-1)!.messages[0].content).toContain('Enjoys botanical gardens.');
+  const prompt = calls.filter(c => c.stream).at(-1)!.messages[0].content;
+  expect(prompt).toContain('Enjoys botanical gardens.'); expect(prompt).toContain('Enjoys quiet libraries.');
   await controller.command('close', undefined);
 });
 
@@ -658,7 +680,7 @@ function seedPatternEvidence() {
   for(let i=0;i<5;i++) {
     const session=store.createSession();store.submit(session.id,'I enjoyed walking.');store.end(session.id);
     const attempt=store.createRequest(session.id,'grammar',grammarSnapshot());store.dispatch(attempt.id);
-    store.saveAnalysis(attempt.id,JSON.stringify({units:[{text:'I enjoyed walking.',corrected_text:'I enjoyed walking.',explanation:''}]}),{});
+    store.saveAnalysis(attempt.id,JSON.stringify({units:[{index: 0,corrected_text:'I enjoyed walking.',explanation:''}]}),{});
   }
 }
 it('dispatches a historical retry with its frozen request and policy through the controller', async () => {

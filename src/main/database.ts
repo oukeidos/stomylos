@@ -522,7 +522,8 @@ export class Store {
       if (request.status !== 'dispatched' || current.selected_analysis_id !== null) throw new AppFailure('analysis_already_resolved');
       const source = this.messages(current.id);
       if (request.source_hash !== current.source_hash || hash(transcriptJson(source)) !== current.source_hash) throw new AppFailure('frozen_source_changed');
-      const units = validateGrammar(content, source);
+      if (hash(request.config) !== request.config_hash) throw new AppFailure('config_hash_mismatch');
+      const units = validateGrammar(content, source, JSON.parse(request.config));
       for (const unit of units) this.run('INSERT INTO grammar_units(analysis_attempt_id,session_id,source_message_id,ordinal,text,corrected_text,explanation,changed,warnings) VALUES(?,?,?,?,?,?,?,?,?)', id, current.id, unit.source_message_id, unit.ordinal, unit.text, unit.corrected_text, unit.explanation, unit.changed, unit.warnings);
       this.finishRequest(id, content, metadata);
       this.run("UPDATE sessions SET analysis_state='completed',selected_analysis_id=? WHERE id=?", id, current.id);

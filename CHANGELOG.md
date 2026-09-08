@@ -1,42 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-09-09
 
-- Use the selected concise Auto prompts for new conversations and new seven-model
-  partner reselections. Preserve score selection rules and exact historical retries.
-  Schema 17 admits the new contracts without rewriting existing data.
-
-- Use Gemini low reasoning for new shared-memory updates to reduce end-of-chat
-  waiting time and cost. Keep saved medium jobs unchanged on retry; schema 16
-  upgrades preserve existing data and request history.
-
-- Generate starter questions with the tested concise prompt and only the ended
-  chat’s user messages; select Gemini 20%, GLM 40%, and Claude Sonnet 40%.
-  Preserve existing duplicate/pool handling and exact retries of older jobs.
-- Upgrade schema 14 to 15 without rewriting existing rows, preserving compatibility
-  with the new starter request format and selection policy.
-
-- Omit application time instructions and timestamps from newly prepared chat
-  prompts, and enable automatic five-minute prompt caching for Fable and Sonnet.
-  Keep message-time storage, memory updates and exact retries of older requests.
-- Added automatic startup database migration from public schema 13 to 14, with a
-  consistent recovery backup and transactional rollback on failure.
-- Added selective Qwen memory cleanup after updates exceed 30,000 characters.
-  Committed memory remains unchanged until cleanup succeeds.
-- Run grammar, ordinary question generation and memory processing independently;
-  block new chats until completion or force cancellation. Preserve received output
-  and retry state across restart without automatic inference replay.
-- Removed dedicated Intention-question generation and added separate cleanup history.
-
-- Increased search-decision timeouts to 10 seconds per model and 20 seconds total
-  for new messages, including existing chats. Previously submitted requests keep
-  their saved retry settings.
-- Fixed the partner-selection message appearing on ordinary replies after Auto
-  selection. Reply preparation now has its own status, including search routing.
+- Analyze learner messages with Terra low and compact indexed output, preserving evidence and legacy retries in schema 18.
+- Simplify Auto partner-selection prompts while preserving scoring and legacy retries in schema 17.
+- Use Gemini low reasoning for faster, cheaper memory updates, preserving existing data and retries in schema 16.
+- Generate concise starters from learner messages using Gemini (20%), GLM (40%) and Sonnet (40%), preserving pool handling and legacy retries.
+- Upgrade schema 14 to 15 for the new starter format and selection policy without rewriting existing data.
+- Remove time context from new chat prompts and enable five-minute caching for Fable and Sonnet, preserving stored timestamps and legacy retries.
+- Automatically migrate schema 13 to 14 at startup with a recovery backup and rollback on failure.
+- Clean up memory exceeding 30,000 characters with Qwen, preserving committed memory until cleanup succeeds.
+- Process post-chat jobs independently with restart-safe retries, blocking new chats until completion or force cancellation.
+- Remove dedicated Intention-question generation and add separate cleanup history.
+- Increase search-decision timeouts to 10 seconds per model and 20 seconds total, preserving saved retry settings.
+- Fix reply status after Auto selection by separating partner selection from reply preparation and search routing.
 
 ## 0.1.0 — 2026-09-08
 
-Initial release.
-
-- Added Settings → Usage & budget with device-local monthly costs, TTS estimates
-  and an optional informational budget.
+- Initial release.

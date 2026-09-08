@@ -92,8 +92,8 @@ it('stores the first direct message at zero, freezes the opening, and preserves 
   store.end(session.id);
   expect(store.sessionPage().sessions[0].title).toBe(user.content);
   const source = JSON.parse(grammarBody(grammarSnapshot(), store.messages(session.id)).messages[1].content);
-  expect(source).toEqual([{ role: 'user', content: user.content }]);
-  expect(validateGrammar(JSON.stringify({ units: [{ text: user.content, corrected_text: '  I go walking.\n', explanation: 'Use go with I.' }] }), [user])[0].source_message_id).toBe(user.id);
+  expect(source).toEqual([{ index: 0, role: 'user', content: user.content }]);
+  expect(validateGrammar(JSON.stringify({ units: [{ index: 0, corrected_text: '  I go walking.\n', explanation: 'Use go with I.' }] }), [user])[0].source_message_id).toBe(user.id);
   expect(JSON.parse(store.memoryJob(session.id)!.source).messages.map(({ sent_time, ...message }: any) => { expect(sent_time.utc).toBeTypeOf('string'); return message; })).toEqual([{ id: user.id, role: 'user', origin: 'learner', delivery: 'complete', content: user.content }]);
   expect(counts(session.id)).toEqual([{ kind: 'presented', n: 1 }]);
 });

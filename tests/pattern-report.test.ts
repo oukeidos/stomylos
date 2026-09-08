@@ -24,7 +24,7 @@ function seed(n = 5, changed = false, mixed = false) {
     const text = 'Yesterday I ' + (changed ? 'go' : 'went') + ' to the park.';
     store.submit(s.id, text); store.end(s.id);
     const a = store.createRequest(s.id, 'grammar', grammarSnapshot()); store.dispatch(a.id);
-    store.saveAnalysis(a.id, JSON.stringify({ units: [{ text, corrected_text: 'Yesterday I went to the park.', explanation: changed ? 'The event is finished.' : '' }] }), {});
+    store.saveAnalysis(a.id, JSON.stringify({ units: [{ index: 0, corrected_text: 'Yesterday I went to the park.', explanation: changed ? 'The event is finished.' : '' }] }), {});
   }
   return ids;
 }
@@ -243,7 +243,7 @@ it('paginates saved reports without loss or duplication and keeps selected analy
     const s=store.createSession();store.submit(s.id,'One complete learner message.');store.end(s.id);
     const first=store.createRequest(s.id,'grammar',grammarSnapshot());store.dispatch(first.id);store.failRequest(first.id,'request_timeout',null,{},false);
     const next=store.createRequest(s.id,'grammar',grammarSnapshot());store.dispatch(next.id);
-    store.saveAnalysis(next.id,JSON.stringify({units:[{text:'One complete learner message.',corrected_text:'One complete learner message.',explanation:''}]}),{});
+    store.saveAnalysis(next.id,JSON.stringify({units:[{index: 0,corrected_text:'One complete learner message.',explanation:''}]}),{});
   }
   const expected=[];
   for(let i=0;i<21;i++){

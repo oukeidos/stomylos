@@ -19,7 +19,7 @@ function source() {
   const bubble = store.prepareReply(session.id, reply.id); store.finishReply(reply.id, bubble.id, 'A walk changes the pace of the day.', {});
   store.submit(session.id, 'I enjoy a walk.'); store.end(session.id);
   const request = store.createRequest(session.id, 'grammar', grammarSnapshot()); store.dispatch(request.id);
-  return { id: session.id, request: request.id, content: JSON.stringify({ units: Array.from({ length: 2 }, () => ({ text: 'I enjoy a walk.', corrected_text: 'I enjoy a walk.', explanation: '' })) }) };
+  return { id: session.id, request: request.id, content: JSON.stringify({ units: Array.from({ length: 2 }, (_, index) => ({ index, corrected_text: 'I enjoy a walk.', explanation: '' })) }) };
 }
 it('rolls back all units and selection when insertion fails halfway through', () => {
   const input = source();

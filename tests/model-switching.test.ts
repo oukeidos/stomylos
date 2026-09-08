@@ -52,7 +52,7 @@ it('keeps A→B→A in one transcript with immutable originals, source IDs and m
   store.end(id);
   const grammar = store.createRequest(id,'grammar',JSON.parse(store.session(id).grammar_config!)); store.dispatch(grammar.id);
   const users=store.messages(id).filter(m=>m.role==='user');
-  store.saveAnalysis(grammar.id,JSON.stringify({units:users.map(m=>({text:m.content,corrected_text:m.content,explanation:''}))}),{});
+  store.saveAnalysis(grammar.id,JSON.stringify({units:users.map((m,index)=>({index,corrected_text:m.content,explanation:''}))}),{});
   expect(store.units(id).map(u=>u.source_message_id)).toEqual(users.map(m=>m.id));
   expect(store.units(id)).toHaveLength(3); expect(store.integrity().foreignKeys).toEqual([]);
 });

@@ -17,7 +17,7 @@ beforeEach(() => {
   dir=mkdtempSync(join(tmpdir(),'stomylos-pattern-controller-')); store=new Store(dir,resolve('native/advisory-lock.node'));
   for(let i=0;i<5;i++) { const s=store.createSession(); store.submit(s.id,'I enjoyed walking.'); store.end(s.id);
     const a=store.createRequest(s.id,'grammar',grammarSnapshot()); store.dispatch(a.id);
-    store.saveAnalysis(a.id,JSON.stringify({units:[{text:'I enjoyed walking.',corrected_text:'I enjoyed walking.',explanation:''}]}),{}); }
+    store.saveAnalysis(a.id,JSON.stringify({units:[{index: 0,corrected_text:'I enjoyed walking.',explanation:''}]}),{}); }
 });
 afterEach(async()=>{ await controller?.close(); store.close(); rmSync(dir,{recursive:true,force:true}); });
 function rig() {

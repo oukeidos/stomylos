@@ -1,3 +1,4 @@
+import grammarV1 from '../src/main/grammar-v1-config.json';
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import goldens from './fixtures/contract-goldens.json';
@@ -30,9 +31,9 @@ it('preserves every original conversation body for historical sessions', () => {
   expect(starters).toEqual(goldens.legacy.starters);
 });
 it('preserves grammar settings and uses the selected experimental schema without extra fields', () => {
-  expect(grammarSnapshot()).toEqual({ ...goldens.legacy.grammar_snapshot, app_version: appVersion });
-  expect(grammarBody(grammarSnapshot(), sources[0])).toEqual(goldens.legacy.grammar_body);
-  expect(config.grammar.request_parameters.response_format).toEqual({ type: 'json_schema', json_schema: {
+  expect(grammarSnapshot().version).toBe('stomylos_grammar_analysis_v2');
+  expect(grammarBody(goldens.legacy.grammar_snapshot, sources[0])).toEqual(goldens.legacy.grammar_body);
+  expect(grammarV1.grammar.request_parameters.response_format).toEqual({ type: 'json_schema', json_schema: {
     name: 'stomylos_grammar_analysis_v1', strict: true, schema: goldens.grammar.schema } });
 });
 it('changes only the identified router export newline while preserving request settings and input', () => {

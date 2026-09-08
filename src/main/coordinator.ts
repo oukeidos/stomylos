@@ -548,7 +548,7 @@ export class Coordinator {
       const result = await this.gateway.complete(body, snapshot.response_identity, signal, 120_000);
       if (signal.aborted) throw new AppFailure('request_cancelled');
       await this.write('receiveEndResponse', request.session_id, 'grammar', request.id, result.content, result.metadata);
-      validateGrammar(result.content, source); await this.write('saveAnalysis', request.id, result.content, result.metadata);
+      validateGrammar(result.content, source, snapshot); await this.write('saveAnalysis', request.id, result.content, result.metadata);
       await this.write('clearEndResponse', request.session_id, 'grammar');
     } catch (error) {
       await this.write('clearEndResponse', request.session_id, 'grammar');

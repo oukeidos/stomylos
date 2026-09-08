@@ -63,7 +63,7 @@ it('verifies exactly one request for each pinned generator through end, admissio
           if (body.response_format) {
             const router = body.response_format.json_schema.name.startsWith('stomylos_character_scores_v');
             return { metadata: {}, content: JSON.stringify(router ? Object.fromEntries(body.response_format.json_schema.schema.required.map((id: string) => [id, ['informative_generalist', 'model_03'].includes(id) ? 2 : 1])) :
-              { units: JSON.parse(body.messages[1].content).filter((m: Json) => m.role === 'user').map((m: Json) => ({ text: m.content, corrected_text: m.content, explanation: '' })) }) };
+              { units: JSON.parse(body.messages[1].content).filter((m: Json) => m.role === 'user').map((m: Json) => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) }) };
           }
           expect(body.model).toBe(model.model); expect(body.provider.only).toEqual([model.tag]);
           const inputBound = body.messages.reduce((n: number, m: Json) => n + Buffer.byteLength(m.content) + 64, 256);

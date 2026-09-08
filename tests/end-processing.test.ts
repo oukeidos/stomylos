@@ -29,7 +29,7 @@ function fixture(behavior: (kind: string, body: Json, signal: AbortSignal) => Pr
 function valid(kind: string, body: Json) {
   if (kind === 'update') return '{"operations":[]}';
   if (kind === 'starter') return 'What would you like to explore?\nHow would you describe a favorite place?';
-  return JSON.stringify({ units: JSON.parse(body.messages[1].content).filter((m: Json) => m.role === 'user').map((m: Json) => ({ text: m.content, corrected_text: m.content, explanation: '' })) });
+  return JSON.stringify({ units: JSON.parse(body.messages[1].content).filter((m: Json) => m.role === 'user').map((m: Json) => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) });
 }
 it('runs three independent branches with no intention calls and gates until all complete', async () => {
   let release!: () => void;
@@ -71,7 +71,7 @@ it('commits a saved cleanup response locally without credentials or repeating th
   const grammar = f.store.createRequest(f.id, 'grammar', JSON.parse(f.store.session(f.id).grammar_config!));
   f.store.dispatch(grammar.id);
   const learner = f.store.messages(f.id).find(m => m.origin === 'learner')!;
-  f.store.saveAnalysis(grammar.id, JSON.stringify({ units: [{text: learner.content, corrected_text: learner.content, explanation: ''}] }), {});
+  f.store.saveAnalysis(grammar.id, JSON.stringify({ units: [{index: 0, corrected_text: learner.content, explanation: ''}] }), {});
   const starter = f.store.retryStarter(f.id, 'starter-op'); f.store.dispatchStarter(starter.id);
   f.store.saveStarter(starter.id, valid('starter', {}), {});
   const update = f.store.prepareMemory(f.id, 'update-op'); f.store.dispatchMemory(update.id);

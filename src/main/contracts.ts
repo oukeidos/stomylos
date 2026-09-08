@@ -2,6 +2,7 @@ import { createHash, randomInt } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { version } from '../../package.json';
 import runtime from './runtime-config.json';
+import grammarV1 from './grammar-v1-config.json';
 import conversationV5 from './conversation-v5-config.json';
 import conversationV6 from './conversation-v6-config.json';
 import universalV1 from './universal-v1-config.json';
@@ -51,7 +52,8 @@ export function verifyRuntime() {
     [directSixPrompt, 'f52f51a8f1ee7fcb32c84641f10d53229df70c08e8c770ae9aa6cf9097d26633'],
     [starterSevenPrompt, 'ffe7fbf60ebefe127fd355c4433e5b4329ec2164e4c88eb7cebc7d953d6a4919'],
     [directSevenPrompt, '9aea4092950d333da528772588014540472af3b99599a440d57252d6dfc90711'],
-    [runtime.grammarPrompt, 'a01d2b746a186f76f2952013e5d35845b39e13f0c2081c74a74978c359da483e'],
+    [runtime.grammarPrompt, '99495c8a3353c9b92e92d49a4603180df6528f87e8ce29a4950863ea7bce6a8a'],
+    [grammarV1.grammarPrompt, 'a01d2b746a186f76f2952013e5d35845b39e13f0c2081c74a74978c359da483e'],
     [universalV1.conversationPrompt, '07ec33490e15286c149c3af029c57f29883e93be47fe2595d50e06faf1d6d06c'],
     [conversationV5.conversationPrompt, '4771a29f98f413a30ebb1514a338cd4d031a66393ea01faed66cfc6d5b4bedd9'],
     [reciprocalPrompt, 'c70cffeace85121e193f76373a69ccb77785bce8688ab82df88da3f9b95bca00'],
@@ -111,14 +113,26 @@ export function grammarSnapshot(): Json {
     response_identity: structuredClone(g.response_identity), timeout_seconds: g.transport.timeout_seconds,
     recovery_version: 'stomylos_grammar_retry_v1' };
 }
-export function grammarBody(snapshot: Json, messages: Message[]): Json {
-  if (snapshot.prompt !== runtime.grammarPrompt || snapshot.prompt_sha256 !== hash(runtime.grammarPrompt) ||
-    !isDeepStrictEqual(snapshot.parameters, runtime.grammar.request_parameters) ||
-    !isDeepStrictEqual(snapshot.response_identity, runtime.grammar.response_identity) || snapshot.timeout_seconds !== 120) {
+function grammarContract(snapshot: Json) {
+  const selected = snapshot.version === runtime.grammar.contract_version ? runtime
+    : snapshot.version === grammarV1.grammar.contract_version ? grammarV1 : null;
+  if (!selected || snapshot.prompt !== selected.grammarPrompt || snapshot.prompt_sha256 !== hash(selected.grammarPrompt) ||
+    snapshot.schema_sha256 !== hash(JSON.stringify(selected.grammar.request_parameters.response_format)) ||
+    snapshot.prompt_id !== selected.grammar.prompt.id || snapshot.validation_version !== 'stomylos_validation_v1' ||
+    snapshot.recovery_version !== 'stomylos_grammar_retry_v1' ||
+    !isDeepStrictEqual(snapshot.parameters, selected.grammar.request_parameters) ||
+    !isDeepStrictEqual(snapshot.response_identity, selected.grammar.response_identity) || snapshot.timeout_seconds !== 120) {
     throw new AppFailure('unsupported_grammar_settings');
   }
-  return { ...snapshot.parameters, messages: [{ role: 'system', content: snapshot.prompt }, { role: 'user', content: transcriptJson(messages) }] };
+  return selected;
 }
+export function grammarBody(snapshot: Json, messages: Message[]): Json {
+  const selected = grammarContract(snapshot);
+  const input = selected === grammarV1 ? transcriptJson(messages) : JSON.stringify(
+    messages.filter(isLearner).map((m, index) => ({ index, role: m.role, content: m.content })), null, 2);
+  return { ...snapshot.parameters, messages: [{ role: 'system', content: snapshot.prompt }, { role: 'user', content: input }] };
+}
+
 function runtimeForVersion(version: string) {
   if (version === runtime.conversation.version) return runtime;
   if (version === conversationV6.conversation.version) return conversationV6;
@@ -230,16 +244,21 @@ export function chooseStarter(recent: string[], current?: string, pick = randomI
     excluded.pop();
   }
 }
-export function validateGrammar(content: string, messages: Message[]): GrammarUnit[] {
+export function validateGrammar(content: string, messages: Message[], snapshot: Json = grammarSnapshot()): GrammarUnit[] {
+  const indexed = grammarContract(snapshot) !== grammarV1;
   const parsed = strictJson(content); const users = messages.filter(isLearner);
   if (!exactKeys(parsed, ['units']) || !Array.isArray(parsed.units)) throw new AppFailure('grammar_schema');
   if (parsed.units.length !== users.length) throw new AppFailure('grammar_source_count');
   return parsed.units.map((unit: Json, i: number) => {
-    if (!exactKeys(unit, ['text', 'corrected_text', 'explanation']) || Object.values(unit).some(v => typeof v !== 'string')) throw new AppFailure('grammar_schema');
-    if (unit.text !== users[i].content) throw new AppFailure('grammar_source_text');
-    const changed = unit.text !== unit.corrected_text;
+    if (!exactKeys(unit, [indexed ? 'index' : 'text', 'corrected_text', 'explanation']) ||
+      typeof unit.corrected_text !== 'string' || typeof unit.explanation !== 'string') throw new AppFailure('grammar_schema');
+    if (indexed) {
+      if (!Number.isSafeInteger(unit.index) || unit.index !== i) throw new AppFailure('grammar_source_index');
+    } else if (typeof unit.text !== 'string' || unit.text !== users[i].content) throw new AppFailure('grammar_source_text');
+    const text = users[i].content;
+    const changed = text !== unit.corrected_text;
     if (!unit.corrected_text.trim() || (changed && !unit.explanation.trim())) throw new AppFailure('grammar_empty_correction_or_note');
-    return { source_message_id: users[i].id, ordinal: i, text: unit.text, corrected_text: unit.corrected_text,
+    return { source_message_id: users[i].id, ordinal: i, text, corrected_text: unit.corrected_text,
       explanation: unit.explanation, changed: changed ? 1 : 0,
       warnings: JSON.stringify(!changed && unit.explanation.trim() ? ['unchanged_with_note'] : []), evidence_status: 'unreviewed' };
   });

@@ -59,7 +59,7 @@ export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay
       } else if (input.response_format.json_schema.name === 'stomylos_memory_delta_v1') { content = '{"operations":[]}'; provider = 'Google AI Studio'; }
       else if (input.response_format.json_schema.name.startsWith('stomylos_character_scores_v')) content = JSON.stringify(Object.fromEntries(input.response_format.json_schema.schema.required.map(id => [id, ['informative_generalist', 'model_03'].includes(id) ? 2 : 1])));
       else if (input.response_format.json_schema.name === 'genie_expression_v1') content = JSON.stringify({ reply: 'This wording keeps your meaning.', suggested_text: 'I enjoy quiet mornings.' });
-      else content = JSON.stringify({ units: JSON.parse(input.messages[1].content).filter(m => m.role === 'user').map(m => ({ text: m.content, corrected_text: m.content, explanation: '' })) });
+      else content = JSON.stringify({ units: JSON.parse(input.messages[1].content).filter(m => m.role === 'user').map(m => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) });
       if (!input.response_format?.json_schema.name.startsWith('stomylos_character_scores_v') && backgroundDelay) await new Promise(resolve => setTimeout(resolve, backgroundDelay));
       if (response.destroyed) return;
       response.writeHead(200, { 'content-type': 'application/json' });

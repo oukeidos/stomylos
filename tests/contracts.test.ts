@@ -16,8 +16,8 @@ it('matches approved source text and selected schema references independently', 
   expect(universal.conversationPrompt).toBe(selected.prompt);
   expect(hash(v5.conversationPrompt)).toBe('4771a29f98f413a30ebb1514a338cd4d031a66393ea01faed66cfc6d5b4bedd9');
   expect(config.conversation.seed_template).toBe(selected.seed);
-  expect(config.grammarPrompt).toBe(goldens.grammar.prompt);
-  expect(config.grammar.request_parameters.response_format.json_schema.schema).toEqual(goldens.grammar.schema);
+  expect(config.grammarPrompt).toBe(readFileSync('../experiments/EXP-009-authentic-conversation-grammar/context-ablation-2026-09-08/index-prompt.txt', 'utf8'));
+  expect(config.grammar.request_parameters.response_format.json_schema.schema.properties.units.items.required).toEqual(['index', 'corrected_text', 'explanation']);
   expect(v5.router.response_format.json_schema.schema.required).toEqual(selected.router.score_fields);
   expect(v5.routerPrompt).toBe(selected.router_prompt);
   expect(v5.conversation.characters.map(c => c.model)).toEqual(selected.selection.models);
@@ -34,9 +34,9 @@ it('preserves transcript whitespace and rejects grammar source repair', () => {
   const encoded = transcriptJson(source);
   expect(JSON.parse(encoded)).toEqual([{ role: 'user', content: source[0].content }]); expect(encoded.endsWith('\n')).toBe(false);
   const unit = { text: source[0].content, corrected_text: source[0].content, explanation: 'Context retained.' };
-  expect(validateGrammar(JSON.stringify({ units: [unit] }), source)[0]).toMatchObject({ warnings: '["unchanged_with_note"]', evidence_status: 'unreviewed' });
-  expect(() => validateGrammar(JSON.stringify({ units: [{ ...unit, text: unit.text.trim() }] }), source)).toThrow('grammar_source_text');
-  expect(() => validateGrammar(JSON.stringify({ units: [{ ...unit, corrected_text: 'Different', explanation: '' }] }), source)).toThrow();
+  expect(validateGrammar(JSON.stringify({ units: [unit] }), source, goldens.legacy.grammar_snapshot)[0]).toMatchObject({ warnings: '["unchanged_with_note"]', evidence_status: 'unreviewed' });
+  expect(() => validateGrammar(JSON.stringify({ units: [{ ...unit, text: unit.text.trim() }] }), source, goldens.legacy.grammar_snapshot)).toThrow('grammar_source_text');
+  expect(() => validateGrammar(JSON.stringify({ units: [{ ...unit, corrected_text: 'Different', explanation: '' }] }), source, goldens.legacy.grammar_snapshot)).toThrow();
 });
 
 it('keeps old and new prompt/model bundles separate and rejects mixed snapshots', () => {
