@@ -12,6 +12,27 @@ A Linux desktop app for practicing English with AI conversation partners.
 - Save chats, bookmarks and shared memory. Export and restore backups.
 - Check monthly costs and set an optional budget in Settings.
 
+## Conversation partners
+
+Current settings for new chats; existing chats retain their saved model lineup.
+Model IDs below are the exact OpenRouter request IDs.
+
+| Partner | Conversation style | Model | Reasoning |
+| --- | --- | --- | --- |
+| Debate | Test views through reasons, objections and revision. | `anthropic/claude-fable-5.1` | Low |
+| Explore | Work through ideas and follow their implications. | `xiaomi/mimo-v2.5-pro` | Off |
+| Explain | Explain topics with clear examples and comparisons. | `anthropic/claude-sonnet-5` | Low |
+| Chat | Follow your lead in everyday and playful conversation. | `openai/gpt-6-astra` | Low |
+| Imagine | Use vivid images and playful comparisons. | `google/gemini-3.8-flash` | Low |
+| Stories | Share everyday stories with concrete scenes and details. | `bytedance-seed/seed-2-1-turbo` | Off |
+| Taste | Discuss specific likes, dislikes and personal preferences. | `deepseek/deepseek-v4-pro-0813` | Off |
+
+These labels describe each model's intended fit. All partners share the same
+conversation instructions and history; switching does not add a separate persona
+prompt. Automatic selects once from your first message, or selects another model
+on your next message when chosen during a chat. The selected partner then stays
+until you change it again.
+
 ## Install and run
 
 Tested on Linux Mint. You need Node.js 24, npm, a C compiler, and Node-API
