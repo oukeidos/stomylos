@@ -1,3 +1,4 @@
+import { currentSchema, inspectMigration, migrateDatabase } from './database-migrations';
 import { ExplainStore } from './explain-store';
 import type { ExplainTarget } from '../shared/explain';
 import { PartnerStore } from './partner-store';
@@ -46,27 +47,23 @@ export class Store {
     this.unlock = externallyLocked ? () => undefined : lockDirectory(directory, nativePath);
     try {
       const file = join(directory, 'stomylos.sqlite3');
-      const existing = existsSync(file) && statSync(file).size > 0;
+      let existing = existsSync(file) && statSync(file).size > 0;
       if (existing) {
         const inspection = new Database(file, { readonly: true, fileMustExist: true });
         try {
-          const version = inspection.pragma('user_version', { simple: true });
-          if (Number(version) >= 1 && Number(version) <= 12) throw new AppFailure('external_migration_required');
-          if (version !== 13) throw new AppFailure('unsupported_schema_version');
-          const expected = new Database(':memory:');
-          try {
-            expected.exec(schema);
-            if (JSON.stringify(signature(expected)) !== JSON.stringify(signature(inspection))) throw new AppFailure('unsupported_schema_structure');
-          } finally { expected.close(); }
-          new StarterStore(inspection).verify();
+          const empty = inspection.pragma('user_version', { simple: true }) === 0
+            && inspection.prepare("SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").all().length === 0;
+          if (empty) existing = false;
+          else { inspectMigration(inspection); new StarterStore(inspection).verify(); new MemoryStore(inspection).load(); }
         } finally { inspection.close(); }
       }
       const fd = openSync(file, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
       closeSync(fd); chmodSync(file, 0o600);
       this.db = new Database(file);
+      if (existing) migrateDatabase(this.db, directory);
       this.starter = new StarterStore(this.db, pickGenerator);
       this.intentions = new IntentionQuestionStore(this.db, this.starter);
-      this.memory = new MemoryStore(this.db, (id, before, after) => this.intentions.synchronize(id, before, after));
+      this.memory = new MemoryStore(this.db);
       this.patterns = new PatternReportStore(this.db);
       this.search = new SearchStore(this.db);
       this.partners = new PartnerStore(this.db);
@@ -79,9 +76,9 @@ export class Store {
           this.db.exec(schema); this.starter.initialize();
           const initial = memoryJson(emptyMemory(sharedMemoryId));
           this.run('INSERT INTO shared_memory VALUES(1,?,?)', initial, memoryHash(initial));
-          this.db.pragma('user_version = 13');
+          this.db.pragma(`user_version = ${currentSchema}`);
         })();
-      } else if (version !== 13) throw new AppFailure('unsupported_schema_version');
+      } else if (version !== currentSchema) throw new AppFailure('unsupported_schema_version');
       const expected = new Database(':memory:');
       try {
         expected.exec(schema);
@@ -105,7 +102,8 @@ export class Store {
       this.run("UPDATE sessions SET analysis_state=CASE WHEN (SELECT failure FROM model_requests WHERE session_id=sessions.id AND role='grammar' ORDER BY created_at DESC,rowid DESC LIMIT 1)='queued_not_dispatched' THEN 'pending' ELSE 'failed' END WHERE analysis_state='running'");
       this.starter.recover();
       this.memory.recover();
-      this.intentions.recover();
+      // Dedicated Intention jobs are historical only. Release any legacy preparation locally.
+      for (const row of this.all<{session_id: string}>("SELECT session_id FROM starter_preparations WHERE state='waiting'")) this.starter.release(this.session(row.session_id), this.messages(row.session_id), 'feature_removed');
       this.patterns.recover();
       this.search.recover();
       this.partners.recover();
@@ -200,7 +198,7 @@ export class Store {
   units(id: string): GrammarUnit[] {
     return this.all('SELECT u.* FROM grammar_units u JOIN sessions s ON s.selected_analysis_id=u.analysis_attempt_id WHERE s.id=? ORDER BY u.ordinal', id);
   }
-  view(id: string): SessionView { const session = this.session(id); return { session, partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: this.intentions.view(id), outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && this.starter.outdated(session.starter_id), memory: this.memory.view(session), search: this.search.view(id), searches: this.search.history(id) }; }
+  view(id: string): SessionView { const session = this.session(id); return { session, endProcessing: this.endStatus(id), partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: undefined, outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && this.starter.outdated(session.starter_id), memory: this.memory.view(session), search: this.search.view(id), searches: this.search.history(id) }; }
   searchMode(id: string, mode: SearchMode) { this.transaction(() => this.search.setMode(this.session(id), this.messages(id), mode)); }
   searchView(id: string) { this.session(id); return this.search.view(id); }
   searchPrepare(id: string) { return this.search.prepare(id); }
@@ -218,6 +216,7 @@ export class Store {
     return this.transaction(() => {
       const active = this.all<Session>("SELECT * FROM sessions WHERE state!='ended'")[0];
       if (active) return active;
+      if (this.endBlocker()) throw new AppFailure('end_processing_pending');
       const kind = this.all<{ kind: OpeningKind }>('SELECT kind FROM opening_preferences WHERE id=1')[0]?.kind;
       if (kind !== 'starter' && kind !== 'user') throw new AppFailure('unsupported_opening');
       const choice = kind === 'starter' ? this.starter.select() : null;
@@ -507,7 +506,9 @@ export class Store {
       this.run("UPDATE messages SET delivery='interrupted' WHERE session_id=? AND delivery='streaming'", id);
       const source = this.messages(id); validateOpeningSource(current, source); const analyze = source.some(isLearner);
       this.run("UPDATE sessions SET state='ended',parked_starter=NULL,ended_at=?,draft=?,source_hash=?,grammar_config=?,analysis_state=? WHERE id=?", now(), retainedDraft ?? current.draft, hash(transcriptJson(source)), JSON.stringify(grammarSnapshot()), analyze ? 'pending' : 'skipped', id);
-      this.starter.prepare(this.session(id), source);
+      this.run('INSERT INTO end_processing(session_id,created_at) VALUES(?,?)', id, now());
+      for (const stage of ['grammar','starter','update','cleanup']) this.run('INSERT INTO end_stage_state(session_id,stage) VALUES(?,?)', id, stage);
+      this.starter.freeze(this.session(id), source);
       this.memory.freeze(this.session(id), source);
       if (!this.memory.job(id)) this.starter.release(this.session(id), source, 'no_memory_update');
       return analyze;
@@ -515,6 +516,7 @@ export class Store {
   }
   saveAnalysis(id: string, content: string, metadata: Json) {
     this.transaction(() => {
+      this.assertEndActive(this.request(id).session_id);
       const request = this.request(id); const current = this.session(request.session_id);
       if (request.status === 'succeeded' && current.selected_analysis_id === id && request.response_content === content) return;
       if (request.status !== 'dispatched' || current.selected_analysis_id !== null) throw new AppFailure('analysis_already_resolved');
@@ -530,8 +532,92 @@ export class Store {
   currentMemory() { return this.memory.load(); }
   freezeMemory(sessionId: string) { return this.transaction(() => this.memory.snapshot(this.session(sessionId))); }
   memoryJob(sessionId: string) { return this.memory.job(sessionId); }
+  endStatus(id: string): Json | null {
+    const record = this.all<Json>('SELECT * FROM end_processing WHERE session_id=?', id)[0];
+    if (!record) return null;
+    const session = this.session(id), memory = this.memory.job(id), candidate = this.memory.candidate(id), starter = this.starter.jobForSession(id);
+    const stages = { grammar: session.analysis_state, starter: starter?.state ?? 'skipped',
+      update: candidate ? 'completed' : memory?.state ?? 'skipped', cleanup: candidate?.state ?? 'skipped' };
+    const attempts: Record<string, Json[]> = {
+      grammar: this.all<Json>("SELECT failure,status FROM model_requests WHERE session_id=? AND role='grammar' ORDER BY rowid", id),
+      starter: this.all<Json>('SELECT a.failure,a.status FROM starter_renewal_attempts a JOIN starter_renewal_jobs j ON j.id=a.job_id WHERE j.session_id=? ORDER BY a.rowid', id),
+      update: this.all<Json>('SELECT a.failure,a.status FROM memory_attempts a JOIN memory_jobs j ON j.ordinal=a.job_id WHERE j.session_id=? ORDER BY a.rowid', id),
+      cleanup: this.memory.cleanupAttempts(id)
+    };
+    const details = Object.fromEntries(Object.entries(attempts).map(([stage, rows]) => [stage, { attempts: rows.length, failure: rows.at(-1)?.failure ?? null }]));
+    return { cancelled: !!record.cancelled_at, stages, details, retries: this.all<Json>('SELECT stage,automatic_retry_used FROM end_stage_state WHERE session_id=?', id),
+      complete: !!record.cancelled_at || Object.values(stages).every(s => ['completed','skipped'].includes(s)) };
+  }
+  endBlockers(): { sessionId: string; title: string }[] {
+    return this.all<{ sessionId: string; title: string }>(`SELECT s.id sessionId,
+      COALESCE(s.starter_text,(SELECT content FROM messages WHERE session_id=s.id AND origin='learner' ORDER BY sequence LIMIT 1),'Chat') title
+      FROM end_processing e JOIN sessions s ON s.id=e.session_id WHERE e.cancelled_at IS NULL ORDER BY e.created_at,s.id`)
+      .filter(row => !this.endStatus(row.sessionId)?.complete);
+  }
+  endBlocker(): string | null { return this.endBlockers()[0]?.sessionId ?? null; }
+  assertEndActive(id: string) {
+    if (this.all('SELECT 1 FROM end_processing WHERE session_id=? AND cancelled_at IS NOT NULL', id).length) throw new AppFailure('end_processing_cancelled');
+  }
+  takeAutomaticRetry(id: string, stage: string): boolean {
+    this.assertEndActive(id);
+    return this.run('UPDATE end_stage_state SET automatic_retry_used=1 WHERE session_id=? AND stage=? AND automatic_retry_used=0', id, stage).changes === 1;
+  }
+  suppressAutomaticRetry(id: string, stage: string) { this.assertEndActive(id); this.run('UPDATE end_stage_state SET automatic_retry_used=1 WHERE session_id=? AND stage=?', id, stage); }
+  receiveEndResponse(id: string, stage: string, attempt: string, content: string, metadata: Json) {
+    this.assertEndActive(id);
+    this.run('UPDATE end_stage_state SET response_id=?,response_content=?,response_metadata=? WHERE session_id=? AND stage=?', attempt, content, JSON.stringify(metadata), id, stage);
+  }
+  endResponse(id: string, stage: string): Json | null { return this.all<Json>('SELECT * FROM end_stage_state WHERE session_id=? AND stage=? AND response_content IS NOT NULL', id, stage)[0] ?? null; }
+  clearEndResponse(id: string, stage: string) { this.run('UPDATE end_stage_state SET response_id=NULL,response_content=NULL,response_metadata=NULL WHERE session_id=? AND stage=?', id, stage); }
+  resumeEndResponse(id: string, stage: string): boolean {
+    this.assertEndActive(id);
+    const saved = this.endResponse(id, stage); if (!saved) return false;
+    try {
+      this.transaction(() => {
+        const metadata = JSON.parse(saved.response_metadata);
+        if (stage === 'grammar') {
+          this.run("UPDATE model_requests SET status='dispatched' WHERE id=? AND status='interrupted'", saved.response_id);
+          this.saveAnalysis(saved.response_id, saved.response_content, metadata);
+        } else if (stage === 'starter') {
+          this.run("UPDATE starter_renewal_attempts SET status='dispatched' WHERE id=? AND status='interrupted'", saved.response_id);
+          this.run("UPDATE starter_renewal_jobs SET state='running' WHERE session_id=? AND state='interrupted'", id);
+          this.saveStarter(saved.response_id, saved.response_content, metadata);
+        } else if (stage === 'update') {
+          this.run("UPDATE memory_attempts SET status='dispatched' WHERE id=? AND status='interrupted'", saved.response_id);
+          this.run("UPDATE memory_jobs SET state='running' WHERE session_id=? AND state='interrupted'", id);
+          this.memory.save(saved.response_id, saved.response_content, metadata);
+        }
+        this.clearEndResponse(id, stage);
+      });
+      return true;
+    } catch (error) {
+      // Leave storage failures recoverable. Invalid output must not be replayed forever.
+      if (error instanceof AppFailure) this.clearEndResponse(id, stage);
+      throw error;
+    }
+  }
+  cancelEnd(id: string) {
+    return this.transaction(() => {
+      this.run('UPDATE end_processing SET cancelled_at=COALESCE(cancelled_at,?) WHERE session_id=?', now(), id);
+      this.run("UPDATE model_requests SET status='interrupted',failure='request_cancelled',finished_at=? WHERE session_id=? AND role='grammar' AND status IN ('queued','dispatched')", now(), id);
+      this.run("UPDATE sessions SET analysis_state='skipped' WHERE id=? AND analysis_state!='completed'", id);
+      this.run("UPDATE memory_attempts SET status='interrupted',failure='request_cancelled' WHERE job_id IN (SELECT ordinal FROM memory_jobs WHERE session_id=?) AND status IN ('queued','dispatched')", id);
+      this.run("UPDATE memory_jobs SET state='skipped' WHERE session_id=? AND state!='completed'", id);
+      this.run("UPDATE memory_candidates SET state='cancelled' WHERE session_id=? AND state!='completed'", id);
+      this.run("UPDATE memory_cleanup_attempts SET status='cancelled' WHERE session_id=? AND status IN ('queued','dispatched','received')", id);
+      this.run("UPDATE starter_renewal_jobs SET state='failed' WHERE session_id=? AND state!='completed'", id);
+      this.run("UPDATE starter_renewal_attempts SET status='interrupted',failure='request_cancelled' WHERE job_id IN (SELECT id FROM starter_renewal_jobs WHERE session_id=?) AND status IN ('queued','dispatched')", id);
+    });
+  }
+  memoryCandidate(id: string) { return this.memory.candidate(id); }
+  cleanupAttempts(id: string) { return this.memory.cleanupAttempts(id); }
+  prepareCleanup(id: string, attempt: string) { return this.memory.prepareCleanup(id, attempt); }
+  dispatchCleanup(id: string) { return this.memory.dispatchCleanup(id); }
+  receiveCleanup(id: string, content: string, metadata: Json) { return this.memory.receiveCleanup(id, content, metadata); }
+  acceptCleanup(id: string) { return this.memory.acceptCleanup(id); }
+  failCleanup(id: string, failure: string, interrupted = false, evidence?: { content: string | null; metadata: Json }) { return this.memory.failCleanup(id, failure, interrupted, evidence); }
   memoryReady(sessionIds: string[]) { return this.memory.ready(sessionIds); }
-  retryMemory(sessionId: string) { return this.memory.retry(sessionId); }
+  retryMemory(sessionId: string) { this.assertEndActive(sessionId); return this.memory.retry(sessionId); }
   skipMemory(sessionId: string) { return this.memory.skip(sessionId); }
   prepareMemory(sessionId: string, operationId: string) { return this.memory.prepare(sessionId, operationId); }
   dispatchMemory(id: string) { return this.memory.dispatch(id); }
@@ -567,9 +653,9 @@ export class Store {
   starterJob(sessionId: string) { return this.starter.jobForSession(sessionId); }
   starterAttempt(id: string) { return this.starter.attempt(id); }
   starterAttempts(jobId: string) { return this.starter.attempts(jobId); }
-  retryStarter(sessionId: string, operationId: string) { return this.starter.retry(sessionId, operationId); }
+  retryStarter(sessionId: string, operationId: string) { this.assertEndActive(sessionId); return this.starter.retry(sessionId, operationId); }
   dispatchStarter(id: string) { return this.starter.dispatch(id); }
-  saveStarter(id: string, content: string, metadata: Json) { return this.starter.save(id, content, metadata); }
+  saveStarter(id: string, content: string, metadata: Json) { this.assertEndActive(this.starter.job(this.starter.attempt(id).job_id).session_id); return this.starter.save(id, content, metadata); }
   failStarter(id: string, failure: string, content: string | null = null, metadata: Json = {}, interrupted = false) { return this.starter.fail(id, failure, content, metadata, interrupted); }
   patternPreview(asOf?: string) { return this.patterns.preview(asOf); }
   patternCreate(fingerprint: string, operationId: string, asOf?: string) { return this.patterns.create(fingerprint, operationId, asOf); }

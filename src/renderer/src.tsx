@@ -30,6 +30,10 @@ function errorText(error: unknown): string {
   const code = error instanceof Error ? error.message : String(error);
   if (code.startsWith('genie_')) return genieError(error);
   const messages: Record<string, string> = {
+    end_processing_pending: 'Finish or force cancel the previous chat’s processing before starting another chat.',
+    end_processing_cancelled: 'This chat’s remaining work was cancelled and cannot be resumed.',
+    memory_cleanup_over_cap: 'The cleaned memory still exceeds 30,000 characters. Retry cleanup or force cancel.',
+    memory_cleanup_format: 'The cleanup response did not use the required four-section format. Retry cleanup or force cancel.',
     bookmark_requires_message: 'Send a message before bookmarking.',
     delete_requires_ended: 'End this chat before deleting it.',
     session_deleting: 'This chat is being deleted.',
@@ -47,6 +51,8 @@ function errorText(error: unknown): string {
     partner_input_limit: 'The recent message is too large for Auto selection. Choose a partner yourself.',
     reply_not_retryable: 'This reply no longer needs a retry.',
     save_required: 'Save your latest changes before continuing.', save_still_unavailable: 'Saving is still unavailable. Your latest text remains in memory.',
+    http_429: 'The provider asked to slow down. Wait before retrying. Saved results are preserved.',
+    http_503: 'The provider is temporarily unavailable. Try again later; saved results are preserved.',
     request_timeout: 'The request timed out. Your conversation is saved.',
     transport_failed: 'The connection failed. Your conversation is saved.',
     stream_incomplete: 'The reply ended unexpectedly. Its received text is preserved.',
@@ -167,40 +173,27 @@ function Feedback({ view, controls, onReveal }: { view: SessionView; controls: H
 }
 function Renewal({ view, onToggle, act, initialOpen = false }: { view: SessionView; onToggle: () => void; act: (fn: () => Promise<unknown>) => void; initialOpen?: boolean }) {
   const renewal = view.renewal;
-  const preparation = view.intentions?.preparation, jobs = view.intentions?.jobs ?? [];
-  const unfinished = jobs.filter(j => ['failed', 'interrupted'].includes(j.state));
-  const preparing = preparation?.state === 'waiting';
-  const progress = preparing ? view.memory?.job?.state === 'completed' ? 'Preparing questions from memory' : 'Waiting for memory update' : '';
-  const recovery = <>{(preparing || jobs.length > 0) && <div>
-    {preparing && <p className="note">{progress}. You can start another chat.</p>}
-    {jobs.length > 0 && <p className="note">{jobs.filter(j => j.state === 'accepted').length} questions from memory saved; {unfinished.length} need attention.</p>}
-    {unfinished.length > 0 && <button onClick={() => act(() => window.stomylos.command('retryIntentionQuestions', { sessionId: view.session.id }))}>Retry questions from memory</button>}
-    {preparing && <button onClick={() => act(() => window.stomylos.command('retryStarterRenewal', { sessionId: view.session.id }))}>Continue question preparation</button>}
-    {preparation?.reason && !['synchronized','no_memory_update'].includes(preparation.reason) && <p className="note">Starter renewal proceeded with the available questions.</p>}
-    {jobs.flatMap(j => j.attempts).map(a => <p className="note" key={a.id}>Question attempt {a.route + 1}: {a.status}{a.failure ? ` · ${a.failure.replaceAll('_', ' ')}` : ''}{JSON.parse(a.metadata).usage?.cost != null ? ` · $${Number(JSON.parse(a.metadata).usage.cost).toFixed(6)}` : ''}</p>)}
-  </div>}</>;
-  if (!renewal) return preparation || jobs.length ? <Disclosure initialOpen={initialOpen} title="Starter renewal" subtitle={progress || 'Questions from memory'} onToggle={onToggle}>{recovery}</Disclosure> : null;
+  if (!renewal) return null;
   const subtitle = renewal.state === 'completed' ? `${renewal.accepted_count} new ${renewal.accepted_count === 1 ? 'question' : 'questions'} saved` :
     renewal.state === 'running' ? 'Generating questions' : renewal.state === 'pending' ? 'Pending' : 'Needs attention';
   return <Disclosure initialOpen={initialOpen} title="Starter renewal" subtitle={subtitle} onToggle={onToggle}>
-    {recovery}
     <p className="note">{renewal.state === 'completed' ? 'New questions replenish the local pool as space becomes available.' :
-      renewal.state === 'running' ? 'Questions are being generated in the background. You can start another chat.' :
+      renewal.state === 'running' ? 'Questions are being generated. A new chat can start when end processing completes.' :
       renewal.state === 'pending' ? 'This saved conversation is ready for starter renewal. If it remains pending, choose to try it below.' :
       'Starter renewal did not finish. Your conversation is saved. A retry uses the same conversation and generator settings.'}</p>
-    {['pending', 'failed', 'interrupted'].includes(renewal.state) && <button onClick={() => act(() => window.stomylos.command('retryStarterRenewal', { sessionId: view.session.id }))}>Try starter renewal again</button>}
+    {!view.endProcessing?.cancelled && ['pending', 'failed', 'interrupted'].includes(renewal.state) && <button onClick={() => act(() => window.stomylos.command('retryStarterRenewal', { sessionId: view.session.id }))}>Try starter renewal again</button>}
   </Disclosure>;
 }
 function MemoryDetails({ view, act, show, openShared, initialOpen }: { view: SessionView; act: (fn: () => Promise<unknown>) => void; show: (id: string) => Promise<void>; openShared(): void; initialOpen: boolean }) {
   const memory = view.memory, job = memory?.job;
   const state = job?.state;
-  const recover = !!state && ['pending', 'failed', 'interrupted'].includes(state);
+  const recover = !view.endProcessing?.cancelled && !!state && ['pending', 'failed', 'interrupted'].includes(state);
   return <Disclosure initialOpen={initialOpen} title="Shared memory" subtitle={state === 'completed' ? 'Updated' : state === 'running' ? 'Updating' : state === 'skipped' ? 'Update skipped' : recover ? 'Update pending' : undefined}>
     <p className="note">This chat keeps the memory it used. Its update contributes to future chats.</p><button onClick={openShared}>Open shared memory</button>
-    {recover && <p className="note">Your chat is saved. {memory.blockedBy ? 'An earlier memory update needs to be resolved first.' : 'Choose to retry this update or skip it. Skipping leaves this chat out of future memory.'}</p>}
+    {recover && <p className="note">Your chat is saved. {memory.blockedBy ? 'An earlier memory update needs to be resolved first.' : 'Retry the unfinished memory stage or force cancel remaining work. Force cancellation preserves already saved results and discards uncommitted memory.'}</p>}
     {memory?.blockedBy && recover && <button onClick={() => act(() => show(memory.blockedBy!))}>Open earlier chat</button>}
     {recover && !memory.blockedBy && <button onClick={() => act(() => window.stomylos.command('retryMemory', { sessionId: view.session.id }))}>Retry memory update</button>}
-    {recover && <button onClick={() => act(() => window.stomylos.command('skipMemory', { sessionId: view.session.id }))}>Skip this memory update</button>}
+    {recover && <button onClick={() => act(() => window.stomylos.command('skipMemory', { sessionId: view.session.id }))}>Force cancel remaining work</button>}
     <Disclosure title="Changes from this chat">
       <MemoryChangeHistory memory={memory} ended={view.session.state === 'ended'} />
     </Disclosure>
@@ -390,7 +383,7 @@ function App() {
   const history = library.sessions;
   const bookmarkDisabled = (id: string) => bookmarks.pending.has(id) || genie.locked || deleting || !!app.activity.storageError || app.activity.closing;
   const currentSummary = view ? { ...view.session, title: view.session.starter_text ?? view.messages.find(m => m.origin === 'learner')?.content ?? 'New chat', bookmarked: view.bookmarked, canBookmark: view.canBookmark } : null;
-  const startNew = async () => { if (!await beforeDictationNavigation()) return; await flushAllDrafts(); if (unfinished) await window.stomylos.command('endSession', { sessionId: unfinished.id });
+  const startNew = async () => { if (app.endBlocker) { setNewDialog(false); await show(app.endBlocker); return; } if (!await beforeDictationNavigation()) return; await flushAllDrafts(); if (unfinished) { await window.stomylos.command('endSession', { sessionId: unfinished.id }); setNewDialog(false); await show(unfinished.id); return; }
     const id = await window.stomylos.command('newSession', undefined); setNewDialog(false); library.reset(); await show(id); };
   const requestDelete = (session: SessionSummary) => { setDeleteError(null); setDeleteTarget(session); };
   const confirmDelete = async () => {
@@ -465,6 +458,7 @@ function App() {
       <span>{maintenanceNotices(view).map(notice => notice.text).join(' · ')}</span>
       <button onClick={() => { setDetailsSection(maintenanceNotices(view)[0].section); setDetails(true); }}>Review updates</button>
     </div>}
+    {app.endBlocker && <div className="notice" role="status">Finish end processing before starting another chat. <button onClick={() => act(() => show(app.endBlocker!))}>View processing</button>{(app.endBlockers?.length ?? 0) > 1 && <details><summary>Chats awaiting processing ({app.endBlockers!.length})</summary><ul>{app.endBlockers!.map(item => <li key={item.sessionId}><button onClick={() => act(() => show(item.sessionId))}>{item.title}</button></li>)}</ul></details>}</div>}
     <main inert={genie.locked} ref={scroll.scroller} tabIndex={0} aria-label="Conversation">
       <div className="page" ref={scroll.content}>{view ? <>
         <div className="transcript">{view.messages.filter(message => !(canChangeOpening && message.origin === 'starter')).map(message => <Bubble key={message.id} message={message} metadata={view.requests.find(r => r.id === message.request_id) ? JSON.parse(view.requests.find(r => r.id === message.request_id)!.metadata) : undefined} partner="Partner" />)}</div>
@@ -472,6 +466,15 @@ function App() {
         {app.activity.sessionId === view.session.id && app.activity.phase === 'routing' && <p className="note" role="status">Choosing your conversation partner…</p>}
         {app.activity.sessionId === view.session.id && app.activity.phase === 'preparing' && <p className="note" role="status">Preparing your reply…</p>}
         {view.session.state === 'ended' && <>
+          {view.endProcessing && <section className="notice" aria-label="End processing">
+            <div><strong>{view.endProcessing.cancelled ? 'End processing cancelled' : view.endProcessing.complete ? 'End processing complete' : 'Finishing this chat'}</strong>
+            <ul>{Object.entries(view.endProcessing.stages).map(([stage, state]) => <li key={stage}>{({ grammar: 'Grammar analysis', starter: 'Question generation', update: 'Memory update', cleanup: 'Memory cleanup' } as Record<string,string>)[stage]}: {String(state)}{view.endProcessing?.details?.[stage]?.attempts > 0 && <> · {view.endProcessing?.details?.[stage].attempts} attempt(s)</>}{view.endProcessing?.details?.[stage]?.failure && <small>{errorText(view.endProcessing?.details?.[stage].failure)}</small>}</li>)}</ul>
+            {!view.endProcessing.complete && <><p>Completed results are kept. Force cancel abandons all remaining work and any uncommitted memory update.</p>
+              <button disabled={Object.values(view.endProcessing.stages).some(state => state === 'running')} onClick={() => act(() => window.stomylos.command('continueEnd', { sessionId: view.session.id }))}>Continue processing</button>
+              <button onClick={() => act(() => window.stomylos.command('cancelEnd', { sessionId: view.session.id }))}>Force cancel</button></>}
+            </div>
+          </section>}
+
           <div className="ended-marker">{labels[view.session.analysis_state]}{view.session.draft && <button className="icon-button retained-draft-link" aria-label="View unsent draft" title="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></button>}</div>
           {['failed', 'pending'].includes(view.session.analysis_state) && <button className="analysis-retry" onClick={() => act(() => window.stomylos.command('retryAnalysis', { sessionId: view.session.id }))}>Try analysis again</button>}
           <Feedback key={view.session.id} view={view} controls={reviewControls} onReveal={scroll.pause} />

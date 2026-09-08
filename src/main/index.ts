@@ -170,6 +170,9 @@ if (launch) {
   }).catch(async error => {
     const code = failureCode(error);
     const explanations: Record<string, string> = {
+      memory_recovery_required: 'Saved memory exceeds the supported limit. It has not been truncated or sent to a model. Preserve the database and use a compatible backup or a verified repair before continuing.',
+      migration_integrity_failed: 'Database upgrade validation failed. Your database and pre-upgrade recovery backup have been preserved. Do not delete them; retry after resolving storage problems or use a verified repair.',
+      migration_backup_invalid: 'The pre-upgrade recovery backup is invalid. The database was not upgraded. Preserve both files and use a verified repair before retrying.',
       database_already_open: 'Another Stomylos window or the legacy app is using this history. Close it, then open Stomylos again.',
       unsupported_schema_version: 'This history uses an unsupported database version. It has not been reset. Open it with the matching application version.',
       external_migration_required: 'This history needs the one-time external database update for this release. It has not been changed. Complete that update before opening this version of Stomylos.',

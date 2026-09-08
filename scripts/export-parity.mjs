@@ -100,3 +100,7 @@ for (const fixture of JSON.parse(readFileSync('tests/fixtures/explain-contract.j
   assert.deepEqual(fixture.body,{...explainSettings,messages:[{role:'system',content:readFileSync('src/main/explain-prompt.txt','utf8').trim()},{role:'user',content:JSON.stringify(fixture.source)}]});
 }
 console.log('Explain request goldens preserve tested settings, compact JSON input, UTF16 positions and final system text.');
+
+assert.equal(readFileSync('src/main/memory-cleanup-prompt.txt', 'utf8'),
+  readFileSync('../experiments/EXP-029-memory-capacity/prompt-v6.txt', 'utf8'));
+console.log('Memory cleanup prompt matches the selected EXP-029 prompt-v6 bytes.');

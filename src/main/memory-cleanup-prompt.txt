@@ -1,0 +1,11 @@
+Summarize the memory below.
+
+Select only important items and describe them in detail.
+
+Keep what remains faithful to the source without inventing facts or making uncertain information more definite.
+
+Keep the four sections: Traits, Relationships, Experiences, and Intentions.
+Within each section, write one sentence per line, without bullets or numbering.
+Leave a section empty if nothing is retained in it.
+
+Return only the summarized memory.

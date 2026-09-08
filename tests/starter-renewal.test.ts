@@ -19,8 +19,17 @@ afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: tru
 function skip(id: string, op: string = crypto.randomUUID()) {
   const old = store.session(id); store.replaceQuestion(id, op, old.starter_id!, old.opening_revision); return old;
 }
+function newSession() {
+  const blocker = store.endBlocker();
+  if (blocker) {
+    // Grammar is outside this starter-only fixture; completed starter results stay usable.
+    raw.prepare("UPDATE sessions SET analysis_state='skipped' WHERE id=?").run(blocker);
+    if (store.endBlocker()) store.cancelEnd(blocker);
+  }
+  return store.createSession();
+}
 function end(text = 'I walked beside the river.') {
-  const session = store.createSession(); store.submit(session.id, text); store.end(session.id);
+  const session = newSession(); store.submit(session.id, text); store.end(session.id);
   return { session, job: store.starterJob(session.id)! };
 }
 function finish(id: string, content = 'What would a borrowed hour let you do?\nWhich idea would you keep in a pocket?') {
@@ -72,7 +81,7 @@ it('parses only complete two-line pairs and applies textual normalization withou
   expect(questionKey('  ＨＥＬＬＯ\t world? ')).toBe('hello world?');
 });
 it('keeps all chronological text including topic changes, escaped /end and retained partials, but excludes drafts and placeholders', () => {
-  const session = store.createSession(); store.submit(session.id, '  I walked. 한글\n');
+  const session = newSession(); store.submit(session.id, '  I walked. 한글\n');
   store.commitRoute(session.id, null, 'public', null);
   const first = store.createRequest(session.id, 'chat', conversationSnapshot()); store.dispatch(first.id);
   const bubble = store.prepareReply(session.id, first.id); store.finishReply(first.id, bubble.id, 'Tell me about that walk.', {});
@@ -93,8 +102,8 @@ it('keeps all chronological text including topic changes, escaped /end and retai
   expect(packet.skip_history_status).toMatchObject({ status: 'observed_since_initialization', earlier_history: 'unavailable' });
 });
 it('freezes one independent random choice per eligible end, including skip-only drafts, and does not backfill empty ends', () => {
-  const empty = store.createSession(); store.end(empty.id); expect(store.starterJob(empty.id)).toBeNull();
-  const draft = store.createSession(); skip(draft.id); store.end(draft.id);
+  const empty = newSession(); store.end(empty.id); expect(store.starterJob(empty.id)).toBeNull();
+  const draft = newSession(); skip(draft.id); store.end(draft.id);
   const first = store.starterJob(draft.id)!; expect(JSON.parse(first.input_json).just_used_question_id).toBeNull();
   expect(JSON.parse(first.input_json).session_context.turns).toEqual([]);
   store.end(draft.id); expect(store.starterJob(draft.id)).toEqual(first);
@@ -102,7 +111,7 @@ it('freezes one independent random choice per eligible end, including skip-only 
   expect(choices).toEqual([3, 3, 3]);
 });
 it('acknowledges a duplicated skip without skipping again, rejects stale input, and preserves the draft', () => {
-  const session = store.createSession(); store.saveDraft(session.id, 'Still typing.');
+  const session = newSession(); store.saveDraft(session.id, 'Still typing.');
   skip(session.id, 'skip-once'); const next = store.session(session.id);
   store.replaceQuestion(session.id, 'skip-once', session.starter_id!, session.opening_revision); expect(store.session(session.id)).toEqual(next);
   expect(next.draft).toBe('Still typing.'); expect(next.starter_id).not.toBe(session.starter_id);
@@ -113,7 +122,7 @@ it('acknowledges a duplicated skip without skipping again, rejects stale input, 
 it('caps used history at ten, collapses skips per question/session, and caps the ten-session skip window at twenty', () => {
   const history = [];
   for (let i = 0; i < 12; i++) {
-    const session = store.createSession(); for (let j = 0; j < 25; j++) skip(session.id);
+    const session = newSession(); for (let j = 0; j < 25; j++) skip(session.id);
     store.submit(session.id, `Public answer ${i}.`); store.end(session.id); history.push(store.session(session.id));
   }
   const { session, job } = end('Current only.'); const packet = JSON.parse(job.input_json);
@@ -133,8 +142,8 @@ it('prefers fresh slots and relaxes only the oldest recent exclusions when neces
   expect(selectStarter(pending, [], pending[0].id, () => 0)).toMatchObject({ question: pending[1], fallback: true });
 });
 it('saves a received pair once, refills the pending slot, and never overwrites a displayed draft', () => {
-  const { session, job } = end(); const draft = store.createSession(); const before = store.messages(draft.id);
-  const attempt = finish(session.id); const saved = store.starterInventory();
+  const { session, job } = end(); const attempt = finish(session.id);
+  const draft = newSession(); const before = store.messages(draft.id); const saved = store.starterInventory();
   expect(saved.slots).toHaveLength(20); expect(saved.slots.some(s => s.id === session.starter_id)).toBe(false);
   expect(saved.queued).toHaveLength(1); expect(store.messages(draft.id)).toEqual(before);
   store.saveStarter(attempt, 'What would a borrowed hour let you do?\nWhich idea would you keep in a pocket?', {});
@@ -143,11 +152,11 @@ it('saves a received pair once, refills the pending slot, and never overwrites a
   expect(() => store.retryStarter(session.id, 'quality-retry')).toThrow('starter_not_retryable');
 });
 it('does not consume a new occupant when an old displayed question is answered after background replacement', () => {
-  const { session } = end(); const draft = store.createSession();
+  const { session } = end(); finish(session.id); const draft = newSession();
   // Reproduce a migrated/current draft retaining a previously consumed question.
   raw.prepare('UPDATE sessions SET starter_id=?,starter_version=?,starter_text=? WHERE id=?').run(session.starter_id, session.starter_version, session.starter_text, draft.id);
   raw.prepare('UPDATE messages SET content=? WHERE session_id=?').run(session.starter_text, draft.id);
-  finish(session.id); const slots = store.starterInventory().slots;
+  const slots = store.starterInventory().slots;
   store.submit(draft.id, 'Answering the question I saw.'); expect(store.starterInventory().slots).toEqual(slots);
 });
 it.each([0, 1, 2])('admits %i novel candidates without regenerating or removing any active slots', novel => {
@@ -165,7 +174,7 @@ it('bounds the queue at forty, expires old unused entries, and preserves active 
   // The clock advances beyond the queue lifetime; original immutable timestamps remain intact.
   vi.useFakeTimers(); vi.setSystemTime(Date.now() + 31 * 86400_000);
   try {
-    const activeIds = full.slots.map(s => s.id); store.createSession();
+    const activeIds = full.slots.map(s => s.id); newSession();
     expect(store.starterInventory().queued).toEqual([]); expect(store.starterInventory().slots.map(s => s.id)).toEqual(activeIds);
   } finally { vi.useRealTimers(); }
 });
@@ -182,6 +191,6 @@ it('keeps identical snapshots through interrupted recovery and explicit retry wi
 it('rejects schema v1 byte-for-byte before recovery and creates only fresh schema v2', () => {
   store.close(); const file = join(directory, 'stomylos.sqlite3'); rmSync(file);
   const v1 = new Database(file); v1.exec(goldens.legacy.schema); v1.pragma('user_version=1'); v1.close();
-  const before = readFileSync(file); expect(() => new Store(directory, native)).toThrow('external_migration_required');
+  const before = readFileSync(file); expect(() => new Store(directory, native)).toThrow('unsupported_schema_version');
   expect(readFileSync(file)).toEqual(before);
 });

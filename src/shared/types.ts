@@ -50,7 +50,7 @@ export interface RenewalView {
   id: string; state: RenewalJob['state']; model: string; created_at: string; accepted_count: number;
   attempts: Omit<RenewalAttempt, 'response_content'>[];
 }
-export interface SessionView { partner: PartnerView; bookmarked: boolean; canBookmark: boolean; session: Session; messages: Message[]; requests: RequestRecord[]; units: GrammarUnit[]; renewal: RenewalView | null; intentions?: import('./intention').IntentionView; outdatedOpening?: boolean; memory: import('./memory').MemoryView; search?: import('./search').SearchView | null; searches?: import('./search').SearchView[] }
+export interface SessionView { endProcessing?: Json | null; partner: PartnerView; bookmarked: boolean; canBookmark: boolean; session: Session; messages: Message[]; requests: RequestRecord[]; units: GrammarUnit[]; renewal: RenewalView | null; intentions?: import('./intention').IntentionView; outdatedOpening?: boolean; memory: import('./memory').MemoryView; search?: import('./search').SearchView | null; searches?: import('./search').SearchView[] }
 export type SessionSummary = Pick<Session, 'id' | 'state' | 'starter_text' | 'created_at' | 'analysis_state'> & { title: string; bookmarked: boolean; canBookmark: boolean };
 export type HistoryFilter = 'all' | 'bookmarked';
 export interface SessionPage { sessions: SessionSummary[]; hasMore: boolean; offset: number; filter: HistoryFilter }
@@ -64,7 +64,7 @@ export interface Activity {
   storageError: string | null; error: string | null; closing: boolean;
   deletionCleanupPending?: boolean;
 }
-export interface AppSnapshot { revision: number; sessions: SessionSummary[]; historyHasMore: boolean; unfinished: SessionSummary | null; activity: Activity; settings: Settings; characters: Character[] }
+export interface AppSnapshot { endBlockers?: { sessionId: string; title: string }[]; endBlocker?: string | null; revision: number; sessions: SessionSummary[]; historyHasMore: boolean; unfinished: SessionSummary | null; activity: Activity; settings: Settings; characters: Character[] }
 export interface SpeechItem { assetKey?: string; attemptId?: string; voice?: VoiceId; messageId: string; sessionId: string; state: 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled' | 'interrupted' | 'save_pending' | 'evicted'; error?: string; audioId?: string }
 export interface SpeechRecovery { assetKey: string; attemptId: string; voice: VoiceId; sessionId?: string; messageId?: string }
 export interface SpeechPreview { state: SpeechItem['state']; error?: string; audioId?: string; assetKey: string; attemptId?: string }
@@ -126,6 +126,8 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   retryStarterRenewal: { sessionId: string };
   retryIntentionQuestions: { sessionId: string };
   retryMemory: { sessionId: string };
+  continueEnd: { sessionId: string };
+  cancelEnd: { sessionId: string };
   skipMemory: { sessionId: string };
   retrySaving: undefined;
   backupExport: undefined;
@@ -153,7 +155,7 @@ export interface CommandResults extends ExplainCommandResults, GenieCommandResul
   backupExport: import('./backup').BackupResult;
   backupRestore: import('./backup').BackupResult;
   manageKey: void;
-  retryMemory: void; skipMemory: void;
+  continueEnd: void; cancelEnd: void; retryMemory: void; skipMemory: void;
 }
 export interface DesktopApi {
   command<K extends keyof CommandArgs>(name: K, args: CommandArgs[K]): Promise<CommandResults[K]>;

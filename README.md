@@ -12,6 +12,37 @@ A Linux desktop app for practicing English with AI conversation partners.
 - Save chats, bookmarks and shared memory. Export and restore backups.
 - Check monthly costs and set an optional budget in Settings.
 
+## Memory and finishing a chat
+
+Ending a chat runs grammar analysis, new question generation and memory updating.
+Wait for all applicable stages to finish before starting another chat. You can
+browse history and Settings while processing. If a stage fails, use **Continue
+processing** or its retry button. Each manual retry makes one inference attempt;
+transient or invalid-output failures receive at most one automatic retry per stage.
+Closing the app preserves progress. Reopening offers continuation without silently
+repeating model calls.
+
+Shared memory is limited to 30,000 characters in the text supplied to conversations.
+When an update exceeds that limit, Qwen selectively summarizes it. Cleanup can take
+several minutes and intentionally forgets information. The previous memory remains
+active until the new result is validated and saved. **Force cancel** abandons
+unfinished work and uncommitted memory while retaining completed results. Cancelled
+work cannot later be resumed. Conversation details shows factual changes separately
+from cleanup before/after snapshots. Dedicated questions generated from individual
+Intention items have been removed; the Intentions category remains in memory.
+
+## Database upgrades
+
+The app automatically upgrades supported older databases before normal startup.
+The first public release, 0.1.0, used schema 13; the current source uses schema 14.
+App release and database version numbers are independent. Users can skip releases
+because required migration steps are bundled with the app. A consistent pre-upgrade
+backup is retained, and failure preserves recoverable data instead of resetting it.
+Do not open a newer database with an older app; automatic downgrades are unsupported.
+User-exported backup imports currently require the current schema, even though
+normal startup supports older public databases. Migration recovery backups are
+separate from exported `.stomylos-backup` files.
+
 ## Conversation partners
 
 Current settings for new chats; existing chats retain their saved model lineup.

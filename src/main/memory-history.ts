@@ -1,5 +1,5 @@
 import { memoryCategories, type MemoryAttempt, type MemoryChange, type MemoryChanges, type MemoryChangeValue, type MemoryDocument, type MemoryJob, type MemoryPacket } from '../shared/memory';
-import { memoryHash, memoryJson, sharedMemoryId, validateMemory } from './memory-updater';
+import { memoryHash, memoryJson, sharedMemoryId, candidateLimits, validateMemory } from './memory-updater';
 
 // Compare committed documents, never the chat's opening snapshot or today's memory.
 function difference(before: MemoryDocument, after: MemoryDocument): MemoryChange[] {
@@ -24,7 +24,7 @@ export function memoryChanges(job: MemoryJob, attempt: MemoryAttempt | undefined
       memoryHash(attempt.input_json) !== attempt.input_hash || memoryHash(job.source) !== job.source_hash) throw new Error('history_unavailable');
     const packet: MemoryPacket = JSON.parse(attempt.input_json), after: MemoryDocument = JSON.parse(attempt.result);
     const before = packet.current_memory;
-    validateMemory(before); validateMemory(after);
+    validateMemory(before, candidateLimits); validateMemory(after, candidateLimits);
     if (packet.session.id !== job.session_id || packet.session.character_id !== job.character_id || memoryJson(packet.session) !== job.source ||
       ![sharedMemoryId, job.character_id].includes(before.character_id) || after.character_id !== before.character_id ||
       after.revision < before.revision || after.revision > before.revision + 1) throw new Error('history_unavailable');

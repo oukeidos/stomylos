@@ -332,19 +332,20 @@ it('commits a local route on router failure without a retry', async () => {
   await send(id, 'Next.', 2); await idle(); expect(calls).toHaveLength(3);
   await controller.command('close', undefined);
 });
-it('retains chat after grammar failure and only explicitly retries the identical frozen analysis', async () => {
+it('retains chat after grammar failure and retries once automatically before manually retrying the identical frozen analysis', async () => {
   const id = activeId(); await send(id); await idle(); grammarFails = true;
   await controller.command('endSession', { sessionId: id }); await waitFor(() => store.session(id).analysis_state === 'failed');
-  const original = store.requests(id).find(r => r.role === 'grammar')!; const source = store.messages(id);
-  expect(store.units(id)).toEqual([]); const next = await controller.command('newSession', undefined);
-  expect(next).not.toBe(id); expect(calls).toHaveLength(3);
+  await waitFor(() => store.requests(id).filter(r => r.role === 'grammar').length === 2 && store.session(id).analysis_state === 'failed');
+  const original = store.requests(id).findLast(r => r.role === 'grammar')!; const source = store.messages(id);
+  expect(store.units(id)).toEqual([]); await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
+  expect(calls).toHaveLength(4);
   grammarFails = false; await controller.command('retryAnalysis', { sessionId: id });
   await waitFor(() => store.session(id).analysis_state === 'completed');
   const retry = store.requests(id).findLast(r => r.role === 'grammar')!;
   expect(retry).toMatchObject({ parent_id: original.id, source_hash: original.source_hash, config: original.config, config_hash: original.config_hash });
-  expect(store.messages(id)).toEqual(source); expect(store.units(id)).toHaveLength(1); expect(calls).toHaveLength(4);
+  expect(store.messages(id)).toEqual(source); expect(store.units(id)).toHaveLength(1); expect(calls).toHaveLength(5);
   await expect(controller.command('retryAnalysis', { sessionId: id })).rejects.toThrow('analysis_not_retryable');
-  expect(calls).toHaveLength(4); await controller.command('close', undefined);
+  expect(calls).toHaveLength(5); await controller.command('close', undefined);
 });
 it('rejects double send and cancels the reply before freezing its partial text', async () => {
   holdStream = true; const id = activeId(); await send(id);
@@ -459,27 +460,24 @@ it('retains received renewal in memory during a save failure and retries only th
   await waitFor(() => store.starterJob(id)?.state === 'completed'); expect(renewalCalls).toHaveLength(1);
   await controller.command('close', undefined);
 });
-it('keeps both background roles independent of the next chat and drains only dispatched renewal on close', async () => {
+it('gates a new chat while independent background roles run and interrupts them on close', async () => {
   const first = activeId(); await send(first); await idle(); holdGrammar = true; holdRenewal = true;
   await controller.command('endSession', { sessionId: first }); await waitFor(() => renewalCalls.length === 1);
-  const second = await controller.command('newSession', undefined); await send(second); await idle();
+  await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
   expect(store.session(first).analysis_state).toBe('running'); expect(store.starterJob(first)?.state).toBe('running');
-  await controller.command('endSession', { sessionId: second });
-  await waitFor(() => store.starterJob(second)?.state === 'pending'); expect(renewalCalls).toHaveLength(1);
   await controller.command('close', undefined); store = new Store(directory, resolve('native/advisory-lock.node'));
-  expect(store.starterJob(first)?.state).toBe('interrupted'); expect(store.starterJob(second)?.state).toBe('pending');
-  const queued = store.starterAttempts(store.starterJob(second)!.id)[0];
-  expect(queued).toMatchObject({ failure: 'queued_not_dispatched', dispatched_at: null }); expect(renewalCalls).toHaveLength(1);
+  expect(store.starterJob(first)?.state).toBe('interrupted'); expect(renewalCalls).toHaveLength(1);
+  expect(store.endBlocker()).toBe(first);
 });
 it('keeps no-key and restarted jobs pending, and key reload or history inspection never dispatches them', async () => {
   const id = activeId(); await send(id); await idle(); keyAvailable = false;
   await controller.command('refreshKey', undefined); await controller.command('endSession', { sessionId: id });
-  expect(store.starterJob(id)).toBeNull(); expect(store.view(id).intentions?.preparation?.state).toBe('waiting'); expect(renewalCalls).toHaveLength(0);
+  expect(store.starterJob(id)?.state).toBe('pending'); expect(store.view(id).intentions).toBeUndefined(); expect(renewalCalls).toHaveLength(0);
   keyAvailable = true; await controller.command('refreshKey', undefined); await controller.command('loadSession', { sessionId: id });
   expect(renewalCalls).toHaveLength(0); await controller.command('close', undefined);
   store = new Store(directory, resolve('native/advisory-lock.node')); await controller.initialize();
   await controller.command('loadSession', { sessionId: id }); expect(renewalCalls).toHaveLength(0);
-  expect(store.starterJob(id)).toBeNull(); expect(store.view(id).intentions?.preparation?.state).toBe('waiting');
+  expect(store.starterJob(id)?.state).toBe('pending'); expect(store.view(id).intentions).toBeUndefined();
 });
 it('generates for an explicitly ended skipped draft but not an untouched draft', async () => {
   const empty = activeId(); await controller.command('endSession', { sessionId: empty });
@@ -715,51 +713,9 @@ it('allows a conversation while a report is running and drains report cancellati
 });
 
 
-it('commits memory, waits for Intention generation, then freezes and sends ordinary starters while a new draft stays usable', async () => {
-  const id = activeId(); await send(id); await idle(); holdMemory = true; holdIntention = true;
-  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'intentions', text: 'Wants to plan a trip.', source_message_ids: [packet.session.messages.find((m: Json) => m.origin === 'learner').id] }] });
-  await controller.command('endSession', { sessionId: id }); await waitFor(() => memoryRelease !== null);
-  expect(intentionCalls).toHaveLength(0); expect(renewalCalls).toHaveLength(0); expect(store.starterJob(id)).toBeNull();
-  const next = await controller.command('newSession', undefined); await controller.command('saveDraft', { sessionId: next, text: 'Still writing.', revision: 1 });
-  holdMemory = false; memoryRelease!(); await waitFor(() => intentionRelease !== null);
-  expect(store.memoryJob(id)?.state).toBe('completed'); expect(renewalCalls).toHaveLength(0); expect(store.starterJob(id)).toBeNull();
-  holdIntention = false; intentionRelease!(); await waitFor(() => store.starterJob(id)?.state === 'completed');
-  const packet = JSON.parse(renewalCalls[0].messages[1].content);
-  expect([...packet.active_questions.map((q: Json) => q.text), ...packet.queued_candidates]).toContain('What would help you explore the trip idea 1?');
-  expect(store.session(next).draft).toBe('Still writing.'); expect(intentionCalls).toHaveLength(1);
-  await controller.command('close', undefined);
-});
-it('executes the exact three-route fallback order and still renews after all routes fail', async () => {
-  const id = activeId(); await send(id); await idle(); intentionFailures = ['http_429','response_identity','request_timeout'];
-  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'intentions', text: 'Plan a trip.', source_message_ids: [packet.session.messages.find((m: Json) => m.origin === 'learner').id] }] });
-  await controller.command('endSession', { sessionId: id }); await waitFor(() => store.starterJob(id)?.state === 'completed');
-  expect(intentionCalls.map(b => b.model)).toEqual(['openai/gpt-5.6-luna','mistralai/mistral-small-2603','google/gemma-4-31b-it']);
-  const original = store.starterJob(id); expect(store.intentionJobs(id)[0].state).toBe('failed');
-  await controller.command('retryIntentionQuestions', { sessionId: id }); await waitFor(() => store.intentionJobs(id)[0].state === 'accepted');
-  expect(store.starterJob(id)).toEqual(original); expect(renewalCalls).toHaveLength(1); expect(intentionCalls).toHaveLength(4);
-  await controller.command('close', undefined);
-});
-it('cancels an in-flight Intention call before deleting its source without admitting a late question', async () => {
-  const id = activeId(); await send(id); await idle(); holdIntention = true;
-  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'intentions', text: 'Plan a trip.', source_message_ids: [packet.session.messages.find((m: Json) => m.origin === 'learner').id] }] });
-  await controller.command('endSession', { sessionId: id }); await waitFor(() => intentionRelease !== null);
-  const job = store.intentionJobs(id)[0]; await controller.command('deleteSession', { sessionId: id });
-  expect(store.intentionJob(job.id)).toMatchObject({ state: 'superseded', session_id: null, question_id: null });
-  expect(renewalCalls).toHaveLength(0); expect(store.integrity().foreignKeys).toEqual([]);
-  await controller.command('close', undefined);
-});
-it('limits Intention requests to two globally while later shared-memory updates continue', async () => {
-  const first = activeId(); await send(first); await idle(); holdIntention = true;
-  memoryOutput = packet => JSON.stringify({ operations: Array.from({ length: 3 }, (_, i) => ({ op: 'add', id: null, category: 'intentions', text: `Explore plan ${i}.`, source_message_ids: [packet.session.messages.find((m: Json) => m.origin === 'learner').id] })) });
-  await controller.command('endSession', { sessionId: first }); await waitFor(() => intentionCalls.length === 2);
-  expect(store.intentionJobs(first).filter(j => j.state === 'running')).toHaveLength(2);
-  expect(store.intentionJobs(first).filter(j => j.state === 'pending')).toHaveLength(1);
-  memoryOutput = () => '{"operations":[]}';
-  const second = await controller.command('newSession', undefined); await send(second); await idle();
-  await controller.command('endSession', { sessionId: second }); await waitFor(() => store.memoryJob(second)?.state === 'completed');
-  expect(intentionCalls).toHaveLength(2); expect(store.starterJob(first)).toBeNull();
-  await controller.command('close', undefined);
-});
+// Dedicated Intention dispatch was retired. Its replacement parallel-stage,
+// retry/cancellation and migration assertions live in end-processing.test.ts
+// and database-migrations.test.ts.
 
 const switchPartner = (id: string, character: string | null) => controller.command('changePartner', {
   sessionId: id, character, operationId: randomUUID(), expectedRevision: store.view(id).partner.revision

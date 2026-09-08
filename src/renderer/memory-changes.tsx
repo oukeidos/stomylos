@@ -17,7 +17,13 @@ export function MemoryChangeHistory({ memory, ended }: { memory: MemoryView; end
   if (!changes || changes.status === 'unavailable') return <p className="note" role="status">Memory change history is unavailable because the saved update record is missing or unreadable.</p>;
   return <div className="memory-changes">
     <p className="note">{changes.scope === 'character' ? 'Historical partner-specific memory' : 'Shared memory'} · Applied <time dateTime={changes.appliedAt}>{new Date(changes.appliedAt).toLocaleString()}</time></p>
-    <p className="note">These changes reflect this chat’s completed update, even if memory changed again later.</p>
+    {memory.cleanup?.after && <section aria-label="Memory cleanup history">
+      <h4>Memory cleanup</h4><p>{memory.cleanup.beforeChars.toLocaleString()} → {memory.cleanup.afterChars?.toLocaleString()} characters</p>
+      {(['before','after'] as const).map(which => <details key={which}><summary>{which === 'before' ? 'Before cleanup' : 'After cleanup'}</summary>
+        {Object.entries(categories).map(([category, label]) => <div key={category}><strong>{label}</strong>{memory.cleanup![which]![category as MemoryCategory].map(item => <p key={item.id}>{item.text}</p>)}</div>)}
+      </details>)}<h4>Factual update before cleanup</h4>
+    </section>}
+    <p className="note">{memory.cleanup?.after ? 'These factual changes produced the candidate before cleanup; cleanup may discard some of them. The after-cleanup snapshot shows what was committed.' : 'These changes reflect this chat’s completed update, even if memory changed again later.'}</p>
     <p role="status">{changes.items.length ? (['added', 'updated', 'deleted'] as const).map(kind => `${kinds[kind]} ${changes.items.filter(item => item.kind === kind).length}`).join(' · ') : 'No memory changes from this chat.'}</p>
     {changes.items.length > 0 && <ul className="memory-change-list">{changes.items.map(item => <li key={item.id}>
       <strong>{kinds[item.kind]} · {item.before && item.after && item.before.category !== item.after.category

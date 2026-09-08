@@ -1,3 +1,4 @@
+import { currentSchema, minimumPublicSchema } from './database-migrations';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { lstat, chmod, mkdir, open, readdir, readFile, rename, rm, stat, unlink, realpath } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -40,8 +41,8 @@ export function inspectBackupDatabase(file: string): number {
   const db = new Database(file, { readonly: true, fileMustExist: true });
   try {
     const version = db.pragma('user_version', { simple: true });
-    if (typeof version === 'number' && version >= 1 && version < 13) fail('external_migration_required');
-    if (version !== 13) fail('unsupported_schema_version');
+    if (typeof version === 'number' && version >= 1 && version < minimumPublicSchema) fail('external_migration_required');
+    if (version !== currentSchema) fail('unsupported_schema_version');
     const expected = new Database(':memory:');
     try { expected.exec(schema); if (JSON.stringify(signature(db)) !== JSON.stringify(signature(expected))) fail('unsupported_schema_structure'); }
     finally { expected.close(); }
@@ -74,8 +75,8 @@ function validateManifest(value: any): asserts value is Manifest {
   if (!value || value.format !== 1 || typeof value.appVersion !== 'string' || value.appVersion.length > 100 ||
       !Number.isSafeInteger(value.schemaVersion) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) ||
       !Array.isArray(value.files) || !value.files.length || value.files.length > maxFiles) fail();
-  if (value.schemaVersion >= 1 && value.schemaVersion < 13) fail('external_migration_required');
-  if (value.schemaVersion !== 13) fail('unsupported_schema_version');
+  if (value.schemaVersion >= 1 && value.schemaVersion < minimumPublicSchema) fail('external_migration_required');
+  if (value.schemaVersion !== currentSchema) fail('unsupported_schema_version');
   let total = 0; const names = new Set();
   for (const f of value.files) {
     if (!f || typeof f.path !== 'string' || !allowed(f.path) || names.has(f.path) || !Number.isSafeInteger(f.size) || f.size < 0 ||
@@ -90,7 +91,7 @@ export async function exportBackup(directory: string, destination: string, appVe
   if (await exists(target)) fail('backup_destination_exists');
   for (const sidecar of replaceRoots.slice(4)) if (await exists(join(directory, sidecar))) fail('backup_database_busy');
   const count = inspectBackupDatabase(join(directory, roots[0]));
-  const manifest: Manifest = { format: 1, appVersion, schemaVersion: 13, createdAt: new Date().toISOString(), files: await inventory(directory) };
+  const manifest: Manifest = { format: 1, appVersion, schemaVersion: currentSchema, createdAt: new Date().toISOString(), files: await inventory(directory) };
   const json = Buffer.from(JSON.stringify(manifest)); if (json.length > maxManifest) fail('backup_too_large');
   const size = Buffer.alloc(4); size.writeUInt32BE(json.length);
   const temporary = join(parent, `.stomylos-backup-${randomUUID()}.tmp`);
@@ -110,7 +111,7 @@ export async function exportBackup(directory: string, destination: string, appVe
     await rm(checked.directory, { recursive: true });
     // Exclusive link prevents replacing a file created since the save dialog.
     const { link } = await import('node:fs/promises'); await link(temporary, target); await syncDirectory(parent);
-    return { path: target, createdAt: manifest.createdAt, appVersion, schemaVersion: 13, conversations: count };
+    return { path: target, createdAt: manifest.createdAt, appVersion, schemaVersion: currentSchema, conversations: count };
   } finally { await unlink(temporary).catch(() => undefined); }
 }
 export async function prepareBackup(directory: string, source: string): Promise<PreparedBackup> {
@@ -149,7 +150,7 @@ export async function prepareBackup(directory: string, source: string): Promise<
       await syncDirectory(join(stage, root));
     }
     await syncDirectory(stage); await syncDirectory(directory);
-    return { directory: stage, summary: { createdAt: manifest.createdAt, appVersion: manifest.appVersion, schemaVersion: 13, conversations } };
+    return { directory: stage, summary: { createdAt: manifest.createdAt, appVersion: manifest.appVersion, schemaVersion: currentSchema, conversations } };
   } catch (error) { await rm(stage, { recursive: true, force: true }); throw error; }
   finally { input.destroy(); gunzip.destroy(); await pumping.catch(() => undefined); }
 }

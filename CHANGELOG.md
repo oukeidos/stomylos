@@ -5,6 +5,15 @@
 - Omit application time instructions and timestamps from newly prepared chat
   prompts, and enable automatic five-minute prompt caching for Fable and Sonnet.
   Keep message-time storage, memory updates and exact retries of older requests.
+- Added automatic startup database migration from public schema 13 to 14, with a
+  consistent recovery backup and transactional rollback on failure.
+- Added selective Qwen memory cleanup after updates exceed 30,000 characters.
+  Committed memory remains unchanged until cleanup succeeds.
+- Run grammar, ordinary question generation and memory processing independently;
+  block new chats until completion or force cancellation. Preserve received output
+  and retry state across restart without automatic inference replay.
+- Removed dedicated Intention-question generation and added separate cleanup history.
+
 - Increased search-decision timeouts to 10 seconds per model and 20 seconds total
   for new messages, including existing chats. Previously submitted requests keep
   their saved retry settings.

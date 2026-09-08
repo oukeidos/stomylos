@@ -18,6 +18,8 @@ const native = resolve('native/advisory-lock.node');
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-memory-')); store = new Store(directory, native); });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
 function start(partner = 'model_04', text = 'I prefer quiet museums.') {
+  const blocker = store.endBlocker();
+  if (blocker && store.memoryJob(blocker)?.state === 'completed') store.cancelEnd(blocker); // Resolve unrelated grammar/starters in this memory-only fixture.
   const session = store.createSession(); store.searchMode(session.id, 'off'); store.selectManual(session.id, partner);
   const message = store.submit(session.id, text); store.commitRoute(session.id, null, 'public_fixture', null);
   const snapshot = store.freezeMemory(session.id)!;
@@ -91,20 +93,15 @@ it('freezes one memory per conversation, shares new memory across characters and
   expect(store.integrity().foreignKeys).toEqual([]);
 });
 
-it('blocks later updates across all characters, retains retry input, and allows explicit skip', () => {
+it('blocks new chats after failed updates, preserves retry input and permits final force cancellation', () => {
   const first = start(); store.end(first.id); const a = prepare(first.id);
   store.failMemory(a.id, 'request_timeout', null, {});
-  const second = start(); store.end(second.id);
-  const other = start('model_03'); store.end(other.id);
-  expect(store.memoryReady([second.id, other.id])).toBeNull();
-  expect(store.view(other.id).memory.blockedBy).toBe(first.id);
-  expect(() => prepare(other.id)).toThrow('memory_not_ready');
-  expect(store.view(second.id).memory.blockedBy).toBe(first.id);
-  expect(() => store.retryMemory(second.id)).toThrow('memory_waiting_for_earlier_session');
+  expect(() => store.createSession()).toThrow('end_processing_pending');
   store.retryMemory(first.id); const retry = prepare(first.id);
   expect(retry.input_json).toBe(a.input_json); expect(retry.parent_id).toBe(a.id);
-  store.failMemory(retry.id, 'request_timeout', null, {}); store.skipMemory(first.id);
-  expect(store.memoryReady([second.id])).toBe(second.id);
+  store.failMemory(retry.id, 'request_timeout', null, {}); store.cancelEnd(first.id);
+  expect(() => store.retryMemory(first.id)).toThrow('end_processing_cancelled');
+  const second = start('model_03'); store.end(second.id);
   const next = prepare(second.id); expect(JSON.parse(next.input_json).current_memory).toEqual(emptyMemory('shared'));
   store.saveMemory(next.id, '{"operations":[]}', {});
   expect(store.memoryJob(first.id)?.state).toBe('skipped');
@@ -129,6 +126,7 @@ it('marks interrupted attempts on reopen, creates no startup request and skips e
   expect(store.memoryJob(s.id)?.state).toBe('interrupted');
   expect(store.view(s.id).memory.attempts).toHaveLength(1);
   expect(store.view(s.id).memory.attempts[0].failure).toBe('interrupted_unknown_outcome');
+  store.cancelEnd(s.id);
   const old = store.createSession(), raw = new Database(join(directory, 'stomylos.sqlite3'));
   const config = universalSnapshot();
   raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(config), old.id); raw.close();
@@ -151,11 +149,11 @@ it('lets another model correct and forget shared facts without changing an alrea
   const first = start('model_04'); store.end(first.id); const a = prepare(first.id);
   store.saveMemory(a.id, addition(first.message.id), {});
   const second = start('model_03', 'I now prefer lively museums.'); store.end(second.id);
-  const third = start('model_05', 'Please forget my museum preference.');
-  const frozen = structuredClone(third.snapshot), b = prepare(second.id);
+  const frozen = structuredClone(second.snapshot), b = prepare(second.id);
   const target = frozen.traits[0].id;
   store.saveMemory(b.id, JSON.stringify({ operations: [{ op: 'update', id: target, category: 'traits', text: 'Prefers lively museums.', source_message_ids: [second.message.id] }] }), {});
-  expect(store.freezeMemory(third.id)).toEqual(frozen);
+  expect(store.freezeMemory(second.id)).toEqual(frozen);
+  const third = start('model_05', 'Please forget my museum preference.');
   expect(store.view(third.id).memory.current?.traits[0].text).toBe('Prefers lively museums.');
   store.end(third.id); const c = prepare(third.id);
   expect(JSON.parse(c.input_json).current_memory.traits[0].text).toBe('Prefers lively museums.');
@@ -167,17 +165,17 @@ it('lets another model correct and forget shared facts without changing an alrea
 
 it('shows committed per-chat changes from the update input, preserving history across later updates, restart and deletion', () => {
   const first = start(); store.end(first.id);
-  const second = start('model_03'); store.end(second.id);
   const a = prepare(first.id); const firstDoc = store.saveMemory(a.id, addition(first.message.id), {});
   const firstHistory = store.view(first.id).memory.changes;
   expect(firstHistory).toMatchObject({ status: 'ready', scope: 'shared', beforeRevision: 0, afterRevision: 1,
     items: [{ kind: 'added', before: null, after: { category: 'traits', text: 'Prefers quiet museums.' } }] });
+  const second = start('model_03'); store.end(second.id);
   const target = firstDoc.traits[0].id, b = prepare(second.id);
   store.saveMemory(b.id, JSON.stringify({ operations: [
     { op: 'update', id: target, category: 'experiences', text: 'Visited a quiet museum.', source_message_ids: [second.message.id] },
     { op: 'add', id: null, category: 'traits', text: 'Enjoys astronomy.', source_message_ids: [second.message.id] }
   ] }), {});
-  expect(store.view(second.id).memory.snapshot?.traits).toEqual([]);
+  expect(store.view(second.id).memory.snapshot?.traits).toEqual(firstDoc.traits);
   const secondHistory = store.view(second.id).memory.changes;
   expect(secondHistory).toMatchObject({ status: 'ready', beforeRevision: 1, afterRevision: 2 });
   if (secondHistory?.status !== 'ready') throw new Error('Missing history');

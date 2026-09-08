@@ -22,6 +22,7 @@ export interface MemoryAttempt {
   response_content: string | null; result: string | null; metadata: string; failure: string | null;
 }
 export interface MemoryView {
+  cleanup?: { state: string; before: MemoryDocument; after: MemoryDocument | null; beforeChars: number; afterChars: number | null; attempts: import('./types').Json[] } | null;
   changes: MemoryChanges | null;
   current: MemoryDocument | null; snapshot: MemoryDocument | null;
   job: Pick<MemoryJob, 'state' | 'created_at' | 'character_id'> | null;

@@ -1,6 +1,7 @@
+import { endRetryDelay, waitEndRetry } from './end-retry';
+import { cleanupBody } from './memory-cleanup';
 import { ExplainController } from './explain-controller';
 import { partnerRouterBody } from './partner-router';
-import { IntentionController } from './intention-controller';
 import { PatternReportController } from './pattern-report-controller';
 import type { PatternCommandArgs } from '../shared/pattern-report';
 import { GenieController } from './genie-controller';
@@ -24,7 +25,6 @@ type PendingSave = { attempt: () => Promise<unknown>; resolve: (value: any) => v
 export class Coordinator {
   readonly genie: GenieController;
   readonly explain: ExplainController;
-  readonly intentions: IntentionController;
   readonly patterns: PatternReportController;
   patternViewer: { open(id: string, html: string, createdAt: string): Promise<void>; close(id?: string): void } | null = null;
   speech?: SpeechController;
@@ -51,12 +51,6 @@ export class Coordinator {
   constructor(private db: DatabaseClient, private gateway: Gateway, private settings: Settings,
     private emit: (event: AppEvent) => void, private refresh: () => boolean,
     private credentials?: Pick<Credentials, 'manage' | 'snapshot' | 'currentKey'>) {
-    this.intentions = new IntentionController(db, gateway, {
-      write: (method, ...args) => this.write(method, ...args),
-      changed: async id => { await this.publish(id); const unfinished = await this.db.call('unfinished'); if (unfinished) await this.publish(unfinished.id); },
-      ready: id => this.enqueueRenewal(id),
-      error: code => { this.activity.error = code; void this.publish().catch(() => undefined); }
-    });
     this.patterns = new PatternReportController(db, gateway, {
       write: (method, ...args) => this.write(method, ...args),
       publish: snapshot => this.emit({ type: 'pattern', snapshot }),
@@ -93,15 +87,16 @@ export class Coordinator {
     await this.dictation?.bindDraft(source.sessionId, ids, revision, text).catch(() => undefined);
     await this.publish(source.sessionId);
   }
-  async initialize() { await this.db.ready; await this.db.call('createSession'); }
+  private cachedEndBlockers: { sessionId: string; title: string }[] = [];
+  async initialize() { await this.db.ready; if (!(await this.db.call('endBlocker'))) await this.db.call('createSession'); }
   async snapshot(): Promise<AppSnapshot> {
     const revision = this.revision; const activity = { ...this.activity }; const settings = { ...this.settings };
     let page = this.cachedPage; let unfinished = this.cachedUnfinished;
     try {
-      [page, unfinished] = await Promise.all([this.db.call('sessionPage'), this.db.call('unfinished')]);
+      [page, unfinished, this.cachedEndBlockers] = await Promise.all([this.db.call('sessionPage'), this.db.call('unfinished'), this.db.call('endBlockers')]);
       this.cachedPage = page; this.cachedUnfinished = unfinished;
     } catch (error) { if (!this.activity.storageError) throw error; }
-    return { revision, sessions: page.sessions, historyHasMore: page.hasMore, unfinished, activity, settings, characters };
+    return { endBlocker: this.cachedEndBlockers[0]?.sessionId ?? null, endBlockers: this.cachedEndBlockers, revision, sessions: page.sessions, historyHasMore: page.hasMore, unfinished, activity, settings, characters };
   }
   databaseFailed() { this.patterns.databaseFailed(); this.speech?.stop(); this.emit({ type: 'dictation-interrupt' }); this.activity.storageError = 'database_worker_stopped'; this.backupReject?.(new AppFailure('save_required')); void this.publish().catch(() => undefined); }
   private async publish(id?: string) {
@@ -131,7 +126,7 @@ export class Coordinator {
     if (this.activity.storageError || this.pendingSave || this.dictation?.needsSave) throw new AppFailure('save_required');
     if (this.activity.closing || this.interactive || this.grammar || this.renewal || this.memory ||
         this.grammarQueue.length || this.renewalQueue.length || this.deleting.size || this.genie.locked ||
-        this.explain.backupBusy || this.patterns.backupBusy || this.intentions.backupBusy ||
+        this.explain.backupBusy || this.patterns.backupBusy ||
         this.speech?.backupBusy || this.dictation?.locked) throw new AppFailure('backup_busy');
   }
   async withBackup<T>(operation: () => Promise<T>): Promise<T> {
@@ -353,25 +348,61 @@ export class Coordinator {
       case 'retryDeletionCleanup': await this.cleanupDeletions(); await this.publish(); return;
       case 'endSession': await this.end(id); return;
       case 'retryAnalysis': {
+        await this.write('suppressAutomaticRetry', id, 'grammar');
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
         await this.enqueue(id); return;
       }
-      case 'retryIntentionQuestions': {
-        if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
-        await this.write('retryIntentions', id); this.intentions.authorize(id); await this.publish(id); return;
-      }
+      case 'retryIntentionQuestions': throw new AppFailure('feature_removed');
       case 'retryStarterRenewal': {
+        await this.write('suppressAutomaticRetry', id, 'starter');
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
-        if (!(await this.db.call('starterJob', id))) { this.intentions.authorize(id); return; }
+        if (!(await this.db.call('starterJob', id))) return;
         await this.enqueueRenewal(id, true); return;
       }
       case 'retryMemory': {
+        await this.write('suppressAutomaticRetry', id, (await this.db.call('memoryCandidate', id)) ? 'cleanup' : 'update');
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
         await this.write('retryMemory', id); this.enqueueMemory(id); await this.publish(id); return;
       }
+      case 'continueEnd': {
+        await this.db.call('assertEndActive', id);
+        for (const stage of ['grammar','starter','update']) {
+          try { await this.write('resumeEndResponse', id, stage); }
+          catch (error) { this.activity.error = failureCode(error); }
+        }
+        const candidate = await this.db.call('memoryCandidate', id);
+        if (candidate?.state === 'received') {
+          const received = (await this.db.call('cleanupAttempts', id)).findLast(a => a.status === 'received');
+          if (received) {
+            try { await this.write('acceptCleanup', received.id); }
+            catch (error) { await this.write('failCleanup', received.id, failureCode(error)); this.activity.error = failureCode(error); }
+          }
+        }
+        const view = await this.db.call('view', id);
+        if (!this.settings.keyPresent) {
+          await this.publish(id);
+          if (!view.endProcessing?.complete) throw new AppFailure('api_key_missing');
+          return;
+        }
+        if (['pending','failed'].includes(view.session.analysis_state)) {
+          await this.write('suppressAutomaticRetry', id, 'grammar'); await this.enqueue(id);
+        }
+        if (view.renewal && ['pending','failed','interrupted'].includes(view.renewal.state)) {
+          await this.write('suppressAutomaticRetry', id, 'starter'); await this.enqueueRenewal(id, true);
+        }
+        if (view.memory.job && ['pending','failed','interrupted'].includes(view.memory.job.state)) {
+          await this.write('suppressAutomaticRetry', id, (await this.db.call('memoryCandidate', id)) ? 'cleanup' : 'update');
+          await this.write('retryMemory', id); this.enqueueMemory(id);
+        }
+        await this.publish(id); return;
+      }
       case 'skipMemory':
-        await this.write('skipMemory', id); this.memoryAuthorized.delete(id); this.memoryWake++;
-        this.pumpMemory(); this.intentions.authorize(id); await this.memoryChanged(id); return;
+      case 'cancelEnd': {
+        await this.write('cancelEnd', id);
+        this.memoryAuthorized.delete(id); this.memoryWake++;
+        for (const job of [this.grammar, this.renewal, this.memory]) if (job?.sessionId === id) job.abort.abort();
+        await this.publish(id); return;
+      }
       case 'close':
         if (this.dictation?.needsSave) throw new AppFailure('asr_save_required');
         return this.close();
@@ -485,12 +516,13 @@ export class Coordinator {
     await this.publish(id);
     if (this.settings.keyPresent) {
       this.enqueueMemory(id);
-      this.intentions.authorize(id);
+      await this.enqueueRenewal(id);
       // Read the committed state: a lost end acknowledgement can return false on save retry.
       if ((await this.db.call('session', id)).analysis_state === 'pending') await this.enqueue(id);
     }
   }
   private async enqueue(id: string) {
+    await this.db.call('assertEndActive', id);
     const view = await this.db.call('view', id); const snapshot = JSON.parse(view.session.grammar_config ?? 'null');
     if (!snapshot) throw new AppFailure('analysis_not_retryable');
     const previous = view.requests.findLast(r => r.role === 'grammar');
@@ -515,8 +547,14 @@ export class Coordinator {
       await this.write('dispatch', request.id); await this.publish(request.session_id);
       const result = await this.gateway.complete(body, snapshot.response_identity, signal, 120_000);
       if (signal.aborted) throw new AppFailure('request_cancelled');
+      await this.write('receiveEndResponse', request.session_id, 'grammar', request.id, result.content, result.metadata);
       validateGrammar(result.content, source); await this.write('saveAnalysis', request.id, result.content, result.metadata);
-    } catch (error) { await this.write('failRequest', request.id, failureCode(error), null, {}, signal.aborted); }
+      await this.write('clearEndResponse', request.session_id, 'grammar');
+    } catch (error) {
+      await this.write('clearEndResponse', request.session_id, 'grammar');
+      await this.write('failRequest', request.id, failureCode(error), null, {}, signal.aborted);
+      if (await this.automaticRetry(request.session_id, 'grammar', error, signal)) await this.enqueue(request.session_id);
+    }
   }
   private async enqueueRenewal(sessionId: string, explicit = false) {
     if (this.deleting.has(sessionId) || this.activity.closing) return;
@@ -554,11 +592,15 @@ export class Coordinator {
       const result = await this.gateway.complete(body, snapshot.response_identity, signal, snapshot.timeout_seconds * 1000);
       content = result.content; metadata = { ...metadata, ...result.metadata, elapsed_seconds: (performance.now() - started) / 1000 };
       if (signal.aborted) throw new AppFailure('request_cancelled');
+      await this.write('receiveEndResponse', sessionId, 'starter', attempt.id, content, metadata);
       parseStarterQuestions(content); await this.write('saveStarter', attempt.id, content, metadata);
+      await this.write('clearEndResponse', sessionId, 'starter');
     } catch (error) {
       if (error instanceof CompletionFailure) { content = error.content; metadata = { ...metadata, ...error.metadata }; }
       if (started !== null) metadata.elapsed_seconds = (performance.now() - started) / 1000;
+      await this.write('clearEndResponse', sessionId, 'starter');
       await this.write('failStarter', attempt.id, failureCode(error), content, metadata, signal.aborted);
+      if (await this.automaticRetry(sessionId, 'starter', error, signal)) await this.enqueueRenewal(sessionId, true);
     }
   }
   private enqueueMemory(sessionId: string) {
@@ -570,6 +612,32 @@ export class Coordinator {
     await this.publish(sessionId);
     const unfinished = await this.db.call('unfinished'); if (unfinished) await this.publish(unfinished.id);
   }
+  private async automaticRetry(id: string, stage: string, error: unknown, signal: AbortSignal): Promise<boolean> {
+    const delay = endRetryDelay(error);
+    if (signal.aborted || this.activity.closing || delay === null) return false;
+    if (!(await this.write('takeAutomaticRetry', id, stage))) return false;
+    await waitEndRetry(delay, signal);
+    return !signal.aborted && !this.activity.closing;
+  }
+  private async cleanMemory(sessionId: string, candidate: Json, signal: AbortSignal) {
+    const attempt = await this.write('prepareCleanup', sessionId, randomUUID());
+    const started = performance.now();
+    try {
+      if (attempt.status !== 'received') {
+        const config = JSON.parse(candidate.config), body = cleanupBody(config, JSON.parse(candidate.document));
+        await this.write('dispatchCleanup', attempt.id); await this.publish(sessionId);
+        const result = await this.gateway.complete(body, config.response_identity, signal, config.timeout_seconds * 1000);
+        if (signal.aborted) throw new AppFailure('request_cancelled');
+        await this.write('receiveCleanup', attempt.id, result.content, { ...result.metadata, elapsed_seconds: (performance.now() - started) / 1000 });
+      }
+      await this.write('acceptCleanup', attempt.id);
+    } catch (error) {
+      await this.write('failCleanup', attempt.id, failureCode(error), signal.aborted, { content: error instanceof CompletionFailure ? error.content : null, metadata: { ...(error instanceof CompletionFailure ? error.metadata : {}), elapsed_seconds: (performance.now() - started) / 1000 } });
+      if (await this.automaticRetry(sessionId, 'cleanup', error, signal)) {
+        await this.write('retryMemory', sessionId); this.memoryAuthorized.add(sessionId);
+      }
+    }
+  }
   private pumpMemory() {
     if (this.backupLocked || this.deleting.size || this.memory || this.activity.closing || !this.settings.keyPresent) return;
     const abort = new AbortController(), wake = this.memoryWake;
@@ -579,6 +647,11 @@ export class Coordinator {
         if (!sessionId || this.deleting.size) break;
         this.memory!.sessionId = sessionId;
         this.memoryAuthorized.delete(sessionId);
+        const candidate = await this.db.call('memoryCandidate', sessionId);
+        if (candidate && candidate.state !== 'completed') {
+          await this.cleanMemory(sessionId, candidate, abort.signal);
+          await this.memoryChanged(sessionId); this.memory!.sessionId = null; continue;
+        }
         const attempt = await this.write('prepareMemory', sessionId, randomUUID());
         let content: string | null = null; let metadata: Json = {}; const started = performance.now();
         try {
@@ -592,14 +665,20 @@ export class Coordinator {
           content = result.content; metadata = { ...result.metadata, elapsed_seconds: (performance.now() - started) / 1000,
             input_hash: attempt.input_hash, base_revision: packet.current_memory.revision, character_id: job.character_id };
           if (abort.signal.aborted) throw new AppFailure('request_cancelled');
+          await this.write('receiveEndResponse', sessionId, 'update', attempt.id, content, metadata);
           applyMemory(packet, content, true);
           await this.write('saveMemory', attempt.id, content, metadata);
+          await this.write('clearEndResponse', sessionId, 'update');
         } catch (error) {
           if (error instanceof CompletionFailure) { content = error.content; metadata = { ...metadata, ...error.metadata }; }
           metadata.elapsed_seconds = (performance.now() - started) / 1000;
+          await this.write('clearEndResponse', sessionId, 'update');
           await this.write('failMemory', attempt.id, failureCode(error), content, metadata, abort.signal.aborted);
+          if (await this.automaticRetry(sessionId, 'update', error, abort.signal)) {
+            await this.write('retryMemory', sessionId); this.memoryAuthorized.add(sessionId);
+          }
         }
-        if (!this.deleting.has(sessionId) && !this.activity.closing) this.intentions.authorize(sessionId);
+        if ((await this.db.call('memoryJob', sessionId))?.state === 'pending') this.memoryAuthorized.add(sessionId);
         await this.memoryChanged(sessionId);
         this.memory!.sessionId = null;
       }
@@ -633,7 +712,6 @@ export class Coordinator {
     await this.patterns.sourceDeleting(id);
     this.deleting.add(id);
     try {
-      await this.intentions.cancel(id);
       this.grammarQueue = this.grammarQueue.filter(request => request.session_id !== id);
       this.renewalQueue = this.renewalQueue.filter(job => {
         if (job.sessionId !== id) return true;
@@ -667,14 +745,13 @@ export class Coordinator {
     await this.genie.dispose();
     await this.explain.dispose();
     await this.patterns.close();
-    await this.intentions.close();
     this.interactive?.abort.abort(); this.grammar?.abort.abort(); this.renewal?.abort.abort(); this.memory?.abort.abort();
     await Promise.all([this.interactive?.promise, this.grammar?.promise, this.renewal?.promise, this.memory?.promise]);
     this.memoryAuthorized.clear();
     for (const request of this.grammarQueue.splice(0)) await this.write('failRequest', request.id, 'queued_not_dispatched', null, {}, true);
     for (const { attempt } of this.renewalQueue.splice(0)) await this.write('failStarter', attempt.id, 'queued_not_dispatched', null, {}, true);
     await this.saveTail;
-    if (this.activity.storageError) { this.activity.closing = false; this.patterns.resumeAfterCloseFailure(); this.intentions.resume(); await this.publish(); return false; }
+    if (this.activity.storageError) { this.activity.closing = false; this.patterns.resumeAfterCloseFailure(); await this.publish(); return false; }
     await this.speech?.close();
     await this.dictation?.close();
     await this.db.close(); return true;

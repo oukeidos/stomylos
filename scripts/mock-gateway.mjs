@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 // Development-only local responses. No request ever reaches a model provider.
-export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay = 0, streamFinishes = [], speechHandler = null, asrHandler = null, memoryHandler = null, intentionHandler = null, chatHandler = null, explainHandler = null, genieHandler = null, patternHandler = null, searchHandler = null, routerHandler = null } = {}) {
+export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay = 0, streamFinishes = [], speechHandler = null, asrHandler = null, memoryHandler = null, cleanupHandler = null, intentionHandler = null, chatHandler = null, explainHandler = null, genieHandler = null, patternHandler = null, searchHandler = null, routerHandler = null } = {}) {
   const requests = [];
   let streams = 0;
   const server = createServer(async (request, response) => {
@@ -13,6 +13,7 @@ export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.end(`data: ${JSON.stringify({ model: input.model, provider: 'Public mock', choices: [{ delta: { content: '{"search":false}' }, finish_reason: 'stop' }], usage: { total_tokens: 50, cost: 0 } })}\n\ndata: [DONE]\n\n`); return;
     }
+    if (input.model === 'qwen/qwen3.8-2.4t-a95b' && !input.stream && cleanupHandler) { await cleanupHandler(input, response); return; }
     if (input.response_format?.json_schema?.name === 'stomylos_memory_delta_v1' && memoryHandler) { await memoryHandler(input, response); return; }
     if (input.response_format?.json_schema?.name === 'genie_expression_v1' && genieHandler) { await genieHandler(input, response); return; }
     if (input.model === 'openai/gpt-6-astra' && !input.stream && input.max_tokens === 32768 && patternHandler) { await patternHandler(input, response); return; }

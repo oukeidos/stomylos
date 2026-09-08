@@ -1,6 +1,6 @@
 import type { UsageRecorder } from './usage-store';
 import type { Json } from '../shared/types';
-import { AppFailure } from './errors';
+import { AppFailure, HttpFailure } from './errors';
 import { safeMetadata, validateEnvelope } from './contracts';
 import { strictJson } from './strict-json';
 import type { SearchStreamOptions } from '../shared/search';
@@ -39,7 +39,7 @@ export class OpenRouter implements Gateway {
       const response = await fetch(this.endpoint, { method: 'POST', redirect: 'error', signal: abort.signal,
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json',
           ...(options.search || options.gate ? { 'X-OpenRouter-Metadata': 'enabled' } : {}) }, body: payload });
-      if (!response.ok) throw new AppFailure(`http_${response.status}`);
+      if (!response.ok) throw new HttpFailure(response.status, response.headers.get('retry-after'));
       if (!response.body) throw new AppFailure('response_empty');
       reader = response.body.getReader(); let size = 0;
       const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -69,6 +69,8 @@ export class OpenRouter implements Gateway {
       text += part;
       if (final) {
         const raw = strictJson(text); metadata = safeMetadata(raw ?? {});
+        if (Number.isInteger(raw?.error?.code) && raw.error.code >= 400 && raw.error.code <= 599)
+          throw new HttpFailure(raw.error.code);
         try { return validateEnvelope(raw, identity); }
         catch (error) {
           if (!(error instanceof AppFailure)) throw error;
