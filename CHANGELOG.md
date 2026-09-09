@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep icon tooltips visible outside scrolling panels and dialogs, and reposition them at window edges.
 - Generate reports directly from learner messages with flexible date ranges, expanded capacity and simpler controls; make session grammar analysis manual while preserving history through schema 20.
 
 ## 0.3.0 — 2026-09-09
