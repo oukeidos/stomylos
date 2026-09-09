@@ -446,14 +446,14 @@ export class Store {
         const lastUser = messages.findLast(isLearner); if (!lastUser) throw new AppFailure('no_learner_source');
         messages = messages.filter(m => m.sequence <= lastUser.sequence);
       }
-      if (role === 'grammar' && (current.state !== 'ended' || !['pending', 'failed'].includes(current.analysis_state))) throw new AppFailure('analysis_not_retryable');
+      if (role === 'grammar' && (current.state !== 'ended' || !['none', 'pending', 'failed', 'skipped'].includes(current.analysis_state))) throw new AppFailure('analysis_not_retryable');
       validateOpeningSource(current, this.messages(id));
       if (!messages.some(isLearner)) throw new AppFailure('no_learner_source');
       const sourceHash = hash(transcriptJson(messages));
       if (role === 'grammar' && sourceHash !== current.source_hash) throw new AppFailure('frozen_source_changed');
       const encoded = JSON.stringify(snapshot);
       this.run("INSERT INTO model_requests(id,session_id,role,parent_id,status,created_at,source_sequence,source_hash,config,config_hash) VALUES(?,?,?,?,'queued',?,?,?,?,?)", requestId, id, role, parentId, now(), messages.at(-1)!.sequence, sourceHash, encoded, hash(encoded));
-      if (role === 'grammar') this.run("UPDATE sessions SET analysis_state='running' WHERE id=?", id);
+      if (role === 'grammar') this.run("UPDATE sessions SET analysis_state='running',grammar_config=? WHERE id=?", encoded, id);
       return this.request(requestId);
     });
   }
@@ -505,7 +505,7 @@ export class Store {
       const current = this.session(id); if (current.state === 'ended') return false;
       this.run("UPDATE messages SET delivery='interrupted' WHERE session_id=? AND delivery='streaming'", id);
       const source = this.messages(id); validateOpeningSource(current, source); const analyze = source.some(isLearner);
-      this.run("UPDATE sessions SET state='ended',parked_starter=NULL,ended_at=?,draft=?,source_hash=?,grammar_config=?,analysis_state=? WHERE id=?", now(), retainedDraft ?? current.draft, hash(transcriptJson(source)), JSON.stringify(grammarSnapshot()), analyze ? 'pending' : 'skipped', id);
+      this.run("UPDATE sessions SET state='ended',parked_starter=NULL,ended_at=?,draft=?,source_hash=?,grammar_config=?,analysis_state=? WHERE id=?", now(), retainedDraft ?? current.draft, hash(transcriptJson(source)), null, analyze ? 'none' : 'skipped', id);
       this.run('INSERT INTO end_processing(session_id,created_at) VALUES(?,?)', id, now());
       for (const stage of ['grammar','starter','update','cleanup']) this.run('INSERT INTO end_stage_state(session_id,stage) VALUES(?,?)', id, stage);
       this.starter.freeze(this.session(id), source);
@@ -516,7 +516,6 @@ export class Store {
   }
   saveAnalysis(id: string, content: string, metadata: Json) {
     this.transaction(() => {
-      this.assertEndActive(this.request(id).session_id);
       const request = this.request(id); const current = this.session(request.session_id);
       if (request.status === 'succeeded' && current.selected_analysis_id === id && request.response_content === content) return;
       if (request.status !== 'dispatched' || current.selected_analysis_id !== null) throw new AppFailure('analysis_already_resolved');
@@ -537,7 +536,7 @@ export class Store {
     const record = this.all<Json>('SELECT * FROM end_processing WHERE session_id=?', id)[0];
     if (!record) return null;
     const session = this.session(id), memory = this.memory.job(id), candidate = this.memory.candidate(id), starter = this.starter.jobForSession(id);
-    const stages = { grammar: session.analysis_state, starter: this.starter.catalogMode() ? 'skipped' : starter?.state ?? 'skipped',
+    const stages = { starter: this.starter.catalogMode() ? 'skipped' : starter?.state ?? 'skipped',
       update: candidate ? 'completed' : memory?.state ?? 'skipped', cleanup: candidate?.state ?? 'skipped' };
     const attempts: Record<string, Json[]> = {
       grammar: this.all<Json>("SELECT failure,status FROM model_requests WHERE session_id=? AND role='grammar' ORDER BY rowid", id),
@@ -565,14 +564,14 @@ export class Store {
   }
   suppressAutomaticRetry(id: string, stage: string) { this.assertEndActive(id); this.run('UPDATE end_stage_state SET automatic_retry_used=1 WHERE session_id=? AND stage=?', id, stage); }
   receiveEndResponse(id: string, stage: string, attempt: string, content: string, metadata: Json) {
-    this.assertEndActive(id);
+    if (stage !== 'grammar') this.assertEndActive(id);
     this.run('UPDATE end_stage_state SET response_id=?,response_content=?,response_metadata=? WHERE session_id=? AND stage=?', attempt, content, JSON.stringify(metadata), id, stage);
   }
   endResponse(id: string, stage: string): Json | null { return this.all<Json>('SELECT * FROM end_stage_state WHERE session_id=? AND stage=? AND response_content IS NOT NULL', id, stage)[0] ?? null; }
   clearEndResponse(id: string, stage: string) { this.run('UPDATE end_stage_state SET response_id=NULL,response_content=NULL,response_metadata=NULL WHERE session_id=? AND stage=?', id, stage); }
   resumeEndResponse(id: string, stage: string): boolean {
     if (stage === 'starter' && this.starter.catalogMode()) return false;
-    this.assertEndActive(id);
+    if (stage !== 'grammar') this.assertEndActive(id);
     const saved = this.endResponse(id, stage); if (!saved) return false;
     try {
       this.transaction(() => {
@@ -601,8 +600,6 @@ export class Store {
   cancelEnd(id: string) {
     return this.transaction(() => {
       this.run('UPDATE end_processing SET cancelled_at=COALESCE(cancelled_at,?) WHERE session_id=?', now(), id);
-      this.run("UPDATE model_requests SET status='interrupted',failure='request_cancelled',finished_at=? WHERE session_id=? AND role='grammar' AND status IN ('queued','dispatched')", now(), id);
-      this.run("UPDATE sessions SET analysis_state='skipped' WHERE id=? AND analysis_state!='completed'", id);
       this.run("UPDATE memory_attempts SET status='interrupted',failure='request_cancelled' WHERE job_id IN (SELECT ordinal FROM memory_jobs WHERE session_id=?) AND status IN ('queued','dispatched')", id);
       this.run("UPDATE memory_jobs SET state='skipped' WHERE session_id=? AND state!='completed'", id);
       this.run("UPDATE memory_candidates SET state='cancelled' WHERE session_id=? AND state!='completed'", id);
@@ -659,8 +656,8 @@ export class Store {
   dispatchStarter(id: string) { return this.starter.dispatch(id); }
   saveStarter(id: string, content: string, metadata: Json) { this.assertEndActive(this.starter.job(this.starter.attempt(id).job_id).session_id); return this.starter.save(id, content, metadata); }
   failStarter(id: string, failure: string, content: string | null = null, metadata: Json = {}, interrupted = false) { return this.starter.fail(id, failure, content, metadata, interrupted); }
-  patternPreview(asOf?: string) { return this.patterns.preview(asOf); }
-  patternCreate(fingerprint: string, operationId: string, asOf?: string) { return this.patterns.create(fingerprint, operationId, asOf); }
+  patternPreview(asOf?: string, selection?: import('../shared/pattern-report').PatternSelection) { return this.patterns.preview(asOf, selection); }
+  patternCreate(fingerprint: string, operationId: string, asOf?: string, selection?: import('../shared/pattern-report').PatternSelection) { return this.patterns.create(fingerprint, operationId, asOf, selection); }
   patternAttempt(id: string) { return this.patterns.attempt(id); }
   patternDispatch(id: string) { return this.patterns.dispatch(id); }
   patternRetry(id: string, operationId: string) { return this.patterns.retry(id, operationId); }

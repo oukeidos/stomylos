@@ -3,7 +3,7 @@ import type { Store, StoreMethod } from './database';
 import type { Gateway } from './transport';
 import { CompletionFailure } from './transport';
 import { AppFailure, failureCode } from './errors';
-import { patternLimits, validatePatternHtml } from './pattern-report';
+import { patternLimits, validatePatternHtml, patternResponsePolicy } from './pattern-report';
 import type { PatternCommandArgs, PatternCommandResults, PatternState } from '../shared/pattern-report';
 import type { Json } from '../shared/types';
 
@@ -27,16 +27,16 @@ export class PatternReportController {
     if (name === 'patternRelated') return this.db.call('patternRelated', (args as {id: string}).id) as Promise<PatternCommandResults[K]>;
     if (name === 'patternState') return Promise.resolve(this.snapshot()) as Promise<PatternCommandResults[K]>;
     if (name === 'patternClose') { this.hooks.closeViewer(); return Promise.resolve() as Promise<PatternCommandResults[K]>; }
-    if (name === 'patternPreview') return this.db.call('patternPreview') as Promise<PatternCommandResults[K]>;
+    if (name === 'patternPreview') return this.db.call('patternPreview', undefined, args as PatternCommandArgs['patternPreview']) as Promise<PatternCommandResults[K]>;
     if (name === 'patternList') return this.db.call('patternList', (args as PatternCommandArgs['patternList']).offset) as Promise<PatternCommandResults[K]>;
     if (name === 'patternDetail') return this.db.call('patternDetail', (args as { id: string }).id) as Promise<PatternCommandResults[K]>;
     if (name === 'patternRetrySave') return this.hooks.retrySave() as Promise<PatternCommandResults[K]>;
     const operation = this.control.then(async () => {
       if (this.closed) throw new AppFailure('pattern_closed');
-      const a = args as { id: string; fingerprint: string; operationId: string };
+      const a = args as { id: string; fingerprint: string; operationId: string; selection?: import('../shared/pattern-report').PatternSelection };
       switch (name) {
         case 'patternCreate': {
-          const result = await this.hooks.write('patternCreate', a.fingerprint, a.operationId);
+          const result = await this.hooks.write('patternCreate', a.fingerprint, a.operationId, undefined, a.selection);
           if (result.attemptId && !this.flight) this.dispatch(result.attemptId, result.id);
           return { id: result.id, reused: result.reused };
         }
@@ -72,11 +72,11 @@ export class PatternReportController {
     try {
       const attempt = await this.hooks.write('patternDispatch', id);
       if (abort.signal.aborted) throw new AppFailure('request_cancelled');
-      const result = await this.gateway.complete(JSON.parse(attempt.request), attempt.contract.identity, abort.signal, attempt.contract.timeout_ms);
+      const result = await this.gateway.complete(JSON.parse(attempt.request), attempt.contract.identity, abort.signal, attempt.contract.timeout_ms, patternResponsePolicy(attempt.contract));
       metadata = { ...result.metadata, elapsed_seconds: (performance.now() - start) / 1000 };
       html = result.content;
       if (abort.signal.aborted) throw new AppFailure('request_cancelled');
-      validatePatternHtml(html);
+      validatePatternHtml(html, attempt.contract);
       this.state.phase = 'saving'; this.publish();
       await this.hooks.write('patternSave', id, html, metadata);
     } catch (error) {

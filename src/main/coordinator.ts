@@ -19,7 +19,7 @@ import { parseStarterQuestions, starterBody } from './starter-renewal';
 import { applyMemory, memoryBody } from './memory-updater';
 import { AppFailure, failureCode } from './errors';
 import type { Credentials } from './credentials';
-import { characters, conversationBody, conversationRequestSnapshot, grammarBody, isLearner, routerBody, routerScores, routerSnapshot, validateGrammar, hash } from './contracts';
+import { characters, conversationBody, conversationRequestSnapshot, grammarBody, grammarSnapshot, isLearner, routerBody, routerScores, routerSnapshot, validateGrammar, hash } from './contracts';
 
 type PendingSave = { attempt: () => Promise<unknown>; resolve: (value: any) => void };
 export class Coordinator {
@@ -222,7 +222,14 @@ export class Coordinator {
   }
   private async execute(name: keyof CommandArgs, args: any): Promise<unknown> {
     if (name.startsWith('pattern')) {
-      if (['patternCreate', 'patternRetry'].includes(name) && !this.settings.keyPresent) throw new AppFailure('api_key_missing');
+      if (['patternCreate', 'patternRetry'].includes(name) && !this.settings.keyPresent) {
+        if (name === 'patternCreate') {
+          const preview = await this.db.call('patternPreview', undefined, args.selection);
+          if (preview.fingerprint === args.fingerprint && preview.existingId && (await this.db.call('patternDetail', preview.existingId)).selected_attempt_id)
+            return {id: preview.existingId, reused: true};
+        }
+        throw new AppFailure('api_key_missing');
+      }
       return this.patterns.command(name as keyof PatternCommandArgs, args);
     }
     if (name.startsWith('explain')) {
@@ -347,8 +354,17 @@ export class Coordinator {
       case 'deleteSession': await this.deleteSession(id); return;
       case 'retryDeletionCleanup': await this.cleanupDeletions(); await this.publish(); return;
       case 'endSession': await this.end(id); return;
+      case 'cancelAnalysis': {
+        const queued = this.grammarQueue.filter(r => r.session_id === id);
+        this.grammarQueue = this.grammarQueue.filter(r => r.session_id !== id);
+        for (const r of queued) await this.write('failRequest', r.id, 'request_cancelled', null, {}, true);
+        if (this.grammar?.sessionId === id) { this.grammar.abort.abort(); await this.grammar.promise; }
+        await this.publish(id); return;
+      }
       case 'retryAnalysis': {
-        await this.write('suppressAutomaticRetry', id, 'grammar');
+        const current = await this.db.call('session', id);
+        if (current.analysis_state === 'completed' || current.analysis_state === 'running') return;
+        if (await this.write('resumeEndResponse', id, 'grammar')) { await this.publish(id); return; }
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
         await this.enqueue(id); return;
       }
@@ -361,7 +377,7 @@ export class Coordinator {
       }
       case 'continueEnd': {
         await this.db.call('assertEndActive', id);
-        for (const stage of ['grammar','update']) {
+        for (const stage of ['update']) {
           try { await this.write('resumeEndResponse', id, stage); }
           catch (error) { this.activity.error = failureCode(error); }
         }
@@ -379,9 +395,6 @@ export class Coordinator {
           if (!view.endProcessing?.complete) throw new AppFailure('api_key_missing');
           return;
         }
-        if (['pending','failed'].includes(view.session.analysis_state)) {
-          await this.write('suppressAutomaticRetry', id, 'grammar'); await this.enqueue(id);
-        }
         if (view.renewal && !view.renewal.retired && ['pending','failed','interrupted'].includes(view.renewal.state)) {
           await this.write('suppressAutomaticRetry', id, 'starter'); await this.enqueueRenewal(id, true);
         }
@@ -395,7 +408,7 @@ export class Coordinator {
       case 'cancelEnd': {
         await this.write('cancelEnd', id);
         this.memoryAuthorized.delete(id); this.memoryWake++;
-        for (const job of [this.grammar, this.renewal, this.memory]) if (job?.sessionId === id) job.abort.abort();
+        for (const job of [this.renewal, this.memory]) if (job?.sessionId === id) job.abort.abort();
         await this.publish(id); return;
       }
       case 'close':
@@ -512,14 +525,13 @@ export class Coordinator {
     if (this.settings.keyPresent) {
       this.enqueueMemory(id);
       await this.enqueueRenewal(id);
-      // Read the committed state: a lost end acknowledgement can return false on save retry.
-      if ((await this.db.call('session', id)).analysis_state === 'pending') await this.enqueue(id);
     }
   }
   private async enqueue(id: string) {
-    await this.db.call('assertEndActive', id);
-    const view = await this.db.call('view', id); const snapshot = JSON.parse(view.session.grammar_config ?? 'null');
-    if (!snapshot) throw new AppFailure('analysis_not_retryable');
+    const view = await this.db.call('view', id);
+    if (view.session.analysis_state === 'completed' || view.session.analysis_state === 'running') return;
+    if (await this.write('resumeEndResponse', id, 'grammar')) { await this.publish(id); return; }
+    const snapshot = JSON.parse(view.session.grammar_config ?? 'null') ?? grammarSnapshot();
     const previous = view.requests.findLast(r => r.role === 'grammar');
     const request = await this.write('createRequest', id, 'grammar', snapshot, previous?.id ?? null);
     this.grammarQueue.push(request); await this.publish(id); this.pump();
@@ -548,7 +560,6 @@ export class Coordinator {
     } catch (error) {
       await this.write('clearEndResponse', request.session_id, 'grammar');
       await this.write('failRequest', request.id, failureCode(error), null, {}, signal.aborted);
-      if (await this.automaticRetry(request.session_id, 'grammar', error, signal)) await this.enqueue(request.session_id);
     }
   }
   private async enqueueRenewal(sessionId: string, explicit = false) {

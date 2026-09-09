@@ -1,8 +1,8 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { AppFailure } from './errors';
-import { patternBody, patternContract, patternHash, resolvePatternContract, selectPatternScope, validatePatternHtml } from './pattern-report';
-import type { PatternAttempt, PatternCard, PatternDetail, PatternSource, PatternStatus } from '../shared/pattern-report';
+import { patternBody, patternContract, patternHash, resolvePatternContract, validatePatternHtml, directPatternEstimate, directPatternEstimator, directPatternLimit, patternInputCost } from './pattern-report';
+import type { PatternAttempt, PatternCard, PatternDetail, PatternSource, PatternStatus, PatternSelection, PatternPreview } from '../shared/pattern-report';
 import type { Json } from '../shared/types';
 
 type Report = { id: string; created_at: string; fingerprint: string; snapshot: string; selected_attempt_id: string | null };
@@ -22,35 +22,37 @@ export class PatternReportStore {
       .map(u => ({ source_id: 'E-' + patternHash(JSON.stringify([id, selected_analysis_id, u.source_message_id])).slice(0, 24),
         message_id: u.source_message_id, ordinal: u.ordinal, original: u.text, corrected: u.corrected_text, explanation: u.explanation }));
   }
-  private selection(asOf: string) {
-    const cutoff = new Date(Date.parse(asOf) - 90 * 86400_000).toISOString();
-    const rows = this.all<{ id: string; selected_analysis_id: string }>(`SELECT s.id,s.selected_analysis_id FROM sessions s
-      JOIN model_requests r ON r.id=s.selected_analysis_id AND r.session_id=s.id
-      WHERE s.state='ended' AND julianday(s.ended_at) BETWEEN julianday(?) AND julianday(?)
-      AND s.analysis_state='completed' AND r.status='succeeded'
-      AND EXISTS(SELECT 1 FROM grammar_units u WHERE u.analysis_attempt_id=r.id AND u.session_id=s.id)
-      ORDER BY julianday(s.ended_at) DESC,s.id DESC`, cutoff, asOf);
-    // Only the first twenty need their full evidence loaded; retain the eligible count separately.
-    const sources = rows.slice(0, 20).map(({ id, selected_analysis_id }): PatternSource => {
-      const session = this.get<{ ended_at: string }>('SELECT ended_at FROM sessions WHERE id=?', id)!;
-      const units = this.sourceUnits(id, selected_analysis_id);
-      return { session_id: id, analysis_id: selected_analysis_id, ended_at: session.ended_at, units, source_hash: patternHash(JSON.stringify(units)) };
-    });
-    const recent = this.get<{ n: number }>("SELECT count(*) n FROM sessions WHERE state='ended' AND julianday(ended_at) BETWEEN julianday(?) AND julianday(?)", cutoff, asOf)!.n;
-    const older = this.get<{ n: number }>("SELECT count(*) n FROM sessions WHERE state='ended' AND julianday(ended_at)<julianday(?)", cutoff)!.n;
-    const selected = selectPatternScope(sources, asOf, recent - rows.length, older);
-    selected.preview.unavailableSessions = this.all(`SELECT s.id,s.ended_at,s.analysis_state AS state FROM sessions s
-      WHERE s.state='ended' AND julianday(s.ended_at) BETWEEN julianday(?) AND julianday(?) AND NOT EXISTS(
-        SELECT 1 FROM model_requests r WHERE r.id=s.selected_analysis_id AND r.session_id=s.id AND r.status='succeeded'
-        AND s.analysis_state='completed' AND EXISTS(SELECT 1 FROM grammar_units u WHERE u.analysis_attempt_id=r.id AND u.session_id=s.id))
-      ORDER BY julianday(s.ended_at) DESC,s.id DESC LIMIT 20`, cutoff, asOf);
-    selected.preview.scope.eligible = rows.length;
-    selected.preview.scope.excluded.overCount = Math.max(0, rows.length - 20);
-    selected.preview.existingId = this.get<{ id: string }>('SELECT id FROM pattern_reports WHERE fingerprint=?', selected.preview.fingerprint)?.id ?? null;
-    return selected;
+  private learnerUnits(id: string) {
+    return this.all<{id: string; content: string; sequence: number}>(
+      "SELECT id,content,sequence FROM messages WHERE session_id=? AND role='user' AND origin='learner' ORDER BY sequence", id)
+      .map((m, ordinal) => ({ source_id: m.id, message_id: m.id, ordinal, original: m.content, corrected: '', explanation: '' }));
   }
-  preview(asOf = now()) { return this.db.transaction(() => this.selection(asOf).preview)(); }
-  create(fingerprint: string, operationId: string, asOf = now()) {
+  private selection(asOf: string, chosen?: PatternSelection) {
+    const selection = chosen ?? { from: new Date(Date.parse(asOf) - 7 * 86400_000).toISOString(), to: asOf, timezone: 'UTC', excludeCovered: false };
+    if (!Number.isFinite(Date.parse(selection.from)) || !Number.isFinite(Date.parse(selection.to)) || Date.parse(selection.from) >= Date.parse(selection.to)) fail('time');
+    const rows = this.all<{id: string; ended_at: string; covered: number}>(`SELECT s.id,s.ended_at,
+      EXISTS(SELECT 1 FROM pattern_report_sources ps JOIN pattern_reports p ON p.id=ps.report_id
+      WHERE ps.session_id=s.id AND p.selected_attempt_id IS NOT NULL) covered FROM sessions s
+      WHERE s.state='ended' AND julianday(s.ended_at)>=julianday(?) AND julianday(s.ended_at)<julianday(?)
+      AND EXISTS(SELECT 1 FROM messages m WHERE m.session_id=s.id AND m.role='user' AND m.origin='learner')
+      ORDER BY julianday(s.ended_at),s.id`, selection.from, selection.to);
+    const sources: PatternSource[] = rows.filter(r => !selection.excludeCovered || !r.covered).map(r => {
+      const units = this.learnerUnits(r.id);
+      return {session_id: r.id, analysis_id: null, evidence_kind: 'learner', ended_at: r.ended_at, units, source_hash: patternHash(JSON.stringify(units))};
+    });
+    const body = patternBody(sources), estimate = directPatternEstimate(body);
+    const fingerprint = patternHash(JSON.stringify({sources, body, contract: patternContract, estimator: directPatternEstimator}));
+    const existingId = this.get<{id: string}>('SELECT id FROM pattern_reports WHERE fingerprint=?', fingerprint)?.id ?? null;
+    const preview: PatternPreview = {fingerprint, existingId, unavailableSessions: [],
+      blocked: estimate > directPatternLimit ? 'input_limit' as const : sources.length < 5 ? 'insufficient' as const : null,
+      scope: {asOf, cutoff: selection.from, selection, count: sources.length, records: sources.reduce((n,s)=>n+s.units.length,0),
+        from: sources[0]?.ended_at ?? null, to: sources.at(-1)?.ended_at ?? null, eligible: rows.length,
+        covered: rows.filter(r=>r.covered).length, excluded: {unavailable:0, older:0, overCount:0, overBudget:0},
+        estimate, estimator: directPatternEstimator, limit: directPatternLimit, ...patternInputCost(estimate)}};
+    return {sources, body, preview};
+  }
+  preview(asOf = now(), selection?: PatternSelection) { return this.db.transaction(() => this.selection(asOf, selection).preview)(); }
+  create(fingerprint: string, operationId: string, asOf = now(), selection?: PatternSelection) {
     return this.db.transaction(() => {
       const receipt = this.get<Report>('SELECT * FROM pattern_reports WHERE id=?', operationId);
       if (receipt) {
@@ -58,14 +60,14 @@ export class PatternReportStore {
         const queued = this.get<PatternAttempt>("SELECT * FROM pattern_report_attempts WHERE report_id=? AND status='queued'", receipt.id);
         return { id: receipt.id, reused: !queued, attemptId: queued?.id ?? null };
       }
-      const s = this.selection(asOf);
+      const s = this.selection(asOf, selection);
       if (s.preview.fingerprint !== fingerprint) fail('scope_changed');
       if (s.preview.blocked) fail(s.preview.blocked);
       if (s.preview.existingId) return { id: s.preview.existingId, reused: true, attemptId: null };
       if (this.active()) fail('busy');
       const snapshot = JSON.stringify({ scope: s.preview.scope, sources: s.sources, contract: patternContract });
       this.run('INSERT INTO pattern_reports(id,created_at,fingerprint,snapshot) VALUES(?,?,?,?)', operationId, now(), fingerprint, snapshot);
-      s.sources.forEach((source, ordinal) => this.run('INSERT INTO pattern_report_sources VALUES(?,?,?,?,?)', operationId, source.session_id, source.analysis_id, source.source_hash, ordinal));
+      s.sources.forEach((source, ordinal) => this.run('INSERT INTO pattern_report_sources(report_id,session_id,analysis_id,evidence_kind,source_hash,ordinal) VALUES(?,?,?,?,?,?)', operationId, source.session_id, source.analysis_id, 'learner', source.source_hash, ordinal));
       const attempt = this.insertAttempt(operationId, randomUUID(), null, JSON.stringify(s.body));
       return { id: operationId, reused: false, attemptId: attempt.id };
     })();
@@ -76,11 +78,13 @@ export class PatternReportStore {
     return this.attempt(id);
   }
   private assertSources(reportId: string) {
-    const sources = this.all<{session_id: string; analysis_id: string; source_hash: string}>('SELECT * FROM pattern_report_sources WHERE report_id=?', reportId);
+    const sources = this.all<{session_id: string; analysis_id: string | null; evidence_kind: string; source_hash: string}>('SELECT * FROM pattern_report_sources WHERE report_id=?', reportId);
     for (const source of sources) {
       const session = this.get<{selected_analysis_id: string}>('SELECT selected_analysis_id FROM sessions WHERE id=?', source.session_id);
       if (!session) fail('source_deleted');
-      if (session!.selected_analysis_id !== source.analysis_id || patternHash(JSON.stringify(this.sourceUnits(source.session_id, source.analysis_id))) !== source.source_hash) fail('source_changed');
+      if (source.evidence_kind === 'learner') {
+        if (patternHash(JSON.stringify(this.learnerUnits(source.session_id))) !== source.source_hash) fail('source_changed');
+      } else if (session!.selected_analysis_id !== source.analysis_id || patternHash(JSON.stringify(this.sourceUnits(source.session_id, source.analysis_id!))) !== source.source_hash) fail('source_changed');
     }
   }
   private sourcesPresent(reportId: string) {
@@ -124,7 +128,7 @@ export class PatternReportStore {
     })();
   }
   save(id: string, html: string, metadata: Json) {
-    validatePatternHtml(html);
+    validatePatternHtml(html, this.assertRequest(this.attempt(id)));
     return this.db.transaction(() => {
       const a = this.attempt(id), report = this.report(a.report_id);
       if (a.status === 'succeeded' && report.selected_attempt_id === id && a.html === html) return;
@@ -146,7 +150,8 @@ export class PatternReportStore {
   }
   private card(r: Report): PatternCard {
     const a = this.all<PatternAttempt>('SELECT * FROM pattern_report_attempts WHERE report_id=? ORDER BY rowid DESC LIMIT 1', r.id)[0];
-    return { id: r.id, created_at: r.created_at, scope: JSON.parse(r.snapshot).scope, selected_attempt_id: r.selected_attempt_id,
+    const reportedCost = JSON.parse(a.metadata).usage?.cost;
+    return { cost: typeof reportedCost === 'number' && Number.isFinite(reportedCost) && reportedCost >= 0 ? reportedCost : null, id: r.id, created_at: r.created_at, scope: JSON.parse(r.snapshot).scope, selected_attempt_id: r.selected_attempt_id,
       last_attempt_id: a.id, status: a.status, failure: a.failure };
   }
   list(offset = 0) {

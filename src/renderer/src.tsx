@@ -7,7 +7,6 @@ import { GenieDock, UndoGenie, useGenie, genieBusy, openGenie, captureGenieRange
 import { DictationPanel, RecordButton, DictationNavigationDialog, useDictation, dictationBusy, beforeDictationNavigation, selectDictationSession, prepareDictationSend, dictationSent } from './dictation';
 import { SpeechControl, selectSpeechSession } from './speech';
 import { createRoot } from 'react-dom/client';
-import { createPortal } from 'react-dom';
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -25,7 +24,7 @@ import { useConversationScroll } from './conversation-scroll';
 import { BookmarkUndo, useBookmarks, useHistory } from './bookmarks';
 import './style.css';
 
-const labels: Record<string, string> = { none: 'In progress', pending: 'Analysis ready to run', running: 'Analyzing',
+const labels: Record<string, string> = { none: 'Not analyzed', pending: 'Analysis ready to run', running: 'Analyzing',
   completed: 'Analysis saved', failed: 'Analysis needs attention', skipped: 'No learner messages' };
 function errorText(error: unknown): string {
   const code = error instanceof Error ? error.message : String(error);
@@ -140,12 +139,13 @@ function Disclosure({ title, subtitle, children, onToggle, initialOpen = false }
   </section>;
 }
 const Analysis = memo(function Analysis({ view }: { view: SessionView }) {
-  const [changedOnly, setChangedOnly] = useState(true); const state = view.session.analysis_state;
+  const [changedOnly, setChangedOnly] = useState(true);
+  const state = view.session.analysis_state === 'skipped' && view.messages.some(m => m.origin === 'learner') ? 'none' : view.session.analysis_state;
   const changed = view.units.filter(unit => unit.changed); const visible = changedOnly ? changed : view.units;
   const last = view.requests.findLast(request => request.role === 'grammar');
   const subtitle = state === 'completed' ? `${changed.length} suggested ${changed.length === 1 ? 'change' : 'changes'} · ${view.units.length} messages analyzed` :
     state === 'running' && last?.status === 'queued' ? 'Queued · you can start another chat' : labels[state];
-  return <div className="review-body"><h2>Feedback</h2><p className="note">{subtitle}</p>
+  return <div className="review-body"><h3>Analysis results</h3><p className="note">{subtitle}</p>
     {state === 'completed' ? <>
       <p className="note">AI suggestions may miss errors or suggest unnecessary changes.</p>
       <label className="check"><input type="checkbox" checked={changedOnly} onChange={event => setChangedOnly(event.target.checked)} />Only show suggested changes</label>
@@ -165,16 +165,19 @@ const Analysis = memo(function Analysis({ view }: { view: SessionView }) {
     </>}
   </div>;
 });
-function Feedback({ view, controls, onReveal }: { view: SessionView; controls: HTMLDivElement | null; onReveal: () => void }) {
-  const [open, setOpen] = useState(false);
-  const section = useRef<HTMLElement>(null);
-  useLayoutEffect(() => { if (open) section.current?.scrollIntoView({ block: 'start' }); }, [open]);
-  return <>
-    <section ref={section} className={`analysis-review expansion ${open ? 'open' : ''}`} id="conversation-review" inert={!open} aria-hidden={!open} aria-label="Analysis details"><div className="expansion-clip"><Analysis view={view} /></div></section>
-    {controls && createPortal(<button className="icon-button" aria-label={`Analysis details · ${view.session.analysis_state === 'completed' ? `${view.units.filter(u => u.changed).length} suggested changes · ${view.units.length} messages analyzed` : labels[view.session.analysis_state]}`} title="Review feedback" aria-expanded={open} aria-controls="conversation-review" onClick={() => { onReveal(); setOpen(value => !value); }}><Icon name="review" /></button>, controls)}
-  </>;
+function GrammarDetails({view, act}: {view: SessionView; act: (fn: () => Promise<unknown>) => void}) {
+  if (view.session.state !== 'ended') return null;
+  const state = view.session.analysis_state, hasInput = view.messages.some(m => m.origin === 'learner');
+  return <Disclosure title="Grammar analysis" subtitle={state === 'completed' ? 'Saved' : state === 'running' ? 'Working…' : 'Optional'}>
+    <p className="note">Analyze this conversation only when you choose. Reports use your original messages independently.</p>
+    {hasInput ? <>
+      {state !== 'completed' && state !== 'running' && <button onClick={() => act(() => window.stomylos.command('retryAnalysis', {sessionId: view.session.id}))}>{state === 'failed' || state === 'pending' ? 'Retry grammar analysis' : 'Analyze this conversation'}</button>}
+      {state === 'running' && <button onClick={() => act(() => window.stomylos.command('cancelAnalysis', {sessionId: view.session.id}))}>Cancel grammar analysis</button>}
+      <Analysis view={view} />
+    </> : <p className="note">There are no learner messages to analyze.</p>}
+  </Disclosure>;
 }
-const endStageLabels: Record<string, string> = { grammar: 'Grammar analysis', update: 'Memory update', cleanup: 'Memory cleanup' };
+const endStageLabels: Record<string, string> = { update: 'Memory update', cleanup: 'Memory cleanup' };
 function endSummary(view: SessionView) {
   const processing = view.endProcessing!;
   if (processing.cancelled) return 'Chat saved · Remaining work cancelled';
@@ -370,7 +373,6 @@ function App() {
   const [detailsSection, setDetailsSection] = useState<'memory' | 'starter' | null>(null);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('voice');
   const settingsTrigger = useRef<HTMLButtonElement>(null);
-  const [reviewControls, setReviewControls] = useState<HTMLDivElement | null>(null);
   const [historyOpen, setHistoryOpen] = useState(() => { try { return localStorage.getItem('library-open') === 'true'; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem('library-open', String(historyOpen)); } catch { /* Library visibility still works without preferences storage. */ } }, [historyOpen]);
   const library = useHistory(app);
@@ -467,7 +469,7 @@ function App() {
     {!learning && library.loading && <div className="history-notice" role="status">Loading conversations…</div>}
     {!learning && !library.loading && !library.failed && !history.length && library.filter === 'bookmarked' && <div className="history-notice">No bookmarked chats yet.</div>}
     <nav aria-label="Conversation history" aria-busy={library.loading} hidden={learning}>{history.filter(session => !isDeleted(session.id)).map(session => <div className="history-row" key={session.id}><button title={session.title} aria-current={!learning && session.id === selected ? 'page' : undefined} className={`history-item ${!learning && session.id === selected ? 'selected' : ''}`} onClick={() => act(() => show(session.id))}>
-      <strong>{session.bookmarked && <Icon name="bookmark" className="history-bookmark" />}<span>{session.title}</span></strong><div className="history-meta"><small>{session.state === 'ended' ? ({ completed: 'Ended', skipped: 'No messages', pending: 'Analysis pending', failed: 'Analysis failed', none: 'Ended', running: 'Analyzing' }[session.analysis_state] ?? labels[session.analysis_state]) : session.state === 'draft' ? 'New chat' : 'In progress'}</small>
+      <strong>{session.bookmarked && <Icon name="bookmark" className="history-bookmark" />}<span>{session.title}</span></strong><div className="history-meta"><small>{session.state === 'ended' ? ({ completed: 'Ended', skipped: 'Ended', pending: 'Analysis pending', failed: 'Analysis failed', none: 'Ended', running: 'Analyzing' }[session.analysis_state] ?? labels[session.analysis_state]) : session.state === 'draft' ? 'New chat' : 'In progress'}</small>
       <time>{new Date(session.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time></div>
     </button><Menu.Root><Menu.Trigger className="history-more" disabled={library.loading} aria-label={`Options for ${session.title}`} title="Chat options"><Icon name="more" /></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" sideOffset={4}>
       <Menu.Item className="partner-option" disabled={!session.canBookmark || bookmarkDisabled(session.id)} onSelect={() => mark(session, true)}>{session.bookmarked ? 'Remove bookmark' : 'Bookmark chat'}</Menu.Item>
@@ -502,8 +504,7 @@ function App() {
           </section>}
 
           <div className="ended-marker">{!view.endProcessing && labels[view.session.analysis_state]}{view.session.draft && <button className="icon-button retained-draft-link" aria-label="View unsent draft" title="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></button>}</div>
-          {!view.endProcessing && ['failed', 'pending'].includes(view.session.analysis_state) && <button className="analysis-retry" onClick={() => act(() => window.stomylos.command('retryAnalysis', { sessionId: view.session.id }))}>Try analysis again</button>}
-          <Feedback key={view.session.id} view={view} controls={reviewControls} onReveal={scroll.pause} />
+
         </>}
       </> : <p className="note">{selected ? 'Loading conversation…' : 'No conversation selected. Start a new chat when you are ready.'}</p>}</div>
     </main>
@@ -513,7 +514,6 @@ function App() {
       target?.focus({ preventScroll: true });
     }}><Icon name="down" /><span aria-live="polite">{scroll.unread ? 'New reply' : 'Latest message'}</span></button></div>}
     <div className="conversation-footer">{view && view.session.state !== 'ended' ? <Composer key={view.session.id} view={view} app={app} act={act} blocked={openingBusy} onComposition={setComposing} afterAcceptedAction={scroll.afterAcceptedAction} openingAction={<>{openingAction}{starterAction}</>} starter={canChangeOpening && starter && <Bubble message={starter} partner="Partner" />} /> : <footer className="ended-footer">
-      <div ref={setReviewControls} className="review-controls" />
       <>{unfinished && <IconButton label="Return to current chat" icon="back" onClick={() => act(() => show(unfinished.id))} />}</></footer>}</div>
   </div>
   {app.endBlocker && <EndProcessingDialog key={app.endBlocker} sessionId={app.endBlocker} storageError={app.activity.storageError ?? null} errorText={errorText} />}
@@ -532,6 +532,7 @@ function App() {
   </Modal>
   <Modal open={details} onOpenChange={setDetails} title="Conversation details">{view && <>
     <EndProcessingDetails view={view} />
+    <GrammarDetails key={view.session.id} view={view} act={act} />
     <MemoryDetails view={view} act={act} initialOpen={detailsSection === 'memory'} openShared={() => { setDetails(false); setSettingsTab('memory'); setSettings(true); }} show={async id => { setDetails(false); await show(id); }} />
     <RequestDetails view={view} onToggle={() => undefined} />
     <Renewal initialOpen={detailsSection === 'starter'} view={view} onToggle={() => undefined} act={act} />

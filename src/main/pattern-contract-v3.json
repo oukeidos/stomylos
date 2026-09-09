@@ -1,0 +1,43 @@
+{
+  "version": "stomylos_pattern_report_v3",
+  "parameters": {
+    "model": "openai/gpt-6-astra",
+    "stream": false,
+    "max_tokens": 128000,
+    "reasoning": {
+      "effort": "medium",
+      "exclude": true
+    },
+    "provider": {
+      "only": [
+        "openai"
+      ],
+      "allow_fallbacks": false,
+      "require_parameters": true,
+      "data_collection": "deny"
+    }
+  },
+  "identity": {
+    "allowed_models": [
+      "openai/gpt-6-astra",
+      "openai/gpt-6-astra-20260903"
+    ],
+    "provider": "OpenAI"
+  },
+  "timeout_ms": 3600000,
+  "system_sha256": "fc661392581719fa866608baa11586c3ed29ec8b8b264356473de03143c05336",
+  "capacity": {
+    "context": 1050000,
+    "max_input": 922000,
+    "input_fraction": 0.5,
+    "framing_tokens": 32
+  },
+  "response_max_bytes": null,
+  "html_max_bytes": null,
+  "pricing": {
+    "input_per_million": 10,
+    "long_input_per_million": 20,
+    "long_input_threshold": 272000,
+    "checked_at": "2026-09-09"
+  }
+}

@@ -3,7 +3,7 @@ import { Icon } from './icons';
 import { IconButton } from './icon-button';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
-import type { PatternDetail, PatternPreview, PatternState, PatternCard } from '../shared/pattern-report';
+import type { PatternDetail, PatternPreview, PatternState, PatternCard, PatternSelection } from '../shared/pattern-report';
 
 const idle: PatternState = { revision: 0, reportId: null, phase: 'idle', startedAt: null, error: null };
 export function usePatternState() {
@@ -21,7 +21,7 @@ function message(error: unknown) {
   const code = error instanceof Error ? error.message : String(error);
   const messages: Record<string, string> = {
     pattern_scope_changed: 'Your available evidence changed. Review the updated scope before creating the report.',
-    pattern_insufficient: 'At least five analyzed conversations are needed.', pattern_input_limit: 'Fewer than five complete conversations fit this report’s input allowance.',
+    pattern_insufficient: 'At least five conversations are needed.', pattern_input_limit: 'The selected period exceeds the input allowance. Shorten the period.',
     pattern_busy: 'A report is already being created.', pattern_source_deleted: 'A source conversation was deleted. Create a new report from the available evidence.',
     pattern_source_changed: 'The saved source evidence changed. Create a new report from the current evidence.',
     pattern_output: 'The model did not return a complete HTML report.', pattern_output_limit: 'The returned report exceeded the size limit.',
@@ -40,16 +40,27 @@ export function Learning({ active, revision, state, disabled, keyPresent, back, 
   const [offset, setOffset] = useState(0), [more, setMore] = useState(false), [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<PatternDetail | null>(null), [remove, setRemove] = useState<PatternCard | null>(null);
   const [busy, setBusy] = useState(false), [tick, setTick] = useState(Date.now());
+  const [weeks, setWeeks] = useState('1'), [customFrom, setCustomFrom] = useState(''), [customTo, setCustomTo] = useState('');
+  const [excludeCovered, setExcludeCovered] = useState(false);
   const generation = useRef(0), title = useRef<HTMLHeadingElement>(null), detailId = useRef<string | null>(null);
   detailId.current = detail?.id ?? null;
   const refresh = useCallback(async () => {
     const epoch = ++generation.current;
-    const [p, rows] = await Promise.all([window.stomylos.command('patternPreview', undefined), window.stomylos.command('patternList', { offset })]);
+    setPreview(null);
+    const end = new Date(), start = new Date(end.getTime() - Number(weeks || 1) * 7 * 86400_000);
+    if (weeks === 'custom') {
+      if (!customFrom || !customTo) return;
+      const from = new Date(customFrom + 'T00:00:00'), to = new Date(customTo + 'T00:00:00'); to.setDate(to.getDate() + 1);
+      if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) { setError('Choose a valid date range.'); return; }
+      start.setTime(from.getTime()); end.setTime(to.getTime());
+    }
+    const selection: PatternSelection = {from: start.toISOString(), to: end.toISOString(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, excludeCovered};
+    const [p, rows] = await Promise.all([window.stomylos.command('patternPreview', selection), window.stomylos.command('patternList', { offset })]);
     if (epoch !== generation.current) return;
     setPreview(p); setCards(rows.reports); setMore(rows.hasMore);
     const id = detailId.current;
     if (id) { const d = await window.stomylos.command('patternDetail', { id }); if (epoch === generation.current && detailId.current === id) setDetail(d); }
-  }, [offset]);
+  }, [offset, weeks, customFrom, customTo, excludeCovered]);
   useEffect(() => { if (active) void refresh().catch(e => setError(message(e))); }, [active, revision, state.revision, refresh]);
   useEffect(() => { if (active) title.current?.focus(); }, [active]);
   useEffect(() => { if (state.phase === 'idle') return; const timer = setInterval(() => setTick(Date.now()), 1000); return () => clearInterval(timer); }, [state.phase]);
@@ -71,28 +82,29 @@ export function Learning({ active, revision, state, disabled, keyPresent, back, 
       <div className="learning-heading"><h1 ref={title} tabIndex={-1}>Reports</h1><Menu.Root><Menu.Trigger asChild><IconButton label="Reports options" icon="more" /></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" sideOffset={6}><Menu.Item className="partner-option" onSelect={() => void act(() => window.stomylos.command('patternClose', undefined))}>Close report window</Menu.Item></Menu.Content></Menu.Portal></Menu.Root></div>
       {error && <p className="notice danger" role="alert">{error}</p>}
       <section className="learning-scope" aria-label="Report scope">
-        <h2>Recent conversations</h2>
+        <div className="report-period-heading"><h2>Time period</h2><button className="report-custom" aria-pressed={weeks === 'custom'} onClick={() => {setPreview(null); setError(null); setWeeks(weeks === 'custom' ? '1' : 'custom');}}>Custom dates</button></div>
+        <div className="report-weeks" role="group" aria-label="Report period">{[1,2,3,4].map(n => <button key={n} aria-pressed={weeks === String(n)} onClick={() => {setPreview(null); setError(null); setWeeks(String(n));}}>{n} {n === 1 ? 'week' : 'weeks'}</button>)}</div>
+        {weeks === 'custom' && <div className="report-dates"><label>From <input type="date" value={customFrom} onChange={e => {setPreview(null); setCustomFrom(e.target.value);}} /></label>
+          <label>Through <input type="date" value={customTo} onChange={e => {setPreview(null); setCustomTo(e.target.value);}} /></label></div>}
+        <label className="check"><input type="checkbox" aria-label="Exclude conversations already included in a report" checked={excludeCovered} onChange={e=>{setPreview(null); setExcludeCovered(e.target.checked);}} />Exclude reported conversations</label>
         {preview ? <>
-          <p className="scope-number">{preview.scope.count} <span>analyzed conversations</span></p>
-          {preview.scope.count > 0 && <p>{date(preview.scope.from)} – {date(preview.scope.to)}</p>}
-
-          {preview.blocked && <p role="status">{preview.blocked === 'input_limit' ? 'Too few complete conversations fit the input allowance. The source records have not been shortened.' : `${preview.scope.count} of 5 analyzed conversations ready.`}</p>}
-          <details><summary>How this scope was chosen</summary><p className="note">Up to 20 conversations from the last 90 days, across all partners. Patterns need examples in at least three separate conversations.</p><p className="note">Only completed, selected analyses contribute. Unchanged records are included too. These records do not measure an overall error rate.</p>
-            <dl><dt>Recorded messages</dt><dd>{preview.scope.records}</dd><dt>Analysis unavailable in this period</dt><dd>{preview.scope.excluded.unavailable}</dd>
-              <dt>Outside 90 days</dt><dd>{preview.scope.excluded.older}</dd><dt>Outside latest 20</dt><dd>{preview.scope.excluded.overCount}</dd>
-              <dt>Oldest sessions excluded by input allowance</dt><dd>{preview.scope.excluded.overBudget}</dd></dl>
-            {!!preview.unavailableSessions.length && <div><p className="note">Open a conversation to inspect its analysis or use the existing retry action.</p>
-              {preview.unavailableSessions.map(s => <p key={s.id}><button className="quiet" onClick={() => void act(() => source(s.id))}>{date(s.ended_at)} · {s.state === 'failed' ? 'Analysis failed' : s.state === 'pending' ? 'Analysis pending' : s.state === 'running' ? 'Analyzing' : 'No analysis evidence'}</button></p>)}
-              {preview.scope.excluded.unavailable > preview.unavailableSessions.length && <p className="note">Showing the 20 most recent unavailable analyses. Earlier conversations remain in History.</p>}</div>}
-            <p className="note">Input uses a conservative size estimate. Whole conversations are excluded when necessary; originals and context notes are never cut.</p>
-          </details>
-          <div className="learning-actions"><button className="primary icon-button" aria-label={preview.existingId ? 'View existing report' : 'Create report'} title={preview.existingId ? 'View existing report' : 'Create report'} disabled={busy || disabled || !!preview.blocked || state.phase !== 'idle' || (!keyPresent && !preview.existingId)} onClick={() => void act(async () => {
+          <div className="report-summary"><p className="scope-number">{preview.scope.count} <span>conversations</span></p>
+          <p className="note report-message-count">{preview.scope.records} learner messages</p></div>
+          {excludeCovered && <p className="note">{preview.scope.eligible} in this period · {preview.scope.count} to analyze</p>}
+          {preview.scope.count > 0 && <p className="note report-range">{date(preview.scope.from)}{date(preview.scope.from) !== date(preview.scope.to) && ` – ${date(preview.scope.to)}`}</p>}
+          <p className="note">{preview.scope.inputCost === undefined ? 'Input cost unavailable' : `Input ≈ $${preview.scope.inputCost.toFixed(4)}`} · output cost additional</p>
+          {preview.scope.longContext && <p className="note">Long-context pricing expected</p>}
+          {preview.blocked && <p role="status">{preview.blocked === 'input_limit' ? `Input allowance exceeded by approximately ${Math.ceil((preview.scope.estimate / preview.scope.limit - 1)*100)}%. Shorten the period to create a report.` : `${preview.scope.count} of 5 conversations available. Choose a longer period.`}</p>}
+          <details className="report-scope-details"><summary>Scope details</summary><p className="note">Approximately {preview.scope.estimate.toLocaleString()} / {preview.scope.limit.toLocaleString()} input tokens.</p><p className="note">Complete original learner messages from ended conversations, across all partners. Individual grammar analysis is not required. Patterns need examples in at least three conversations.</p>
+            <p className="note">Weeks count back from now. Custom dates include both selected dates in your local timezone. No conversations are automatically removed to fit the input allowance.</p>
+            <p className="note">Exclusion uses saved successful reports, including older reports. Deleting the last report covering a conversation makes it eligible again.</p></details>
+          <div className="learning-actions"><button className="primary report-create" aria-label={preview.existingId ? 'View existing report' : 'Create report'} title={preview.existingId ? 'View existing report' : 'Create report'} disabled={busy || disabled || !!preview.blocked || state.phase !== 'idle' || (!keyPresent && !preview.existingId)} onClick={() => void act(async () => {
             if (preview.existingId) { await openExisting(preview.existingId); return; }
-            const r = await window.stomylos.command('patternCreate', { fingerprint: preview.fingerprint, operationId: crypto.randomUUID() });
+            const r = await window.stomylos.command('patternCreate', { fingerprint: preview.fingerprint, operationId: crypto.randomUUID(), selection: preview.scope.selection });
             if (r.reused) await openExisting(r.id); setOffset(0);
-          })}><Icon name={preview.existingId ? 'book' : 'plus'} /></button>
+          })}><Icon name={preview.existingId ? 'book' : 'plus'} /><span>{preview.existingId ? 'Open existing report' : 'Create report'}</span></button>
             {!keyPresent && !preview.existingId && <span className="note">An API key is needed to create a report. Saved reports work offline.</span>}</div>
-        </> : <p role="status">Checking available evidence…</p>}
+        </> : <p role="status">Choose a date range or wait for the scope preview…</p>}
       </section>
       {state.phase !== 'idle' && <section className="learning-progress" role="status"><strong>{state.phase === 'saving' ? 'Saving your report…' : 'Creating your report…'}</strong>
         <p>{elapsed}s elapsed</p>
@@ -102,8 +114,8 @@ export function Learning({ active, revision, state, disabled, keyPresent, back, 
       <div className="learning-history-heading"><h2>Saved reports</h2></div>
       {!cards.length && <p className="note">No saved reports yet.</p>}
       <div className="learning-reports">{cards.map(card => <article className="learning-card" key={card.id}>
-        <div><h3>{date(card.created_at)}</h3><p>{card.scope.count} conversations · {date(card.scope.from)} – {date(card.scope.to)}</p>
-          <span className="note">{card.status === 'succeeded' ? 'Ready to explore' : card.status === 'dispatched' ? 'Generating' : card.status === 'queued' ? 'Waiting' : message(card.failure ?? card.status)}</span></div>
+        <div><h3>{date(card.created_at)}</h3><p>{card.scope.count} conversations</p>
+          <span className="note">{card.status === 'succeeded' ? 'Ready to explore' : card.status === 'dispatched' ? 'Generating' : card.status === 'queued' ? 'Waiting' : message(card.failure ?? card.status)}</span>{card.status === 'succeeded' && <p className="note">Generation cost: {typeof card.cost === 'number' ? '$' + card.cost.toFixed(4) : 'Unavailable'}</p>}</div>
         <div className="learning-actions"><button className="icon-button" aria-label="Open report" title="Open report" disabled={!card.selected_attempt_id || busy} onClick={() => void act(() => window.stomylos.command('patternOpen', { id: card.id }))}><Icon name="book" /></button>
           <Menu.Root><Menu.Trigger className="icon-button" aria-label="Report options" title="Report options"><Icon name="more" /></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" align="end" sideOffset={6}>
             <Menu.Item className="partner-option" onSelect={() => void act(() => inspect(card.id))}>Report details</Menu.Item>
@@ -124,7 +136,7 @@ export function Learning({ active, revision, state, disabled, keyPresent, back, 
           <p className="note">Cost: {typeof m.usage?.cost === 'number' ? '$' + m.usage.cost.toFixed(4) : 'Unavailable'} · Time: {typeof m.elapsed_seconds === 'number' ? m.elapsed_seconds.toFixed(1) + 's' : 'Unavailable'}</p>{a.failure && <p className="note">{message(a.failure)}</p>}</div>; })}</details>
         <h3>Source evidence</h3>{detail.sources.map(s => <details key={s.session_id}><summary>{date(s.ended_at)} · {s.units.length} messages{s.deleted ? ' · Original conversation deleted' : ''}</summary>
           {!s.deleted && <button className="quiet" onClick={() => void act(async () => { await source(s.session_id); setDetail(null); })}>Open source conversation</button>}
-          {s.units.map(u => <div className="pattern-source" key={u.source_id}><code>{u.source_id}</code><p><strong>Original</strong><br />{u.original}</p><p><strong>Correction</strong><br />{u.corrected}</p><p className="note">{u.explanation || 'No correction was proposed.'}</p></div>)}
+          {s.units.map(u => <div className="pattern-source" key={u.source_id}><code>{s.evidence_kind === 'learner' ? `S${detail.sources.indexOf(s)+1}-${s.units.indexOf(u)+1}` : u.source_id}</code><p><strong>Original</strong><br />{u.original}</p>{s.evidence_kind !== 'learner' && <><p><strong>Correction</strong><br />{u.corrected}</p><p className="note">{u.explanation || 'No correction was proposed.'}</p></>}</div>)}
         </details>)}</>}
     </Dialog.Content></Dialog.Portal></Dialog.Root>
     <Dialog.Root open={!!remove} onOpenChange={open => { if (!open && !busy) setRemove(null); }}><Dialog.Portal><Dialog.Overlay className="modal-overlay" /><Dialog.Content className="dialog" aria-describedby={undefined}>

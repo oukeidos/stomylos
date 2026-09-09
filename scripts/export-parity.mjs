@@ -124,3 +124,6 @@ grammarItem.properties = { index: { type: 'integer' }, corrected_text: { type: '
 grammarItem.required = ['index', 'corrected_text', 'explanation'];
 assert.deepEqual(current.grammar.request_parameters, expectedGrammar);
 console.log('Grammar v2 exact index prompt/settings match selection; frozen v1 remains exact.');
+
+assert.deepEqual(readFileSync('src/main/pattern-system-v3.txt'), readFileSync('../experiments/EXP-031-direct-learner-pattern-reports/round5-system.txt'));
+console.log('Direct report v3 system exactly matches the selected EXP-031 round-five bytes.');

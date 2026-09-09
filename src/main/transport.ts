@@ -12,15 +12,16 @@ export class CompletionFailure extends AppFailure {
 }
 
 export interface Completion { content: string; metadata: Json }
+export interface CompletionOptions { maxResponseBytes?: number | null }
 export interface Gateway {
-  complete(body: Json, identity: Json, signal: AbortSignal, timeoutMs: number): Promise<Completion>;
+  complete(body: Json, identity: Json, signal: AbortSignal, timeoutMs: number, options?: CompletionOptions): Promise<Completion>;
   stream(body: Json, signal: AbortSignal, chunk: (text: string) => void, options?: SearchStreamOptions): Promise<Completion>;
 }
 const MAX_BYTES = 2 * 1024 * 1024;
 export class OpenRouter implements Gateway {
   constructor(private key: () => string | null, private endpoint = 'https://openrouter.ai/api/v1/chat/completions', private usage?: UsageRecorder) {}
   private async request<T>(body: Json, signal: AbortSignal, timeout: number, streaming: boolean,
-    consume: (text: string, final: boolean) => T | undefined, options: SearchStreamOptions = {}, metadata: () => Json = () => ({})): Promise<T> {
+    consume: (text: string, final: boolean) => T | undefined, options: SearchStreamOptions & CompletionOptions = {}, metadata: () => Json = () => ({})): Promise<T> {
     const key = this.key(); if (!key) throw new AppFailure('api_key_missing');
     if (signal.aborted) throw new AppFailure('request_cancelled');
     const payload = JSON.stringify(body);
@@ -45,7 +46,7 @@ export class OpenRouter implements Gateway {
       const decoder = new TextDecoder('utf-8', { fatal: true });
       for (;;) {
         const item = await reader.read(); if (item.done) break;
-        size += item.value.byteLength; if (size > (options.search ? 8000000 : MAX_BYTES)) throw new AppFailure('response_too_large');
+        size += item.value.byteLength; if (options.maxResponseBytes !== null && size > (options.maxResponseBytes ?? (options.search ? 8000000 : MAX_BYTES))) throw new AppFailure('response_too_large');
         resetIdle(); const result = consume(decoder.decode(item.value, { stream: true }), false);
         this.usage?.report(charge, metadata().usage?.cost);
         if (result !== undefined) return result;
@@ -63,12 +64,12 @@ export class OpenRouter implements Gateway {
       await reader?.cancel().catch(() => undefined);
     }
   }
-  complete(body: Json, identity: Json, signal: AbortSignal, timeoutMs: number): Promise<Completion> {
+  complete(body: Json, identity: Json, signal: AbortSignal, timeoutMs: number, options: CompletionOptions = {}): Promise<Completion> {
     let text = ''; let metadata: Json = {};
     return this.request(body, signal, timeoutMs, false, (part, final) => {
       text += part;
       if (final) {
-        const raw = strictJson(text); metadata = safeMetadata(raw ?? {});
+        const raw = strictJson(text, options.maxResponseBytes === null ? null : undefined); metadata = safeMetadata(raw ?? {});
         if (Number.isInteger(raw?.error?.code) && raw.error.code >= 400 && raw.error.code <= 599)
           throw new HttpFailure(raw.error.code);
         try { return validateEnvelope(raw, identity); }
@@ -78,7 +79,7 @@ export class OpenRouter implements Gateway {
           throw new CompletionFailure(error.code, typeof visible === 'string' ? visible : null, safeMetadata(raw ?? {}));
         }
       }
-    }, {}, () => metadata);
+    }, options, () => metadata);
   }
   async stream(body: Json, signal: AbortSignal, chunk: (text: string) => void, options: SearchStreamOptions = {}): Promise<Completion> {
     const parser = new ChatStream(body.model, chunk, options);

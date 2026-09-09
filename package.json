@@ -31,7 +31,7 @@
     "test:asr": "node scripts/verify-asr.mjs",
     "test:asr:soak": "node scripts/verify-asr-limits.mjs",
     "test:genie": "node scripts/verify-genie.mjs",
-    "test:patterns": "node scripts/verify-pattern-reports.mjs",
+    "test:patterns": "node scripts/verify-direct-reports.mjs",
     "assets:icon": "node scripts/render-icon.mjs",
     "test:model-switching": "node scripts/verify-model-switching.mjs",
     "artifacts:prune": "python3 scripts/prune-artifacts.py",

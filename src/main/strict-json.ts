@@ -2,11 +2,11 @@ import { AppFailure } from './errors';
 
 // Tokens retain numeric syntax so a score of 1.0 cannot masquerade as integer 1.
 export interface ParsedJson { value: unknown; integerPaths: Set<string> }
-export function parseStrict(source: string): ParsedJson {
+export function parseStrict(source: string, maxCharacters: number | null = 2 * 1024 * 1024): ParsedJson {
   let offset = 0;
   const integerPaths = new Set<string>();
   const fail = (): never => { throw new AppFailure('response_invalid_json'); };
-  if (source.length > 2 * 1024 * 1024) fail();
+  if (maxCharacters !== null && source.length > maxCharacters) fail();
   const whitespace = () => { while (/[\x20\t\r\n]/.test(source[offset] ?? '\0')) offset++; };
   const take = (c: string) => { whitespace(); if (source[offset] !== c) return false; offset++; return true; };
   function string(): string {
@@ -56,4 +56,4 @@ export function parseStrict(source: string): ParsedJson {
   if (offset !== source.length) fail();
   return { value: parsed, integerPaths };
 }
-export function strictJson(source: string): any { return parseStrict(source).value; }
+export function strictJson(source: string, maxCharacters?: number | null): any { return parseStrict(source, maxCharacters).value; }

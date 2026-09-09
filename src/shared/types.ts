@@ -124,6 +124,7 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   retryDeletionCleanup: undefined;
   newSession: undefined;
   retryAnalysis: { sessionId: string };
+  cancelAnalysis: { sessionId: string };
   retryStarterRenewal: { sessionId: string };
   retryIntentionQuestions: { sessionId: string };
   retryMemory: { sessionId: string };
@@ -152,7 +153,7 @@ export interface CommandResults extends ExplainCommandResults, GenieCommandResul
   sendMessage: void; retryReply: void; endSession: void; newSession: string;
   setSessionBookmark: { sessionId: string; bookmarked: boolean; revision: number };
   deleteSession: void; retryDeletionCleanup: void;
-  retryAnalysis: void; retryStarterRenewal: void; retryIntentionQuestions: void; retrySaving: void; refreshKey: void; close: boolean;
+  cancelAnalysis: void; retryAnalysis: void; retryStarterRenewal: void; retryIntentionQuestions: void; retrySaving: void; refreshKey: void; close: boolean;
   backupExport: import('./backup').BackupResult;
   backupRestore: import('./backup').BackupResult;
   manageKey: void;

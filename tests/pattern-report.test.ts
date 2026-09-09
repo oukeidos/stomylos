@@ -6,11 +6,13 @@ import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { Store } from '../src/main/database';
 import { grammarSnapshot } from '../src/main/contracts';
-import { patternBody, patternContract, patternEstimate, patternHash, patternLimits, selectPatternScope, validatePatternHtml, verifyPatternRuntime } from '../src/main/pattern-report';
+import { patternBody as assemblePatternBody, legacyPatternContract as patternContract, patternEstimate, patternHash, patternLimits, selectPatternScope, validatePatternHtml as validateHtml, verifyPatternRuntime } from '../src/main/pattern-report';
 import { historicalPatternContract, makePatternHistorical } from './pattern-report-history';
 import type { PatternSource } from '../src/shared/pattern-report';
 import { validateCommand } from '../src/main/ipc';
 
+const patternBody = (sources: PatternSource[], contract = patternContract) => assemblePatternBody(sources, contract);
+const validatePatternHtml = (html: string) => validateHtml(html, patternContract);
 let directory: string, store: Store;
 const native = resolve('native/advisory-lock.node');
 const html = '<!DOCTYPE html><html><head><title>Practice</title></head><body><p>No recurring pattern established.</p></body></html>';
@@ -76,7 +78,7 @@ it.each(['failed', 'cancelled', 'dispatched', 'queued'] as const)('retains exact
   expect(store.patternHtml(r.id).html).toBe(html);
 });
 
-it('keeps completed v1 HTML and creates/reuses a separate v2 report for identical evidence', () => {
+it('keeps completed v1 HTML and creates/reuses a separate v3 report for identical evidence', () => {
   seed(); const r = store.patternCreate(store.patternPreview().fingerprint, randomUUID());
   makePatternHistorical(directory, r.id);
   store.patternDispatch(r.attemptId!); store.patternSave(r.attemptId!, html, {});
@@ -85,7 +87,7 @@ it('keeps completed v1 HTML and creates/reuses a separate v2 report for identica
   const p = store.patternPreview(); expect(p.existingId).toBeNull();
   const revised = store.patternCreate(p.fingerprint, randomUUID());
   expect(revised.id).not.toBe(r.id);
-  expect(JSON.parse(store.patternAttempt(revised.attemptId!).request).messages[0].content).toContain('calm editorial field-guide');
+  expect(JSON.parse(store.patternAttempt(revised.attemptId!).request).messages[0].content).toContain('Use warm paper colors');
   store.patternDispatch(revised.attemptId!); store.patternSave(revised.attemptId!, html, {});
   expect(store.patternCreate(store.patternPreview().fingerprint, randomUUID())).toMatchObject({ id: revised.id, reused: true });
   expect(store.patternHtml(r.id).html).toBe(html);
@@ -140,11 +142,11 @@ it('removes complete oldest sessions, never bypassing an oversized newer session
   expect(large.units[0].original).toHaveLength(30000); expect(large.units[0].explanation).toBe('한글 👩🏽‍💻 é');
 });
 
-it('uses selected analyses including unchanged units, freezes exact sources and reuses identical input across restarts', () => {
+it('uses learner originals independently of analyses, freezes exact sources and reuses identical input across restarts', () => {
   const ids = seed(); const preview = store.patternPreview(); expect(preview.scope.count).toBe(5);
   const op = randomUUID(), result = store.patternCreate(preview.fingerprint, op);
   const detail = store.patternDetail(result.id); expect(detail.sources.map(s => s.session_id).sort()).toEqual(ids.sort());
-  expect(detail.sources.every(s => s.units[0].original === s.units[0].corrected)).toBe(true);
+  expect(detail.sources.every(s => s.evidence_kind === 'learner' && s.analysis_id === null)).toBe(true);
   const a = store.patternAttempt(result.attemptId!); const body = JSON.parse(a.request);
   expect(body.messages[1].content).not.toContain('starter');
   store.patternDispatch(a.id); store.patternSave(a.id, html, { usage: { cost: 0.3 } });
@@ -199,6 +201,7 @@ it('rejects malformed/oversized HTML and IPC extras while keeping unsupported ex
 
 it('rejects changed selected evidence before dispatch or retry without rewriting the frozen packet', () => {
   const ids=seed();const r=store.patternCreate(store.patternPreview().fingerprint,randomUUID());
+  makePatternHistorical(directory,r.id);
   const original=store.patternAttempt(r.attemptId!);
   const db=new Database(join(directory,'stomylos.sqlite3'));
   db.prepare('UPDATE grammar_units SET explanation=? WHERE session_id=?').run('A later changed explanation.',ids[0]);db.close();
@@ -210,17 +213,16 @@ it('rejects changed selected evidence before dispatch or retry without rewriting
   expect(store.patternDetail(r.id).sources.find(s=>s.session_id===ids[0])!.units[0].explanation).toBe('');
 });
 
-it('lists unavailable analyses separately and links reports to retained source identities', () => {
+it('includes unanalysed and failed-analysis conversations and retains source identities', () => {
   const ids=seed();
   const pending=store.createSession();store.submit(pending.id,'A pending analysis.');store.end(pending.id);
   const failed=store.createSession();store.submit(failed.id,'A failed analysis.');store.end(failed.id);
   const attempt=store.createRequest(failed.id,'grammar',grammarSnapshot());store.dispatch(attempt.id);store.failRequest(attempt.id,'request_timeout',null,{},false);
-  const preview=store.patternPreview();expect(preview.scope.count).toBe(5);expect(preview.scope.excluded.unavailable).toBe(2);
-  expect(preview.unavailableSessions.map(s=>s.id).sort()).toEqual([pending.id,failed.id].sort());
-  expect(preview.unavailableSessions.find(s=>s.id===failed.id)?.state).toBe('failed');
+  const preview=store.patternPreview();expect(preview.scope.count).toBe(7);expect(preview.scope.excluded.unavailable).toBe(0);
+  expect(preview.unavailableSessions).toEqual([]);
   const report=store.patternCreate(preview.fingerprint,randomUUID());store.patternDispatch(report.attemptId!);store.patternSave(report.attemptId!,html,{});
   expect(store.patternRelated(ids[0])).toMatchObject({total:1,reports:[{id:report.id,status:'succeeded'}]});
-  expect(store.patternRelated(pending.id).total).toBe(0);
+  expect(store.patternRelated(pending.id).total).toBe(1);
   store.deleteSession(ids[0]);expect(store.patternRelated(ids[0]).reports[0].id).toBe(report.id);
   store.patternDelete(report.id);expect(store.patternRelated(ids[0]).total).toBe(0);
 });
@@ -232,10 +234,10 @@ it('selects ended evidence independently of history pages, partner, entry mode a
     new Date(now-(45-i)*3600000).toISOString(),new Date(now-i*86400000).toISOString(),id));
   db.close();
   expect(store.sessionPage(0).sessions).toHaveLength(40);
-  const p=store.patternPreview();expect(p.scope.eligible).toBe(45);expect(p.scope.excluded.overCount).toBe(25);
+  const p=store.patternPreview();expect(p.scope.eligible).toBe(45);expect(p.scope.excluded.overCount).toBe(0);
   const report=store.patternCreate(p.fingerprint,randomUUID());
-  expect(store.patternDetail(report.id).sources.map(s=>s.session_id)).toEqual(ids.slice(-20).reverse());
-  expect(store.patternDetail(report.id).sources).toHaveLength(20);
+  expect(store.patternDetail(report.id).sources.map(s=>s.session_id)).toEqual(ids);
+  expect(store.patternDetail(report.id).sources).toHaveLength(45);
 });
 
 it('paginates saved reports without loss or duplication and keeps selected analysis attempts unique', () => {
@@ -250,7 +252,7 @@ it('paginates saved reports without loss or duplication and keeps selected analy
     if(i)seed(1);
     const r=store.patternCreate(store.patternPreview().fingerprint,randomUUID());
     store.patternDispatch(r.attemptId!);store.patternSave(r.attemptId!,html,{});expected.push(r.id);
-    if(i===0){const d=store.patternDetail(r.id);expect(d.scope.records).toBe(5);expect(new Set(d.sources.map(s=>s.analysis_id)).size).toBe(5);}
+    if(i===0){const d=store.patternDetail(r.id);expect(d.scope.records).toBe(5);expect(new Set(d.sources.map(s=>s.session_id)).size).toBe(5);}
   }
   const one=store.patternList(0),two=store.patternList(20);
   expect(one.reports).toHaveLength(20);expect(one.hasMore).toBe(true);expect(two.reports).toHaveLength(1);expect(two.hasMore).toBe(false);

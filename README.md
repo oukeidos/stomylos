@@ -1,7 +1,7 @@
 # Stomylos
 
 A Linux desktop app for practicing English with AI conversation partners, voice
-input, writing assistance and post-chat grammar feedback.
+input, writing assistance and optional learning reports.
 
 ## Conversation partners
 

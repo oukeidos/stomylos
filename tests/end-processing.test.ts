@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { grammarSnapshot } from '../src/main/contracts';
 import { Store, type StoreMethod } from '../src/main/database';
 import { Coordinator } from '../src/main/coordinator';
 import type { DatabaseClient } from '../src/main/db-client';
@@ -31,12 +32,13 @@ function valid(kind: string, body: Json) {
   if (kind === 'starter') return 'What would you like to explore?\nHow would you describe a favorite place?';
   return JSON.stringify({ units: JSON.parse(body.messages[1].content).filter((m: Json) => m.role === 'user').map((m: Json) => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) });
 }
-it('runs grammar and memory branches with no starter or intention calls and gates until all complete', async () => {
+it('runs memory without automatic grammar and gates only until memory completes', async () => {
   let release!: () => void;
   const f = fixture(async (kind, body) => { if (kind === 'update') await new Promise<void>(r => release = r); return valid(kind, body); });
   await f.controller.command('endSession', { sessionId: f.id });
-  await vi.waitFor(() => expect(f.calls.sort()).toEqual(['grammar','update']));
-  await vi.waitFor(() => expect(f.store.session(f.id).analysis_state).toBe('completed'));
+  await vi.waitFor(() => expect(f.calls).toEqual(['update']));
+  expect(f.store.session(f.id).analysis_state).toBe('none');
+  expect(f.store.endStatus(f.id)?.stages.grammar).toBeUndefined();
   expect(f.store.view(f.id).renewal).toBeNull();
   expect(f.store.endStatus(f.id)?.stages.starter).toBe('skipped');
   await expect(f.controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
@@ -69,7 +71,7 @@ it('does not retry invalid credentials and force cancellation releases the gate 
 it('commits a saved cleanup response locally without credentials or repeating the updater', async () => {
   const f = fixture(async (kind, body) => valid(kind, body));
   f.store.end(f.id);
-  const grammar = f.store.createRequest(f.id, 'grammar', JSON.parse(f.store.session(f.id).grammar_config!));
+  const grammar = f.store.createRequest(f.id, 'grammar', grammarSnapshot());
   f.store.dispatch(grammar.id);
   const learner = f.store.messages(f.id).find(m => m.origin === 'learner')!;
   f.store.saveAnalysis(grammar.id, JSON.stringify({ units: [{index: 0, corrected_text: learner.content, explanation: ''}] }), {});
@@ -88,7 +90,7 @@ it('commits a saved cleanup response locally without credentials or repeating th
   expect(f.store.currentMemory().traits[0].text).toBe('Likes quiet museums.');
 });
 
-it('gives the three remaining stages independent same-input retries and never reruns a successful updater', async () => {
+it('gives memory stages independent same-input retries and never reruns a successful updater', async () => {
   let updateCalls = 0, recover = false;
   const f = fixture(async (kind, body) => {
     if (kind === 'update') {
@@ -101,14 +103,54 @@ it('gives the three remaining stages independent same-input retries and never re
   });
   await f.controller.command('endSession',{sessionId:f.id});
   await vi.waitFor(()=> {
-    for(const kind of ['grammar','update','cleanup']) expect(f.calls.filter(k=>k===kind)).toHaveLength(2);
+    for(const kind of ['update','cleanup']) expect(f.calls.filter(k=>k===kind)).toHaveLength(2);
     expect(f.store.memoryCandidate(f.id)?.state).toBe('failed');
   });
-  for(const kind of ['grammar','update','cleanup']) {
+  for(const kind of ['update','cleanup']) {
     const bodies = f.bodies.filter(b=>b.kind===kind).map(b=>b.body); expect(bodies[1]).toEqual(bodies[0]);
   }
   recover = true; await f.controller.command('continueEnd',{sessionId:f.id});
   await vi.waitFor(()=>expect(f.store.endBlocker()).toBeNull());
   expect(updateCalls).toBe(2);
-  for(const kind of ['grammar','cleanup']) expect(f.calls.filter(k=>k===kind)).toHaveLength(3);
+  for(const kind of ['cleanup']) expect(f.calls.filter(k=>k===kind)).toHaveLength(3);
+});
+
+it('manual grammar runs only on explicit action after end completion and never regenerates success', async()=>{
+  const f=fixture(async(kind,body)=>valid(kind,body));
+  await f.controller.command('endSession',{sessionId:f.id});await vi.waitFor(()=>expect(f.store.endBlocker()).toBeNull());
+  expect(f.calls).toEqual(['update']);expect(f.store.session(f.id).grammar_config).toBeNull();
+  await f.controller.command('retryAnalysis',{sessionId:f.id});await vi.waitFor(()=>expect(f.store.session(f.id).analysis_state).toBe('completed'));
+  expect(f.calls).toEqual(['update','grammar']);expect(f.store.endBlocker()).toBeNull();
+  await f.controller.command('retryAnalysis',{sessionId:f.id});expect(f.calls).toHaveLength(2);
+  f.reopen();await f.controller.initialize();expect(f.calls).toHaveLength(2);expect(f.store.view(f.id).units).toHaveLength(1);
+});
+it('manual grammar failure does not retry automatically or block memory; explicit retry uses frozen settings',async()=>{
+  let fail=true;const f=fixture(async(kind,body)=>kind==='grammar'&&fail?'bad json':valid(kind,body));
+  await f.controller.command('endSession',{sessionId:f.id});await vi.waitFor(()=>expect(f.store.endBlocker()).toBeNull());
+  await f.controller.command('retryAnalysis',{sessionId:f.id});await vi.waitFor(()=>expect(f.store.session(f.id).analysis_state).toBe('failed'));
+  expect(f.calls.filter(k=>k==='grammar')).toHaveLength(1);expect(f.store.endBlocker()).toBeNull();
+  const config=f.store.session(f.id).grammar_config;
+  fail=false;await f.controller.command('retryAnalysis',{sessionId:f.id});await vi.waitFor(()=>expect(f.store.session(f.id).analysis_state).toBe('completed'));
+  expect(f.calls.filter(k=>k==='grammar')).toHaveLength(2);expect(f.store.session(f.id).grammar_config).toBe(config);
+});
+it('manual grammar can be cancelled and retried even when end processing was cancelled',async()=>{
+  let hold=true;const f=fixture(async(kind,body,signal)=>{
+    if(kind==='grammar'&&hold)await new Promise<void>((_r,j)=>signal.addEventListener('abort',()=>j(new AppFailure('request_cancelled'))));
+    return valid(kind,body);
+  });
+  f.store.end(f.id);f.store.cancelEnd(f.id);
+  await f.controller.command('retryAnalysis',{sessionId:f.id});await vi.waitFor(()=>expect(f.calls).toEqual(['grammar']));
+  await f.controller.command('cancelAnalysis',{sessionId:f.id});expect(f.store.session(f.id).analysis_state).toBe('failed');expect(f.store.endBlocker()).toBeNull();
+  hold=false;await f.controller.command('retryAnalysis',{sessionId:f.id});await vi.waitFor(()=>expect(f.store.session(f.id).analysis_state).toBe('completed'));
+});
+
+it('recovers a durable grammar response locally without credentials or new inference',async()=>{
+  const f=fixture(async(kind,body)=>valid(kind,body));f.store.end(f.id);f.store.cancelEnd(f.id);
+  const a=f.store.createRequest(f.id,'grammar',grammarSnapshot());f.store.dispatch(a.id);
+  const content=JSON.stringify({units:[{index:0,corrected_text:'I like quiet museums.',explanation:''}]});
+  f.store.receiveEndResponse(f.id,'grammar',a.id,content,{usage:{cost:0.01}});
+  f.reopen();f.settings.keyPresent=false;
+  await f.controller.command('retryAnalysis',{sessionId:f.id});
+  expect(f.store.session(f.id).analysis_state).toBe('completed');expect(f.calls).toEqual([]);
+  await f.controller.command('retryAnalysis',{sessionId:f.id});expect(f.calls).toEqual([]);
 });

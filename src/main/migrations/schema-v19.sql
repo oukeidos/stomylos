@@ -343,11 +343,9 @@ CREATE TABLE pattern_reports (
 CREATE TABLE pattern_report_sources (
   report_id TEXT NOT NULL REFERENCES pattern_reports(id) ON DELETE CASCADE,
   session_id TEXT NOT NULL,
-  analysis_id TEXT,
-  evidence_kind TEXT NOT NULL DEFAULT 'grammar' CHECK(evidence_kind IN ('grammar','learner')),
+  analysis_id TEXT NOT NULL,
   source_hash TEXT NOT NULL,
   ordinal INTEGER NOT NULL CHECK(ordinal>=0),
-  CHECK((evidence_kind='grammar' AND analysis_id IS NOT NULL) OR (evidence_kind='learner' AND analysis_id IS NULL)),
   PRIMARY KEY(report_id,session_id),
   UNIQUE(report_id,ordinal)
 );

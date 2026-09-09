@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Generate reports directly from learner messages with flexible date ranges, expanded capacity and simpler controls; make session grammar analysis manual while preserving history through schema 20.
+
 ## 0.3.0 — 2026-09-09
 
 - Replace online starter generation with 5,000 reusable English questions, weighted by answer count, with a safe schema 19 migration that preserves history.
