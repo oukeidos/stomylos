@@ -1,3 +1,4 @@
+import { grammarSnapshot } from '../src/main/contracts';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,7 +23,7 @@ function setup() {
 }
 function update(store: Store, id: string, source: string) {
   const a = store.prepareMemory(id, randomUUID()); store.dispatchMemory(a.id);
-  store.saveMemory(a.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'experiences', text: 'y'.repeat(2500), source_message_ids: [source] }] }), {});
+  store.saveMemory(a.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'experiences', text: 'y'.repeat(2500), source_message_ids: ['u1'] }] }), {});
 }
 it('stages over-cap updates, commits cleanup atomically with fresh IDs, and keeps other branches gated', () => {
   const { store, id, message } = setup(); update(store, id, message.id);
@@ -35,7 +36,7 @@ it('stages over-cap updates, commits cleanup atomically with fresh IDs, and keep
   expect(committed.traits[0].id).not.toBe('old');
   expect(store.acceptCleanup(a.id)).toEqual(committed);
   expect(store.memoryJob(id)?.state).toBe('completed');
-  expect(() => store.createSession()).toThrow('end_processing_pending');
+  expect(store.endBlocker()).toBeNull();
   store.cancelEnd(id); expect(store.createSession().id).not.toBe(id);
   expect(store.currentMemory()).toEqual(committed);
 });
@@ -75,7 +76,7 @@ it('deletes a session with staged cleanup attempts while preserving authoritativ
 it('accepts a durably received factual response after restart without a new attempt', () => {
   const { store, dir, id, message } = setup();
   const a = store.prepareMemory(id, randomUUID()); store.dispatchMemory(a.id);
-  const content = JSON.stringify({ operations: [{ op: 'add', id: null, category: 'experiences', text: 'y'.repeat(2500), source_message_ids: [message.id] }] });
+  const content = JSON.stringify({ operations: [{ op: 'add', id: null, category: 'experiences', text: 'y'.repeat(2500), source_message_ids: ['u1'] }] });
   store.receiveEndResponse(id, 'update', a.id, content, {});
   store.close(); stores.splice(stores.indexOf(store), 1);
   const reopened = new Store(dir, resolve('native/advisory-lock.node')); stores.push(reopened);
@@ -95,7 +96,7 @@ it('accepted cleanup lines remain readable even when the model repeats a line', 
 
 it('recovers durably received grammar while starter replay is retired after restart with the same attempts', () => {
   const { store, dir, id, message } = setup();
-  const grammar = store.createRequest(id, 'grammar', JSON.parse(store.session(id).grammar_config!)); store.dispatch(grammar.id);
+  const grammar = store.createRequest(id, 'grammar', grammarSnapshot()); store.dispatch(grammar.id);
   store.receiveEndResponse(id, 'grammar', grammar.id, JSON.stringify({units:[{index: 0,corrected_text:message.content,explanation:''}]}), {});
   const starter = { id: 'historical-receipt' };
   store.receiveEndResponse(id, 'starter', starter.id, 'What would you like to explore?\nHow would you describe a favorite place?', {});
@@ -118,7 +119,7 @@ it('refuses over-cap authoritative memory on restart without truncation or mutat
   const after = new Database(join(dir,'stomylos.sqlite3')); expect(after.prepare('SELECT document FROM shared_memory').pluck().get()).toBe(document); after.close();
 });
 
-it.each(['stomylos_memory_updater_v4', 'stomylos_memory_updater_v5'])('preserves frozen %s effort across restart/retry and still stages cleanup', async version => {
+it.each(['stomylos_memory_updater_v4', 'stomylos_memory_updater_v5', 'stomylos_memory_updater_v6'])('preserves frozen %s effort across restart/retry and still stages cleanup', async version => {
   const { memoryConfig, memoryBody, currentUpdaterVersion } = await import('../src/main/memory-updater');
   const { store, dir, id, message } = setup();
   expect(JSON.parse(store.memoryJob(id)!.config).version).toBe(currentUpdaterVersion);
@@ -139,7 +140,32 @@ it.each(['stomylos_memory_updater_v4', 'stomylos_memory_updater_v5'])('preserves
   expect(reopened.memoryJob(id)!.config).toBe(config);
   expect(memoryBody(JSON.parse(config), JSON.parse(retry.input_json)).reasoning.effort).toBe(version.endsWith('v4') ? 'medium' : 'low');
   reopened.dispatchMemory(retry.id);
-  reopened.saveMemory(retry.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'experiences', text: 'y'.repeat(2500), source_message_ids: [message.id] }] }), {});
+  reopened.saveMemory(retry.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'experiences', text: 'y'.repeat(2500), source_message_ids: [version.endsWith('v6') ? 'u1' : message.id] }] }), {});
   expect(reopened.memoryCandidate(id)?.state).toBe('pending');
   expect(() => reopened.createSession()).toThrow('end_processing_pending');
+});
+
+it('rejects stale canonical memory atomically and preserves the raw v6 response on success', () => {
+  const {store,dir,id}=setup();
+  const a=store.prepareMemory(id,randomUUID());store.dispatchMemory(a.id);
+  const content=JSON.stringify({operations:[{op:'update',id:'m1',category:'traits',text:'Likes detail.',source_message_ids:['u1']}]});
+  const db=new Database(join(dir,'stomylos.sqlite3'));
+  const before=db.prepare('SELECT * FROM shared_memory').get() as {document:string;document_hash:string};
+  const changed=JSON.parse(before.document);changed.revision++;
+  db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(memoryJson(changed),memoryHash(memoryJson(changed)));
+  expect(()=>store.saveMemory(a.id,content,{})).toThrow('memory_stale_input');
+  expect(db.prepare('SELECT status FROM memory_attempts WHERE id=?').pluck().get(a.id)).toBe('dispatched');
+  db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(before.document,before.document_hash);
+  expect(store.saveMemory(a.id,content,{}).traits).toEqual([{id:'old',text:'Likes detail.'}]);
+  expect(db.prepare('SELECT response_content FROM memory_attempts WHERE id=?').pluck().get(a.id)).toBe(content);db.close();
+  expect(store.view(id).memory.changes).toMatchObject({status:'ready',items:[{id:'old',kind:'updated'}]});
+});
+
+it('rejects a tampered frozen input hash without applying alias output', () => {
+  const {store,dir,id}=setup();const a=store.prepareMemory(id,randomUUID());store.dispatchMemory(a.id);
+  const db=new Database(join(dir,'stomylos.sqlite3'));
+  db.exec('DROP TRIGGER immutable_memory_input');
+  db.prepare("UPDATE memory_attempts SET input_hash='corrupt' WHERE id=?").run(a.id);db.close();
+  expect(()=>store.saveMemory(a.id,'{"operations":[]}',{})).toThrow('memory_source_changed');
+  expect(store.currentMemory().traits[0].id).toBe('old');
 });

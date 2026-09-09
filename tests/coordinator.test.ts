@@ -459,10 +459,10 @@ it('runs memory independently within the end gate and preserves chat snapshots a
   await controller.command('selectPartner', { sessionId: first, character: 'model_04' });
   await send(first, 'I enjoy botanical gardens.'); await idle();
   holdMemory = true;
-  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys botanical gardens.', source_message_ids: [packet.session.messages.find((m: Json) => m.origin === 'learner').id] }] });
+  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys botanical gardens.', source_message_ids: [packet.messages.find((m: Json) => m.role === 'user' && m.evidence !== false).id] }] });
   await controller.command('endSession', { sessionId: first });
   await waitFor(() => memoryCalls.length === 1 && memoryRelease !== null);
-  await waitFor(() => store.session(first).analysis_state === 'completed' && store.starterJob(first) === null);
+  await waitFor(() => store.session(first).analysis_state === 'none' && store.starterJob(first) === null);
   await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
   holdMemory = false; memoryRelease!();
   await waitFor(() => store.endStatus(first)?.complete === true);
@@ -476,10 +476,10 @@ it('runs memory independently within the end gate and preserves chat snapshots a
   const after = store.requests(second).findLast(r => r.role === 'chat')!;
   expect(JSON.parse(after.config).memory_context).toEqual(frozenMemory);
   expect(memoryCalls).toHaveLength(1);
-  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet libraries.', source_message_ids: [packet.session.messages.findLast((m: Json) => m.origin === 'learner').id] }] });
+  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet libraries.', source_message_ids: [packet.messages.findLast((m: Json) => m.role === 'user' && m.evidence !== false).id] }] });
   await controller.command('endSession', { sessionId: second });
   await waitFor(() => store.endStatus(second)?.complete === true);
-  expect(JSON.parse(memoryCalls[1].messages[1].content).current_memory.revision).toBe(1);
+  expect(JSON.parse(memoryCalls[1].messages[1].content).memory.traits).toEqual([{ id: 'm1', text: 'Enjoys botanical gardens.' }]);
   expect(store.requests(second).find(r => r.id === before.id)?.config).toBe(before.config);
   expect(store.requests(second).find(r => r.id === after.id)?.config).toBe(after.config);
   expect(store.view(second).memory.current?.traits.map(t => t.text)).toContain('Enjoys quiet libraries.');
@@ -512,19 +512,16 @@ it('retains a received memory response during a save failure and retries only lo
   await controller.command('close', undefined);
 });
 
-it('does not redispatch a failed memory job and lets explicit retry release a later authorized update', async () => {
+it('keeps a failed memory job gated and explicit retry reuses the exact request', async () => {
   const id = activeId(); await controller.command('selectPartner', { sessionId: id, character: 'model_04' });
   await send(id); await idle(); memoryFails = true;
   await controller.command('endSession', { sessionId: id }); await waitFor(() => store.memoryJob(id)?.state === 'failed');
-  const next = await controller.command('newSession', undefined);
-  await controller.command('selectPartner', { sessionId: next, character: 'model_04' });
-  await send(next, 'Another saved session.', 2); await idle();
-  await controller.command('endSession', { sessionId: next });
-  await waitFor(() => store.session(next).analysis_state === 'completed');
-  expect(memoryCalls).toHaveLength(1); expect(store.memoryJob(next)?.state).toBe('pending');
+  await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
+  const count = memoryCalls.length;
+  await controller.command('snapshot', undefined); expect(memoryCalls).toHaveLength(count);
   memoryFails = false; await controller.command('retryMemory', { sessionId: id });
-  await waitFor(() => store.memoryJob(next)?.state === 'completed');
-  expect(memoryCalls).toHaveLength(3); expect(memoryCalls[1]).toEqual(memoryCalls[0]);
+  await waitFor(() => store.memoryJob(id)?.state === 'completed');
+  expect(memoryCalls).toHaveLength(count + 1); expect(memoryCalls.at(-1)).toEqual(memoryCalls[0]);
   await controller.command('close', undefined);
 });
 

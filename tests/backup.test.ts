@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { spawnSync } from 'node:child_process';
-import { buildSync } from 'esbuild';
+import { build } from 'esbuild';
 import Database from 'better-sqlite3';
 import { Store } from '../src/main/database';
 import { exportBackup, prepareBackup, installBackup, recoverRestore } from '../src/main/backup';
@@ -83,7 +83,7 @@ it.each(['checksum', 'truncated', 'traversal', 'duplicate', 'oversized', 'extra'
   expect(bytes(target)).toEqual(original); expect(readdirSync(target).some(n => n.startsWith('.backup-stage-'))).toBe(false);
 });
 
-it.each([12, 13, 15])('refuses schema v%i before installation', async version => {
+it.each([12, 13, 15, 20])('refuses schema v%i before installation', async version => {
   const file = await archive(); seed(target, 'Keep target');
   const changed = join(root, 'changed.sqlite3'); writeFileSync(changed, bytes(source));
   const db = new Database(changed); db.pragma(`user_version = ${version}`); db.close(); const replacement = readFileSync(changed);
@@ -110,13 +110,15 @@ it.each(['prepared', 'saved:stomylos.sqlite3', 'installed:stomylos.sqlite3', 'in
 it.each(['installed:stomylos.sqlite3', 'committed'])('recovers an actual terminated installer at %s before opening the database', async step => {
   const file = await archive(); seed(target, 'Keep local'); const original = bytes(target), replacement = bytes(source);
   const prepared = await prepareBackup(target, file), module = join(root, 'backup.cjs');
-  buildSync({ entryPoints: ['src/main/backup.ts'], outfile: module, bundle: true, platform: 'node', format: 'cjs', external: ['better-sqlite3'], loader: { '.sql': 'text' }, logLevel: 'silent',
-    plugins: [] });
+  await build({ entryPoints: ['src/main/backup.ts'], outfile: module, bundle: true, platform: 'node', format: 'cjs', external: ['better-sqlite3'], loader: { '.sql': 'text' }, logLevel: 'silent',
+    plugins: [{ name: 'raw-json', setup(build) {
+      build.onLoad({ filter: /\.json$/ }, args => args.suffix === '?raw' ? { contents: readFileSync(args.path, 'utf8'), loader: 'text' } : undefined);
+    } }] });
   // esbuild's raw query resolves the SQL file with its text loader.
   const child = join(root, 'crash.cjs');
   writeFileSync(child, `const {installBackup}=require(${JSON.stringify(module)}); installBackup(process.argv[2],process.argv[3],s=>{if(s===process.argv[4])process.exit(77)}).catch(e=>{console.error(e);process.exit(1)});`);
   const result = spawnSync(process.execPath, [child, target, prepared.directory, step], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NODE_PATH: resolve('node_modules') }, encoding: 'utf8' });
-  expect(result.status, result.stderr).toBe(77); expect(existsSync(join(target, 'backup-restore.json'))).toBe(true);
+  if (result.status !== 77) throw new Error(result.stderr || `Unexpected child status ${result.status}`); expect(result.status).toBe(77); expect(existsSync(join(target, 'backup-restore.json'))).toBe(true);
   await recoverRestore(target); await recoverRestore(target);
   expect(bytes(target)).toEqual(step === 'committed' ? replacement : original);
   if (step === 'committed') { const recovery = readdirSync(target).find(n => n.startsWith('restore-recovery-'))!; expect(bytes(join(target, recovery, 'previous'))).toEqual(original); }

@@ -69,9 +69,9 @@ it('rejects malformed patches, invented sources, duplicate targets and over-budg
 
 it('freezes one memory per conversation, shares new memory across characters and reuses the snapshot after restart', () => {
   const first = start(); store.end(first.id); const attempt = prepare(first.id);
-  const updated = store.saveMemory(attempt.id, addition(first.message.id), {});
+  const updated = store.saveMemory(attempt.id, addition('u1'), {});
   expect(updated.revision).toBe(1);
-  expect(store.saveMemory(attempt.id, addition(first.message.id), {})).toEqual(updated);
+  expect(store.saveMemory(attempt.id, addition('u1'), {})).toEqual(updated);
   expect(() => store.saveMemory(attempt.id, '{"operations":[]}', {})).toThrow('memory_already_resolved');
   expect(() => store.retryMemory(first.id)).toThrow('memory_not_retryable');
   const second = start(); expect(second.snapshot).toEqual(updated);
@@ -80,11 +80,11 @@ it('freezes one memory per conversation, shares new memory across characters and
   const body = store.chatBody(request.id);
   expect(body.messages[0].content).toContain('Prefers quiet museums.');
   expect(body.messages[0].content).toContain(memoryContext(updated, sharedMemoryVersion));
-  expect(body.messages[0].content).toContain('<application_time_context>');
+  expect(saved.time_context.sources[0].message_id).toBe(second.message.id);
   store.end(second.id); const noop = prepare(second.id); store.saveMemory(noop.id, '{"operations":[]}', {});
   expect(store.view(second.id).memory.current?.revision).toBe(1);
   const other = start('model_03'); expect(other.snapshot).toEqual(updated);
-  store.end(other.id); const b = prepare(other.id); store.saveMemory(b.id, addition(other.message.id, 'Enjoys astronomy.'), {});
+  store.end(other.id); const b = prepare(other.id); store.saveMemory(b.id, addition('u1', 'Enjoys astronomy.'), {});
   store.close(); store = new Store(directory, native);
   expect(store.freezeMemory(second.id)).toEqual(updated);
   expect(store.view(other.id).memory.current?.traits.map(i => i.text)).toEqual(['Prefers quiet museums.', 'Enjoys astronomy.']);
@@ -108,7 +108,7 @@ it('blocks new chats after failed updates, preserves retry input and permits fin
 });
 
 it('rolls back the whole acceptance transaction after a disk-like fault, then accepts the same saved response once', () => {
-  const s = start(); store.end(s.id); const attempt = prepare(s.id), content = addition(s.message.id);
+  const s = start(); store.end(s.id); const attempt = prepare(s.id), content = addition('u1');
   const raw = new Database(join(directory, 'stomylos.sqlite3'));
   raw.exec("CREATE TRIGGER fail_memory_commit BEFORE UPDATE ON memory_jobs WHEN NEW.state='completed' BEGIN SELECT RAISE(ABORT,'disk failure'); END");
   expect(() => store.saveMemory(attempt.id, content, {})).toThrow();
@@ -147,17 +147,17 @@ it('accepts the observed false refusal marker but rejects actual refusal and cro
 
 it('lets another model correct and forget shared facts without changing an already active snapshot', () => {
   const first = start('model_04'); store.end(first.id); const a = prepare(first.id);
-  store.saveMemory(a.id, addition(first.message.id), {});
+  store.saveMemory(a.id, addition('u1'), {});
   const second = start('model_03', 'I now prefer lively museums.'); store.end(second.id);
   const frozen = structuredClone(second.snapshot), b = prepare(second.id);
   const target = frozen.traits[0].id;
-  store.saveMemory(b.id, JSON.stringify({ operations: [{ op: 'update', id: target, category: 'traits', text: 'Prefers lively museums.', source_message_ids: [second.message.id] }] }), {});
+  store.saveMemory(b.id, JSON.stringify({ operations: [{ op: 'update', id: 'm1', category: 'traits', text: 'Prefers lively museums.', source_message_ids: ['u1'] }] }), {});
   expect(store.freezeMemory(second.id)).toEqual(frozen);
   const third = start('model_05', 'Please forget my museum preference.');
   expect(store.view(third.id).memory.current?.traits[0].text).toBe('Prefers lively museums.');
   store.end(third.id); const c = prepare(third.id);
   expect(JSON.parse(c.input_json).current_memory.traits[0].text).toBe('Prefers lively museums.');
-  store.saveMemory(c.id, JSON.stringify({ operations: [{ op: 'delete', id: target, category: null, text: null, source_message_ids: [third.message.id] }] }), {});
+  store.saveMemory(c.id, JSON.stringify({ operations: [{ op: 'delete', id: 'm1', category: null, text: null, source_message_ids: ['u1'] }] }), {});
   const fourth = start('model_07'); expect(fourth.snapshot.traits).toEqual([]);
   store.deleteSession(third.id); expect(store.view(fourth.id).memory.current?.traits).toEqual([]);
   expect(store.view(second.id).memory.snapshot).toEqual(frozen);
@@ -165,15 +165,15 @@ it('lets another model correct and forget shared facts without changing an alrea
 
 it('shows committed per-chat changes from the update input, preserving history across later updates, restart and deletion', () => {
   const first = start(); store.end(first.id);
-  const a = prepare(first.id); const firstDoc = store.saveMemory(a.id, addition(first.message.id), {});
+  const a = prepare(first.id); const firstDoc = store.saveMemory(a.id, addition('u1'), {});
   const firstHistory = store.view(first.id).memory.changes;
   expect(firstHistory).toMatchObject({ status: 'ready', scope: 'shared', beforeRevision: 0, afterRevision: 1,
     items: [{ kind: 'added', before: null, after: { category: 'traits', text: 'Prefers quiet museums.' } }] });
   const second = start('model_03'); store.end(second.id);
   const target = firstDoc.traits[0].id, b = prepare(second.id);
   store.saveMemory(b.id, JSON.stringify({ operations: [
-    { op: 'update', id: target, category: 'experiences', text: 'Visited a quiet museum.', source_message_ids: [second.message.id] },
-    { op: 'add', id: null, category: 'traits', text: 'Enjoys astronomy.', source_message_ids: [second.message.id] }
+    { op: 'update', id: 'm1', category: 'experiences', text: 'Visited a quiet museum.', source_message_ids: ['u1'] },
+    { op: 'add', id: null, category: 'traits', text: 'Enjoys astronomy.', source_message_ids: ['u1'] }
   ] }), {});
   expect(store.view(second.id).memory.snapshot?.traits).toEqual(firstDoc.traits);
   const secondHistory = store.view(second.id).memory.changes;
@@ -183,7 +183,7 @@ it('shows committed per-chat changes from the update input, preserving history a
   expect(secondHistory.items).toContainEqual({ id: target, kind: 'updated',
     before: { category: 'traits', text: 'Prefers quiet museums.' }, after: { category: 'experiences', text: 'Visited a quiet museum.' } });
   const third = start(); store.end(third.id); const c = prepare(third.id);
-  store.saveMemory(c.id, JSON.stringify({ operations: [{ op: 'delete', id: target, category: null, text: null, source_message_ids: [third.message.id] }] }), {});
+  store.saveMemory(c.id, JSON.stringify({ operations: [{ op: 'delete', id: 'm2', category: null, text: null, source_message_ids: ['u1'] }] }), {});
   expect(store.view(third.id).memory.changes).toMatchObject({ status: 'ready', items: [
     { id: target, kind: 'deleted', before: { category: 'experiences', text: 'Visited a quiet museum.' }, after: null }
   ] });
@@ -201,7 +201,7 @@ it('exposes only the selected successful memory result and distinguishes no-op u
   const s = start(); expect(store.view(s.id).memory.changes).toBeNull();
   store.end(s.id); expect(store.view(s.id).memory.changes).toBeNull();
   const a = prepare(s.id); expect(store.view(s.id).memory.changes).toBeNull();
-  store.failMemory(a.id, 'request_timeout', addition(s.message.id), {});
+  store.failMemory(a.id, 'request_timeout', addition('u1'), {});
   expect(store.view(s.id).memory.changes).toBeNull();
   store.retryMemory(s.id); const b = prepare(s.id); store.saveMemory(b.id, '{"operations":[]}', {});
   expect(store.view(s.id).memory.changes).toMatchObject({ status: 'ready', beforeRevision: 0, afterRevision: 0, items: [] });
@@ -213,16 +213,16 @@ it('exposes only the selected successful memory result and distinguishes no-op u
 it('ignores unchanged text and ordering even when an accepted operation increments the revision', () => {
   const first = start(); store.end(first.id); const a = prepare(first.id);
   const doc = store.saveMemory(a.id, JSON.stringify({ operations: [
-    { op: 'add', id: null, category: 'traits', text: 'Prefers quiet museums.', source_message_ids: [first.message.id] },
-    { op: 'add', id: null, category: 'traits', text: 'Enjoys astronomy.', source_message_ids: [first.message.id] }
+    { op: 'add', id: null, category: 'traits', text: 'Prefers quiet museums.', source_message_ids: ['u1'] },
+    { op: 'add', id: null, category: 'traits', text: 'Enjoys astronomy.', source_message_ids: ['u1'] }
   ] }), {});
   const second = start(); store.end(second.id); const b = prepare(second.id);
-  store.saveMemory(b.id, JSON.stringify({ operations: [{ op: 'update', id: doc.traits[0].id, category: 'traits', text: doc.traits[0].text, source_message_ids: [second.message.id] }] }), {});
+  store.saveMemory(b.id, JSON.stringify({ operations: [{ op: 'update', id: 'm1', category: 'traits', text: doc.traits[0].text, source_message_ids: ['u1'] }] }), {});
   expect(store.view(second.id).memory.changes).toMatchObject({ status: 'ready', beforeRevision: 1, afterRevision: 2, items: [] });
 });
 
 it('keeps unreadable memory history local to the history view and supports retained character-scoped records', () => {
-  const s = start(); store.end(s.id); const a = prepare(s.id); const doc = store.saveMemory(a.id, addition(s.message.id), {});
+  const s = start(); store.end(s.id); const a = prepare(s.id); const doc = store.saveMemory(a.id, addition('u1'), {});
   const job = store.memoryJob(s.id)!, raw = new Database(join(directory, 'stomylos.sqlite3'));
   try {
     const saved = raw.prepare('SELECT * FROM memory_attempts WHERE id=?').get(a.id) as typeof a;

@@ -16,7 +16,7 @@ import type { Gateway } from './transport';
 import { CompletionFailure } from './transport';
 import { routeSearch } from './search-router';
 import { parseStarterQuestions, starterBody } from './starter-renewal';
-import { applyMemory, memoryBody } from './memory-updater';
+import { applyMemoryResponse, memoryBody } from './memory-updater';
 import { AppFailure, failureCode } from './errors';
 import type { Credentials } from './credentials';
 import { characters, conversationBody, conversationRequestSnapshot, grammarBody, grammarSnapshot, isLearner, routerBody, routerScores, routerSnapshot, validateGrammar, hash } from './contracts';
@@ -667,7 +667,7 @@ export class Coordinator {
             input_hash: attempt.input_hash, base_revision: packet.current_memory.revision, character_id: job.character_id };
           if (abort.signal.aborted) throw new AppFailure('request_cancelled');
           await this.write('receiveEndResponse', sessionId, 'update', attempt.id, content, metadata);
-          applyMemory(packet, content, true);
+          applyMemoryResponse(snapshot, packet, content);
           await this.write('saveMemory', attempt.id, content, metadata);
           await this.write('clearEndResponse', sessionId, 'update');
         } catch (error) {

@@ -127,3 +127,5 @@ console.log('Grammar v2 exact index prompt/settings match selection; frozen v1 r
 
 assert.deepEqual(readFileSync('src/main/pattern-system-v3.txt'), readFileSync('../experiments/EXP-031-direct-learner-pattern-reports/round5-system.txt'));
 console.log('Direct report v3 system exactly matches the selected EXP-031 round-five bytes.');
+
+assert.equal(readFileSync('src/main/memory-prompt-compact.txt', 'utf8'), readFileSync('../experiments/EXP-017-character-memory/prompt-compression/prompt-full.txt', 'utf8'));

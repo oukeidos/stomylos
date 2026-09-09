@@ -1,3 +1,5 @@
+import compactPrompt from './memory-prompt-compact.txt?raw';
+import { memoryWire, resolveMemoryOperation } from './memory-wire';
 import capacityPrompt from './memory-prompt-capacity.txt?raw';
 import { renderMemoryBody, memoryCharacters, memoryCharacterCap } from './memory-render';
 import { createHash } from 'node:crypto';
@@ -17,8 +19,9 @@ export const memoryVersion = 'stomylos_memory_context_v2';
 export const sharedMemoryVersion = 'stomylos_memory_context_v3';
 export const capacityMemoryVersion = 'stomylos_memory_context_v4';
 export const capacityUpdaterVersion = 'stomylos_memory_updater_v4';
-export const currentUpdaterVersion = 'stomylos_memory_updater_v5';
-export const isCapacityUpdater = (version: unknown) => version === capacityUpdaterVersion || version === currentUpdaterVersion;
+export const lowUpdaterVersion = 'stomylos_memory_updater_v5';
+export const currentUpdaterVersion = 'stomylos_memory_updater_v6';
+export const isCapacityUpdater = (version: unknown) => version === capacityUpdaterVersion || version === lowUpdaterVersion || version === currentUpdaterVersion;
 // Structural admission only; committed capacity is measured on the rendered body.
 export const candidateLimits = Object.freeze({ max_items: 1000000, max_item_chars: 1000000, max_bytes: 1000000 });
 export const sharedMemoryId = 'shared';
@@ -46,16 +49,19 @@ export function validateMemory(doc: any, limits: MemoryPacket['limits'] = memory
   }
   if (ids.size > limits.max_items || Buffer.byteLength(memoryJson(doc)) > limits.max_bytes) fail('budget');
 }
-export function applyMemory(packet: MemoryPacket, content: string, shared = false): MemoryDocument {
+export function applyMemory(packet: MemoryPacket, content: string, shared = false, compact = false): MemoryDocument {
   const doc = structuredClone(packet.current_memory); validateMemory(doc, packet.limits);
   if (doc.character_id !== (shared ? sharedMemoryId : packet.session.character_id)) fail('character_mismatch');
   const patch = strictJson(content);
   if (!exact(patch, ['operations']) || !Array.isArray(patch.operations) || patch.operations.length > (isDeepStrictEqual(packet.limits, candidateLimits) ? 4096 : 120)) fail('patch');
   const sources = new Set(packet.session.messages.filter(m => m.role === 'user' && m.origin === 'learner' && m.delivery === 'complete').map(m => m.id));
+  const maps = compact ? memoryWire(packet) : null;
   const existing = new Map(memoryCategories.flatMap(c => doc[c].map(i => [i.id, c] as const))), touched = new Set<string>();
-  for (const [index, op] of (patch.operations as MemoryOperation[]).entries()) {
+  for (const [index, raw] of (patch.operations as MemoryOperation[]).entries()) {
+    let op = raw;
     if (!exact(op, ['op', 'id', 'category', 'text', 'source_message_ids']) || !['add', 'update', 'delete'].includes(op.op)) fail('operation');
-    if (!Array.isArray(op.source_message_ids) || !op.source_message_ids.length || new Set(op.source_message_ids).size !== op.source_message_ids.length || op.source_message_ids.some(s => typeof s !== 'string' || !sources.has(s))) fail('source');
+    if (!Array.isArray(op.source_message_ids) || !op.source_message_ids.length || new Set(op.source_message_ids).size !== op.source_message_ids.length || op.source_message_ids.some(s => typeof s !== 'string' || !(maps ? maps.sources : sources).has(s))) fail('source');
+    if (maps) op = resolveMemoryOperation(op, maps);
     let id: string;
     if (op.op === 'add') {
       if (op.id !== null) fail('add_id');
@@ -77,21 +83,21 @@ export function applyMemory(packet: MemoryPacket, content: string, shared = fals
   validateMemory(doc, packet.limits); return doc;
 }
 export function memoryConfig(version = 'stomylos_memory_updater_v1'): Json {
-  if (!['stomylos_memory_updater_v1', 'stomylos_memory_updater_v2', sharedUpdaterVersion, capacityUpdaterVersion, currentUpdaterVersion].includes(version)) fail('unsupported_settings');
-  const selected = isCapacityUpdater(version) ? capacityPrompt : version === sharedUpdaterVersion ? sharedPrompt : version === 'stomylos_memory_updater_v2' ? temporalPrompt : prompt;
+  if (!['stomylos_memory_updater_v1', 'stomylos_memory_updater_v2', sharedUpdaterVersion, capacityUpdaterVersion, lowUpdaterVersion, currentUpdaterVersion].includes(version)) fail('unsupported_settings');
+  const selected = version === currentUpdaterVersion ? compactPrompt : isCapacityUpdater(version) ? capacityPrompt : version === sharedUpdaterVersion ? sharedPrompt : version === 'stomylos_memory_updater_v2' ? temporalPrompt : prompt;
   return { version, prompt: selected, prompt_sha256: memoryHash(selected),
     timeout_seconds: 180, limits: { ...(isCapacityUpdater(version) ? candidateLimits : memoryLimits) },
     response_identity: { allowed_models: ['google/gemini-3.8-flash-20260902', 'google/gemini-3.8-flash'], provider: 'Google AI Studio' },
     parameters: { model: 'google/gemini-3.8-flash', stream: false, max_tokens: isCapacityUpdater(version) ? 32768 : 8192,
       provider: { only: ['google-ai-studio'], allow_fallbacks: false, require_parameters: true, data_collection: 'deny' },
-      reasoning: { effort: version === currentUpdaterVersion ? 'low' : 'medium', exclude: true },
+      reasoning: { effort: [lowUpdaterVersion, currentUpdaterVersion].includes(version) ? 'low' : 'medium', exclude: true },
       response_format: { type: 'json_schema', json_schema: { name: 'stomylos_memory_delta_v1', strict: true, schema } } } };
 }
 export function memoryBody(snapshot: Json, packet: MemoryPacket): Json {
   if (!isDeepStrictEqual(snapshot, memoryConfig(snapshot.version))) fail('unsupported_settings');
   if (!isDeepStrictEqual(packet.limits, isCapacityUpdater(snapshot.version) ? candidateLimits : memoryLimits)) fail('limits');
   validateMemory(packet.current_memory, packet.limits);
-  if (packet.current_memory.character_id !== ([sharedUpdaterVersion, capacityUpdaterVersion, currentUpdaterVersion].includes(snapshot.version) ? sharedMemoryId : packet.session.character_id)) fail('character_mismatch');
+  if (packet.current_memory.character_id !== ([sharedUpdaterVersion, capacityUpdaterVersion, lowUpdaterVersion, currentUpdaterVersion].includes(snapshot.version) ? sharedMemoryId : packet.session.character_id)) fail('character_mismatch');
   if (snapshot.version !== 'stomylos_memory_updater_v1') {
     for (const message of packet.session.messages) {
       if (!Object.hasOwn(message, 'sent_time')) fail('source_time');
@@ -101,9 +107,17 @@ export function memoryBody(snapshot: Json, packet: MemoryPacket): Json {
       }
     }
   } else if (packet.session.messages.some(m => Object.hasOwn(m, 'sent_time'))) fail('source_time');
-  const body = { ...snapshot.parameters, messages: [{ role: 'system', content: snapshot.prompt }, { role: 'user', content: JSON.stringify(packet) }] };
+  const compact = snapshot.version === currentUpdaterVersion;
+  const input = compact ? memoryWire(packet).input : packet;
+  const body = { ...snapshot.parameters, messages: [{ role: 'system', content: snapshot.prompt }, { role: 'user', content: JSON.stringify(input) }] };
   if (Buffer.byteLength(JSON.stringify(body)) + 512 + (isCapacityUpdater(snapshot.version) ? 32768 : 0) > (isCapacityUpdater(snapshot.version) ? 1_048_576 : 60000)) fail('input_too_large');
+  // Preserve canonical admission even when aliases reduce the transmitted size.
+  if (compact && Buffer.byteLength(JSON.stringify({ ...body, messages: [{ role: 'system', content: snapshot.prompt }, { role: 'user', content: JSON.stringify(packet) }] })) + 512 + 32768 > 1_048_576) fail('input_too_large');
   return body;
+}
+export function applyMemoryResponse(snapshot: Json, packet: MemoryPacket, content: string): MemoryDocument {
+  memoryBody(snapshot, packet);
+  return applyMemory(packet, content, [sharedUpdaterVersion, capacityUpdaterVersion, lowUpdaterVersion, currentUpdaterVersion].includes(snapshot.version), snapshot.version === currentUpdaterVersion);
 }
 export function memoryContext(doc: MemoryDocument, version = memoryVersion): string {
   validateMemory(doc, version === capacityMemoryVersion ? candidateLimits : memoryLimits);

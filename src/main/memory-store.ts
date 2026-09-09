@@ -6,7 +6,7 @@ import type { MemoryAttempt, MemoryDocument, MemoryJob, MemoryPacket, MemoryView
 import { readMessageTime } from './time-context';
 import { AppFailure } from './errors';
 import { memoryChanges } from './memory-history';
-import { applyMemory, memoryBody, memoryConfig, memoryHash, memoryJson, memoryLimits, memoryVersion, sharedMemoryVersion, sharedMemoryId, sharedUpdaterVersion, currentUpdaterVersion, isCapacityUpdater, capacityMemoryVersion, candidateLimits, memorySupported, validateMemory } from './memory-updater';
+import { applyMemoryResponse, memoryConfig, memoryHash, memoryJson, memoryLimits, memoryVersion, sharedMemoryVersion, sharedMemoryId, sharedUpdaterVersion, currentUpdaterVersion, isCapacityUpdater, capacityMemoryVersion, candidateLimits, memorySupported, validateMemory } from './memory-updater';
 
 const now = () => new Date().toISOString();
 function fail(code: string): never { throw new AppFailure('memory_' + code); }
@@ -111,8 +111,7 @@ export class MemoryStore {
       if (memoryHash(attempt.input_json) !== attempt.input_hash || memoryHash(job.source) !== job.source_hash || memoryHash(job.config) !== job.config_hash) fail('source_changed');
       const packet: MemoryPacket = JSON.parse(attempt.input_json);
       if (packet.session.id !== job.session_id || packet.session.character_id !== job.character_id || memoryJson(packet.session) !== job.source || memoryJson(packet.current_memory) !== memoryJson(this.load())) fail('stale_input');
-      memoryBody(JSON.parse(job.config), packet);
-      const doc = applyMemory(packet, content, true), encoded = memoryJson(doc);
+      const doc = applyMemoryResponse(JSON.parse(job.config), packet, content), encoded = memoryJson(doc);
       if (isCapacityUpdater(JSON.parse(job.config).version) && memoryCharacters(doc) > memoryCharacterCap) {
         const config = memoryJson(cleanupConfig());
         this.run("INSERT INTO memory_candidates(session_id,update_attempt_id,document,document_hash,config,config_hash,state,created_at) VALUES(?,?,?,?,?,?,'pending',?)", job.session_id, id, encoded, memoryHash(encoded), config, memoryHash(config), now());

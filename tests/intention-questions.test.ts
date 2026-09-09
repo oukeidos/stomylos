@@ -21,7 +21,7 @@ function ended() {
   return { id: s.id, message, attempt };
 }
 function memory(operations: any[]) {
-  const s = ended(), content = JSON.stringify({ operations: operations.map(op => ({ ...op, source_message_ids: [s.message.id] })) });
+  const s = ended(), content = JSON.stringify({ operations: operations.map(op => ({ ...op, source_message_ids: ['u1'] })) });
   const doc = store.saveMemory(s.attempt.id, content, {}); return { ...s, doc, content, jobs: store.intentionJobs(s.id) };
 }
 const add = (text = 'Wants to plan a trip.') => ({ op: 'add', id: null, category: 'intentions', text });
@@ -58,7 +58,7 @@ it('diffs category membership and exact text, not global document revisions', ()
 it('keeps Intention memory without any question generation and no dedicated jobs are created', () => {
   const s = ended();
   expect(store.starterJob(s.id)).toBeNull();
-  store.saveMemory(s.attempt.id, JSON.stringify({operations:[{...add(),source_message_ids:[s.message.id]}]}), {});
+  store.saveMemory(s.attempt.id, JSON.stringify({operations:[{...add(),source_message_ids:['u1']}]}), {});
   expect(store.currentMemory().intentions).toHaveLength(1);
   expect(store.intentionJobs(s.id)).toEqual([]);
   expect(store.starterJob(s.id)).toBeNull();

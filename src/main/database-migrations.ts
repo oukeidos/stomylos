@@ -14,12 +14,13 @@ import step19 from './migrations/019.sql?raw';
 import { installCatalog19, verifyCatalog19, readCatalog } from './migrations/019-data';
 import source19 from './migrations/schema-v19.sql?raw';
 import step20 from './migrations/020.sql?raw';
+import step21 from './migrations/021.sql?raw';
 import current from './schema.sql?raw';
 import { AppFailure } from './errors';
 
 // v0.1.0 ships schema 13. Keep published source schemas and steps immutable.
 export const minimumPublicSchema = 13;
-export const currentSchema = 20;
+export const currentSchema = 21;
 export function schemaSignature(db: Database.Database) {
   return db.prepare("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
     .map((r: any) => ({ ...r, sql: r.sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim().replace(/;$/, '') }));
@@ -44,7 +45,7 @@ function dataFingerprint(db: Database.Database): string {
   }
   return digest.digest('hex');
 }
-const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }];
+const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }];
 export function inspectMigration(db: Database.Database): number {
   const version = Number(db.pragma('user_version', { simple: true }));
   if (version < minimumPublicSchema || version > currentSchema) throw new AppFailure('unsupported_schema_version');

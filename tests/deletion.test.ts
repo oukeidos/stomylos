@@ -28,7 +28,7 @@ it('deletes all owned records atomically while preserving shared questions, memo
   store.saveAnalysis(grammar.id, JSON.stringify({ units: [{ index: 0, corrected_text: 'I enjoy quiet museums.', explanation: 'No change needed.' }] }), {});
   const memory = store.prepareMemory(id, 'memory-public'); store.dispatchMemory(memory.id);
   const packet = JSON.parse(memory.input_json);
-  store.saveMemory(memory.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet museums.', source_message_ids: [packet.session.messages.find((m: any) => m.origin === 'learner').id] }] }), {});
+  store.saveMemory(memory.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet museums.', source_message_ids: ['u1'] }] }), {});
   raw.prepare("INSERT INTO starter_renewal_jobs(id,session_id,created_at,source_sequence,source_hash,source_messages,input_json,input_hash,config,config_hash,model,state) VALUES('old-job',?,'2026-09-09',0,'h','[]','[]','h','{}','h','old-model','completed')").run(id);
   raw.exec("INSERT INTO starter_renewal_attempts(id,job_id,status,created_at) VALUES('old-attempt','old-job','succeeded','2026-09-09')");
   const attempt={id:'old-attempt'};

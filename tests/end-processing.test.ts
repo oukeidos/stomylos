@@ -77,7 +77,7 @@ it('commits a saved cleanup response locally without credentials or repeating th
   f.store.saveAnalysis(grammar.id, JSON.stringify({ units: [{index: 0, corrected_text: learner.content, explanation: ''}] }), {});
   expect(f.store.starterJob(f.id)).toBeNull();
   const update = f.store.prepareMemory(f.id, 'update-op'); f.store.dispatchMemory(update.id);
-  const content = JSON.stringify({ operations: [{ op:'add', id:null, category:'traits', text:'x'.repeat(31000), source_message_ids:[learner.id] }] });
+  const content = JSON.stringify({ operations: [{ op:'add', id:null, category:'traits', text:'x'.repeat(31000), source_message_ids:['u1'] }] });
   f.store.saveMemory(update.id, content, {});
   expect(f.store.saveMemory(update.id, content, {}).traits[0].text.length).toBe(31000);
   const cleanup = f.store.prepareCleanup(f.id, 'cleanup-op'); f.store.dispatchCleanup(cleanup.id);
@@ -96,7 +96,7 @@ it('gives memory stages independent same-input retries and never reruns a succes
     if (kind === 'update') {
       if (++updateCalls === 1) return 'invalid';
       const packet = JSON.parse(body.messages[1].content);
-      return JSON.stringify({operations:[{op:'add',id:null,category:'traits',text:'x'.repeat(31000),source_message_ids:[packet.session.messages.find((m: Json)=>m.origin==='learner').id]}]});
+      return JSON.stringify({operations:[{op:'add',id:null,category:'traits',text:'x'.repeat(31000),source_message_ids:[packet.messages.find((m: Json)=>m.role==='user' && m.evidence!==false).id]}]});
     }
     if (!recover) return 'invalid';
     return kind === 'cleanup' ? 'Traits\nKeeps useful detail.\nRelationships\nExperiences\nIntentions' : valid(kind,body);

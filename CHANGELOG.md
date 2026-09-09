@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Compact memory updater requests with short IDs and streamlined metadata, preserving full conversations, stored data and legacy retries through schema 21.
 - Keep icon tooltips visible outside scrolling panels and dialogs, and reposition them at window edges.
 - Generate reports directly from learner messages with flexible date ranges, expanded capacity and simpler controls; make session grammar analysis manual while preserving history through schema 20.
 
