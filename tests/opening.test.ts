@@ -33,11 +33,6 @@ function newSession() {
 }
 function direct() { const session = newSession(); change(session.id, 'user'); return store.session(session.id); }
 function counts(id: string) { return raw.prepare('SELECT kind,COUNT(*) n FROM starter_events WHERE session_id=? GROUP BY kind ORDER BY kind').all(id); }
-function finishRenewal(id: string, lines = 'What would a paper moon remind you of?\nWhich familiar sound feels new today?') {
-  const job = store.starterJob(id)!; const attempt = store.starterAttempts(job.id).at(-1)!;
-  store.dispatchStarter(attempt.id); store.saveStarter(attempt.id, lines, {}); return job;
-}
-
 it('parks/restores the exact question and keeps drafts, manual choice, preferences and actual feedback across restart', () => {
   const initial = newSession(); const message = store.messages(initial.id)[0];
   store.saveDraft(initial.id, '  한글\r\nA thought.  '); store.selectManual(initial.id, 'model_04');
@@ -98,50 +93,28 @@ it('stores the first direct message at zero, freezes the opening, and preserves 
   expect(counts(session.id)).toEqual([{ kind: 'presented', n: 1 }]);
 });
 
-it('freezes and retries a skip-only direct end with an empty source boundary', () => {
-  const session = newSession(); store.replaceQuestion(session.id, 'skip', session.starter_id!, session.opening_revision);
-  change(session.id, 'user'); store.saveDraft(session.id, 'UNSENT');
-  expect(store.end(session.id)).toBe(false);
-  const job = store.starterJob(session.id)!; const packet = JSON.parse(job.input_json);
-  expect(job.source_sequence).toBe(-1); expect(job.source_hash).toBe(hash(transcriptJson([])));
-  expect(JSON.parse(job.source_messages)).toEqual([]);
-  expect(packet).toEqual([]);
+it('ends a skip-only direct draft without online starter work', () => {
+  const session=newSession(); store.replaceQuestion(session.id,'skip',session.starter_id!,session.opening_revision);
+  change(session.id,'user'); store.saveDraft(session.id,'UNSENT'); store.end(session.id);
+  expect(store.starterJob(session.id)).toBeNull(); expect(store.memoryJob(session.id)).toBeNull();
   expect(raw.prepare('SELECT COUNT(*) n FROM starter_skips WHERE session_id=?').get(session.id)).toEqual({n:1});
-  expect(job.input_json).not.toContain('UNSENT'); expect(store.memoryJob(session.id)).toBeNull();
-  const a = store.starterAttempts(job.id)[0]; store.dispatchStarter(a.id); store.failStarter(a.id, 'public-failure');
-  store.close(); store = new Store(directory, resolve('native/advisory-lock.node'));
-  const retry = store.retryStarter(session.id, 'retry'); expect(retry.dispatched_at).toBeNull();
-  expect(store.starterJob(session.id)?.input_json).toBe(job.input_json);
-  finishRenewal(session.id); expect(store.starterJob(session.id)?.state).toBe('completed');
 });
 
-it('generates from direct turns without consuming a slot and keeps the used-question window honest', () => {
-  const starter = newSession(); store.submit(starter.id, 'An actual answer.'); store.end(starter.id);
-  finishRenewal(starter.id);
-  const session = direct(); const before = store.starterInventory().slots;
-  store.submit(session.id, 'Explain how rainbows form.'); store.end(session.id);
-  const job = finishRenewal(session.id, 'Which color would you borrow for a day?\nWhat makes a useful explanation?');
-  expect(store.starterInventory().slots).toEqual(before);
-  const packet = JSON.parse(job.input_json);
-  expect(packet).toEqual(['Explain how rainbows form.']);
-  for (let i = 0; i < 11; i++) { const next = newSession(); store.submit(next.id, `Self-chosen topic ${i}.`); store.end(next.id); }
-  const last = store.sessions().find(s => s.opening_kind === 'user' && store.starterJob(s.id))!;
-  expect(JSON.parse(store.starterJob(last.id)!.input_json)).toHaveLength(1);
+it('keeps catalog counters unchanged for a direct opening', () => {
+  const session=direct(),before=raw.prepare('SELECT * FROM starter_catalog_entries').all();
+  store.submit(session.id,'Explain how rainbows form.'); store.end(session.id);
+  expect(store.starterJob(session.id)).toBeNull();
+  expect(raw.prepare('SELECT * FROM starter_catalog_entries').all()).toEqual(before);
 });
 
-it('preserves a parked question after a background replacement without consuming the new occupant', () => {
-  const older = newSession(); store.submit(older.id, 'An earlier answer.'); store.end(older.id);
-  // Historical background work predates the current blocking end-stage flow.
-  raw.prepare('DELETE FROM end_processing WHERE session_id=?').run(older.id);
-  const draft = newSession();
-  raw.prepare('UPDATE sessions SET starter_id=?,starter_version=?,starter_text=? WHERE id=?').run(older.starter_id, older.starter_version, older.starter_text, draft.id);
-  raw.prepare('UPDATE messages SET content=? WHERE session_id=?').run(older.starter_text, draft.id);
-  const original = store.messages(draft.id)[0]; change(draft.id, 'user');
-  finishRenewal(older.id); const slots = store.starterInventory().slots;
-  expect(slots.some(q => q.id === older.starter_id)).toBe(false);
-  change(draft.id, 'starter'); expect(store.messages(draft.id)).toEqual([original]);
-  store.submit(draft.id, 'Answer to the question I saw.');
-  expect(store.starterInventory().slots).toEqual(slots);
+it('preserves an already-answered parked question and records its reuse', () => {
+  const older=newSession(); store.submit(older.id,'An earlier answer.'); store.end(older.id);
+  const draft=newSession();
+  raw.prepare('UPDATE sessions SET starter_id=?,starter_version=?,starter_text=? WHERE id=?').run(older.starter_id,older.starter_version,older.starter_text,draft.id);
+  raw.prepare('UPDATE messages SET content=? WHERE session_id=?').run(older.starter_text,draft.id);
+  const original=store.messages(draft.id)[0]; change(draft.id,'user'); change(draft.id,'starter');
+  expect(store.messages(draft.id)).toEqual([original]); store.submit(draft.id,'Another answer.');
+  expect(raw.prepare('SELECT answer_count FROM starter_catalog_entries WHERE question_id=?').pluck().get(older.starter_id)).toBe(2);
 });
 
 it('uses exact historical contracts for old sessions and direct routing/assembly for every selected partner', () => {
@@ -173,7 +146,7 @@ it('retains old renewal settings and rejects unknown/new malformed inputs', () =
   expect(() => starterBody(newer, '{}')).toThrow('starter_input_format');
   expect(() => starterBody({ ...old, version: 'unknown' }, '{}')).toThrow('unsupported_starter_settings');
   const session = direct(); store.submit(session.id, 'A direct thought.'); store.end(session.id);
-  expect(starterBody(JSON.parse(store.starterJob(session.id)!.config), store.starterJob(session.id)!.input_json).messages).toHaveLength(2);
+  expect(store.starterJob(session.id)).toBeNull();
 });
 
 it('validates the narrow IPC and keeps old unsent sessions on their original contract', () => {
@@ -186,7 +159,7 @@ it('validates the narrow IPC and keeps old unsent sessions on their original con
   expect(() => change(session.id, 'user')).toThrow('unsupported_opening');
   store.submit(session.id, 'An old-session answer.'); store.end(session.id);
   expect(store.session(session.id).chat_config).toBe(saved);
-  expect(JSON.parse(store.starterJob(session.id)!.config).version).toBe('stomylos_starter_renewal_v5');
+  expect(store.starterJob(session.id)).toBeNull();
   expect(store.integrity().foreignKeys).toEqual([]);
 });
 
@@ -214,5 +187,5 @@ it('ages previous skips by ended sessions of both modes while keeping the empty 
   change(session.id, 'user'); store.end(session.id);
   for (let i = 0; i < 11; i++) { const empty = newSession(); store.end(empty.id); expect(store.starterJob(empty.id)).toBeNull(); }
   const last = newSession(); store.submit(last.id, 'A new thought.'); store.end(last.id);
-  expect(JSON.parse(store.starterJob(last.id)!.input_json)).toEqual(['A new thought.']);
+  expect(store.starterJob(last.id)).toBeNull();
 });

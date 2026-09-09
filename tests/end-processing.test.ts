@@ -31,13 +31,14 @@ function valid(kind: string, body: Json) {
   if (kind === 'starter') return 'What would you like to explore?\nHow would you describe a favorite place?';
   return JSON.stringify({ units: JSON.parse(body.messages[1].content).filter((m: Json) => m.role === 'user').map((m: Json) => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) });
 }
-it('runs three independent branches with no intention calls and gates until all complete', async () => {
+it('runs grammar and memory branches with no starter or intention calls and gates until all complete', async () => {
   let release!: () => void;
   const f = fixture(async (kind, body) => { if (kind === 'update') await new Promise<void>(r => release = r); return valid(kind, body); });
   await f.controller.command('endSession', { sessionId: f.id });
-  await vi.waitFor(() => expect(f.calls.sort()).toEqual(['grammar','starter','update']));
+  await vi.waitFor(() => expect(f.calls.sort()).toEqual(['grammar','update']));
   await vi.waitFor(() => expect(f.store.session(f.id).analysis_state).toBe('completed'));
-  expect(f.store.view(f.id).renewal?.state).toBe('completed');
+  expect(f.store.view(f.id).renewal).toBeNull();
+  expect(f.store.endStatus(f.id)?.stages.starter).toBe('skipped');
   await expect(f.controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
   release(); await vi.waitFor(() => expect(f.store.endBlocker()).toBe(null));
   await expect(f.controller.command('newSession', undefined)).resolves.toBeTypeOf('string');
@@ -72,8 +73,7 @@ it('commits a saved cleanup response locally without credentials or repeating th
   f.store.dispatch(grammar.id);
   const learner = f.store.messages(f.id).find(m => m.origin === 'learner')!;
   f.store.saveAnalysis(grammar.id, JSON.stringify({ units: [{index: 0, corrected_text: learner.content, explanation: ''}] }), {});
-  const starter = f.store.retryStarter(f.id, 'starter-op'); f.store.dispatchStarter(starter.id);
-  f.store.saveStarter(starter.id, valid('starter', {}), {});
+  expect(f.store.starterJob(f.id)).toBeNull();
   const update = f.store.prepareMemory(f.id, 'update-op'); f.store.dispatchMemory(update.id);
   const content = JSON.stringify({ operations: [{ op:'add', id:null, category:'traits', text:'x'.repeat(31000), source_message_ids:[learner.id] }] });
   f.store.saveMemory(update.id, content, {});
@@ -88,7 +88,7 @@ it('commits a saved cleanup response locally without credentials or repeating th
   expect(f.store.currentMemory().traits[0].text).toBe('Likes quiet museums.');
 });
 
-it('gives all four stages independent same-input retries and never reruns a successful updater', async () => {
+it('gives the three remaining stages independent same-input retries and never reruns a successful updater', async () => {
   let updateCalls = 0, recover = false;
   const f = fixture(async (kind, body) => {
     if (kind === 'update') {
@@ -101,14 +101,14 @@ it('gives all four stages independent same-input retries and never reruns a succ
   });
   await f.controller.command('endSession',{sessionId:f.id});
   await vi.waitFor(()=> {
-    for(const kind of ['grammar','starter','update','cleanup']) expect(f.calls.filter(k=>k===kind)).toHaveLength(2);
+    for(const kind of ['grammar','update','cleanup']) expect(f.calls.filter(k=>k===kind)).toHaveLength(2);
     expect(f.store.memoryCandidate(f.id)?.state).toBe('failed');
   });
-  for(const kind of ['grammar','starter','update','cleanup']) {
+  for(const kind of ['grammar','update','cleanup']) {
     const bodies = f.bodies.filter(b=>b.kind===kind).map(b=>b.body); expect(bodies[1]).toEqual(bodies[0]);
   }
   recover = true; await f.controller.command('continueEnd',{sessionId:f.id});
   await vi.waitFor(()=>expect(f.store.endBlocker()).toBeNull());
   expect(updateCalls).toBe(2);
-  for(const kind of ['grammar','starter','cleanup']) expect(f.calls.filter(k=>k===kind)).toHaveLength(3);
+  for(const kind of ['grammar','cleanup']) expect(f.calls.filter(k=>k===kind)).toHaveLength(3);
 });

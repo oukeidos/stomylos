@@ -4,7 +4,7 @@ import type { SessionView } from '../shared/types';
 import { loadView, onViewChanged } from './client';
 import { Icon } from './icons';
 
-const stages = { grammar: 'Grammar', starter: 'New questions', update: 'Memory', cleanup: 'Cleanup' };
+const stages = { grammar: 'Grammar', update: 'Memory', cleanup: 'Cleanup' };
 
 /** Follows the global blocker, including unfinished work restored on startup. */
 export function EndProcessingDialog({ sessionId, storageError, errorText }: {

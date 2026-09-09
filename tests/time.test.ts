@@ -229,8 +229,7 @@ it('uses message dates rather than ending/execution dates in new frozen memory p
   store.failMemory(attempt.id, 'request_timeout', null, {}); store.advanceStarter(modern.id); store.retryMemory(modern.id);
   clock = recordedTime('2026-10-01T03:00:00.000Z', null, 0);
   expect(store.prepareMemory(modern.id, randomUUID()).input_json).toBe(attempt.input_json);
-  expect(JSON.parse(store.starterJob(modern.id)!.config).version).toBe('stomylos_starter_renewal_v5');
-  expect(starterBody(JSON.parse(store.starterJob(modern.id)!.config), store.starterJob(modern.id)!.input_json).messages[0].content).toContain('Use the supplied user messages as loose inspiration.');
+  expect(store.starterJob(modern.id)).toBeNull();
 });
 
 it('preserves exact universal-v4 memory injection without adding temporal context', () => {

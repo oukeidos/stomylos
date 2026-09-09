@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased — 2026-09-09
+## 0.3.0 — 2026-09-09
 
+- Replace online starter generation with 5,000 reusable English questions, weighted by answer count, with a safe schema 19 migration that preserves history.
 - Consolidate chat details in the header and replace its overflow menu with a delete button.
 - Show live post-chat progress in a blocking dialog with retry and cancel controls.
 

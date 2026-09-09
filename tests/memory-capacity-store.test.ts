@@ -93,18 +93,18 @@ it('accepted cleanup lines remain readable even when the model repeats a line', 
   expect(store.currentMemory().traits.map(item => item.text)).toEqual(['Likes detail.', 'Likes detail.']);
 });
 
-it('recovers durably received grammar and starter outputs after restart with the same attempts', () => {
+it('recovers durably received grammar while starter replay is retired after restart with the same attempts', () => {
   const { store, dir, id, message } = setup();
   const grammar = store.createRequest(id, 'grammar', JSON.parse(store.session(id).grammar_config!)); store.dispatch(grammar.id);
   store.receiveEndResponse(id, 'grammar', grammar.id, JSON.stringify({units:[{index: 0,corrected_text:message.content,explanation:''}]}), {});
-  const starter = store.retryStarter(id, 'starter-receipt'); store.dispatchStarter(starter.id);
+  const starter = { id: 'historical-receipt' };
   store.receiveEndResponse(id, 'starter', starter.id, 'What would you like to explore?\nHow would you describe a favorite place?', {});
   store.close(); stores.splice(stores.indexOf(store), 1);
   const reopened = new Store(dir, resolve('native/advisory-lock.node')); stores.push(reopened);
   expect(reopened.resumeEndResponse(id, 'grammar')).toBe(true);
-  expect(reopened.resumeEndResponse(id, 'starter')).toBe(true);
+  expect(reopened.resumeEndResponse(id, 'starter')).toBe(false);
   expect(reopened.session(id).selected_analysis_id).toBe(grammar.id);
-  expect(reopened.starterJob(id)?.selected_attempt_id).toBe(starter.id);
+  expect(reopened.starterJob(id)).toBeNull();
   expect(reopened.resumeEndResponse(id, 'grammar')).toBe(false);
   expect(reopened.resumeEndResponse(id, 'starter')).toBe(false);
 });

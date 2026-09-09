@@ -7,6 +7,7 @@ import { mkdtempSync, copyFileSync, existsSync, readFileSync, rmSync } from 'nod
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import old from '../src/main/migrations/schema-v13.sql?raw';
+import source18 from '../src/main/migrations/schema-v18.sql?raw';
 import current from '../src/main/schema.sql?raw';
 import { migrateDatabase, validateSchema } from '../src/main/database-migrations';
 const dirs: string[] = [], databases: Database.Database[] = [];
@@ -21,7 +22,7 @@ it('migrates first public schema to current with a consistent recovery snapshot 
   db.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run('original', 'original-hash');
   db.pragma('journal_mode = WAL');
   migrateDatabase(db, dir);
-  expect(db.pragma('user_version', { simple: true })).toBe(18); validateSchema(db, current);
+  expect(db.pragma('user_version', { simple: true })).toBe(19); validateSchema(db, current);
   expect(db.prepare('SELECT document FROM shared_memory').pluck().get()).toBe('original');
   const file = join(dir, 'stomylos.pre-migration-v13.sqlite3'); const bytes = readFileSync(file);
   const backup = new Database(file, { readonly: true }); databases.push(backup);
@@ -30,7 +31,7 @@ it('migrates first public schema to current with a consistent recovery snapshot 
   migrateDatabase(db, dir); expect(readFileSync(file)).toEqual(bytes);
 });
 it('refuses unknown/newer schemas without backup or writes', () => {
-  for (const version of [0, 12, 19]) {
+  for (const version of [0, 12, 20]) {
     const { db, dir } = fixture(); db.pragma(`user_version = ${version}`);
     expect(() => migrateDatabase(db, dir)).toThrow('unsupported_schema_version');
     expect(db.pragma('user_version', { simple: true })).toBe(version);
@@ -60,7 +61,7 @@ it('rolls back a mid-migration failure and restarts without replacing the origin
   db.close();
   const restarted = new Database(join(dir, 'stomylos.sqlite3')); databases.push(restarted);
   migrateDatabase(restarted, dir); validateSchema(restarted, current);
-  expect(restarted.pragma('user_version', { simple: true })).toBe(18);
+  expect(restarted.pragma('user_version', { simple: true })).toBe(19);
   expect(readFileSync(backup)).toEqual(original);
 });
 
@@ -96,7 +97,7 @@ it('initializes a genuinely empty SQLite file directly without a migration backu
   try { expect(store.currentMemory().revision).toBe(0); }
   finally { store.close(); }
   const db = new Database(join(dir, 'stomylos.sqlite3')); databases.push(db);
-  expect(db.pragma('user_version', { simple: true })).toBe(18); validateSchema(db, current);
+  expect(db.pragma('user_version', { simple: true })).toBe(19); validateSchema(db, current);
   expect(existsSync(join(dir, 'stomylos.pre-migration-v13.sqlite3'))).toBe(false);
 });
 
@@ -126,12 +127,12 @@ it('upgrades through real Store startup and lists all legacy unfinished sessions
     expect(store.currentMemory()).toEqual(emptyMemory('shared'));
   } finally { store.close(); }
   const after = new Database(join(dir,'stomylos.sqlite3')); databases.push(after);
-  expect(after.pragma('user_version',{simple:true})).toBe(18);
+  expect(after.pragma('user_version',{simple:true})).toBe(19);
   expect(existsSync(join(dir,'stomylos.pre-migration-v13.sqlite3'))).toBe(true);
 });
 
  it('upgrades schema 14 without changing data and rolls back a failed v15 step before retry', () => {
-  const { db, dir } = fixture(current, 14);
+  const { db, dir } = fixture(source18, 14);
   db.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run('unchanged document', 'unchanged hash');
   db.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind) VALUES('old','ended','2026-09-01','{}','user')").run();
   db.prepare("INSERT INTO starter_renewal_jobs(id,session_id,created_at,source_sequence,source_hash,source_messages,input_json,input_hash,config,config_hash,model,state) VALUES('job','old','2026-09-01',-1,'source','[]','frozen input','input hash','frozen settings','config hash','model','pending')").run();
@@ -146,14 +147,14 @@ it('upgrades through real Store startup and lists all legacy unfinished sessions
   expect(db.pragma('user_version',{simple:true})).toBe(14);
   const backup = join(dir, 'stomylos.pre-migration-v14.sqlite3'), bytes = readFileSync(backup);
   migrateDatabase(db, dir);
-  expect(db.pragma('user_version',{simple:true})).toBe(18); validateSchema(db, current);
-  expect(db.prepare('SELECT * FROM starter_renewal_jobs').all()).toEqual(before);
+  expect(db.pragma('user_version',{simple:true})).toBe(19); validateSchema(db, current);
+  expect(db.prepare('SELECT * FROM starter_renewal_jobs').all()).toEqual(before.map(row => ({ ...(row as object), state: 'failed' })));
   expect(db.prepare('SELECT document FROM shared_memory').pluck().get()).toBe('unchanged document');
   migrateDatabase(db, dir); expect(readFileSync(backup)).toEqual(bytes);
 });
 
 it('upgrades schema 15 atomically for low memory requests without changing rows and preserves recovery', () => {
-  const { db, dir } = fixture(current, 15);
+  const { db, dir } = fixture(source18, 15);
   db.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run('retained memory', 'retained hash');
   const execute = db.exec.bind(db);
   const fault = vi.spyOn(db, 'exec').mockImplementation(sql => {
@@ -165,13 +166,13 @@ it('upgrades schema 15 atomically for low memory requests without changing rows 
   expect(db.pragma('user_version', { simple: true })).toBe(15);
   const file = join(dir, 'stomylos.pre-migration-v15.sqlite3'), bytes = readFileSync(file);
   migrateDatabase(db, dir);
-  expect(db.pragma('user_version', { simple: true })).toBe(18); validateSchema(db, current);
+  expect(db.pragma('user_version', { simple: true })).toBe(19); validateSchema(db, current);
   expect(db.prepare('SELECT * FROM shared_memory').get()).toEqual({ id: 1, document: 'retained memory', document_hash: 'retained hash' });
   migrateDatabase(db, dir); expect(readFileSync(file)).toEqual(bytes);
 });
 
 it('upgrades schema 16 without rewriting saved routing contracts and recovers a failed v17 step', () => {
-  const { db, dir } = fixture(current, 16);
+  const { db, dir } = fixture(source18, 16);
   db.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind) VALUES('saved','draft','2026-09-08',?,'user')").run('{"version":"stomylos_conversation_v7","historical":"unchanged"}');
   const before = db.prepare('SELECT * FROM sessions').all();
   const execute = db.exec.bind(db);
@@ -185,13 +186,13 @@ it('upgrades schema 16 without rewriting saved routing contracts and recovers a 
   expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
   const file = join(dir, 'stomylos.pre-migration-v16.sqlite3'), bytes = readFileSync(file);
   migrateDatabase(db, dir);
-  expect(db.pragma('user_version', { simple: true })).toBe(18); validateSchema(db, current);
+  expect(db.pragma('user_version', { simple: true })).toBe(19); validateSchema(db, current);
   expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
   migrateDatabase(db, dir); expect(readFileSync(file)).toEqual(bytes);
 });
 
-it.each([13,14,15,16,17])('admits index grammar from schema %i without rewriting old grammar state', (version) => {
-  const { db, dir }=fixture(version===13?old:current,version);
+it.each([13,14,15,16,17,18])('admits index grammar from schema %i without rewriting old grammar state', (version) => {
+  const { db, dir }=fixture(version===13?old:source18,version);
   db.prepare("INSERT INTO sessions(id,state,created_at,chat_config,grammar_config,opening_kind) VALUES('grammar-old','draft','2026-09-09','{}',?,'user')").run('{"version":"stomylos_grammar_analysis_v1","preserve":"exact"}');
   const before=db.prepare("SELECT grammar_config FROM sessions WHERE id='grammar-old'").pluck().get();
   const execute=db.exec.bind(db);
@@ -200,7 +201,7 @@ it.each([13,14,15,16,17])('admits index grammar from schema %i without rewriting
     expect(()=>migrateDatabase(db,dir)).toThrow('v18 interruption');fault.mockRestore();
     expect(db.pragma('user_version',{simple:true})).toBe(17);
   }
-  migrateDatabase(db,dir);expect(db.pragma('user_version',{simple:true})).toBe(18);validateSchema(db,current);
+  migrateDatabase(db,dir);expect(db.pragma('user_version',{simple:true})).toBe(19);validateSchema(db,current);
   expect(db.prepare("SELECT grammar_config FROM sessions WHERE id='grammar-old'").pluck().get()).toBe(before);
   const backup=join(dir,`stomylos.pre-migration-v${version}.sqlite3`),bytes=readFileSync(backup);
   migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);

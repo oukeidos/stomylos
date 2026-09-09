@@ -8,6 +8,9 @@ import type { StarterPreparation } from '../shared/intention';
 import { sessionOpening } from './opening';
 import { parseStarterQuestions, questionKey, selectStarter, starterBody, starterContext, starterPolicy, starterSnapshot, renewalV2, renewalV3, renewalV4, renewalV5, type SlotQuestion } from './starter-renewal';
 
+import { installCatalog19, verifyCatalog19 } from './migrations/019-data';
+import { selectCatalog } from './starter-catalog';
+
 const now = () => new Date().toISOString();
 type Question = Starter & { normalized_text: string; state: string; created_at: string; expires_at: string | null };
 type Skip = { operation_id: string; session_id: string; outgoing_id: string; outgoing_version: string;
@@ -18,6 +21,7 @@ export class StarterStore {
   constructor(private db: Database.Database, private pickGenerator: (n: number) => number = randomInt) {}
   private rows<T>(sql: string, ...args: any[]): T[] { return this.db.prepare(sql).all(...args) as T[]; }
   private run(sql: string, ...args: any[]) { return this.db.prepare(sql).run(...args); }
+  catalogMode(): boolean { return !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='starter_catalog_entries'").get(); }
   initialize() {
     const time = now();
     for (const [i, q] of starters.entries()) {
@@ -25,13 +29,16 @@ export class StarterStore {
         q.id, q.version, q.text, questionKey(q.text), time);
       this.run('INSERT INTO starter_slots(slot,question_id,initialized_at) VALUES(?,?,?)', i + 1, q.id, time);
     }
+    if (this.catalogMode()) installCatalog19(this.db);
   }
   verify() {
+    if (this.catalogMode()) { verifyCatalog19(this.db); return; }
     const count = this.rows<{ n: number }>('SELECT COUNT(*) n FROM starter_slots')[0].n;
     const mismatch = this.rows("SELECT q.id FROM starter_questions q LEFT JOIN starter_slots s ON s.question_id=q.id WHERE (q.state='active')!=(s.slot IS NOT NULL)");
     if (count !== starterPolicy.slots || mismatch.length) throw new AppFailure('starter_pool_corrupt');
   }
   recover() {
+    if (this.catalogMode()) return;
     const time = now();
     this.run("UPDATE starter_renewal_attempts SET status='interrupted',failure='interrupted_unknown_outcome',finished_at=? WHERE status='dispatched'", time);
     this.run("UPDATE starter_renewal_jobs SET state='interrupted' WHERE state='running'");
@@ -72,6 +79,7 @@ export class StarterStore {
       ...this.skips(ref).map(q => q.normalized_text), ...(ref?.starter_text ? [questionKey(ref.starter_text)] : [])]);
   }
   refill(): { expired: number; promoted: number; duplicate: number; evicted: number } {
+    if (this.catalogMode()) return { expired: 0, promoted: 0, duplicate: 0, evicted: 0 };
     const time = now();
     const expired = this.run("UPDATE starter_questions SET state='expired',disposition_at=? WHERE state='available' AND julianday(expires_at)<=julianday(?)", time, time).changes;
     const pending = this.rows<{ slot: number; question_id: string }>('SELECT slot,question_id FROM starter_slots WHERE pending_since IS NOT NULL ORDER BY pending_since,slot');
@@ -90,12 +98,20 @@ export class StarterStore {
     for (const q of overflow) this.run("UPDATE starter_questions SET state='evicted',disposition_at=? WHERE id=?", time, q.id);
     this.verify(); return { expired, promoted, duplicate, evicted: overflow.length };
   }
-  select(current?: string) {
+  select(current?: string, sessionId?: string) {
+    if (this.catalogMode()) return selectCatalog(this.db, current, sessionId);
     this.refill();
     const recent = this.rows<{ question_id: string }>("SELECT question_id FROM starter_events WHERE kind IN ('presented','replaced') ORDER BY rowid DESC LIMIT ?", starterPolicy.recentPresentations);
     return selectStarter(this.slots(), recent.map(r => r.question_id), current);
   }
   consume(id: string, reason: 'answered' | 'skipped') {
+    if (this.catalogMode()) {
+      const column = reason === 'answered' ? 'answer_count' : 'skip_count';
+      this.run(`UPDATE starter_catalog_entries SET ${column}=${column}+1 WHERE question_id IN
+        (SELECT c.question_id FROM starter_catalog_entries c JOIN starter_questions q ON q.id=c.question_id
+         WHERE q.normalized_text=(SELECT normalized_text FROM starter_questions WHERE id=?))`, id);
+      return { slot: null, created: false };
+    }
     const slot = this.rows<{ slot: number; pending_since: string | null }>('SELECT slot,pending_since FROM starter_slots WHERE question_id=?', id)[0];
     const created = !!slot && slot.pending_since === null;
     if (created) this.run('UPDATE starter_slots SET pending_since=?,pending_reason=? WHERE question_id=? AND pending_since IS NULL', now(), reason, id);
@@ -133,17 +149,19 @@ export class StarterStore {
   view(sessionId: string): RenewalView | null {
     const job = this.jobForSession(sessionId); if (!job) return null;
     const attempts = this.attempts(job.id).map(({ response_content: _, ...attempt }) => attempt);
-    return { id: job.id, state: job.state, model: job.model, created_at: job.created_at,
+    return { retired: this.catalogMode(), id: job.id, state: job.state, model: job.model, created_at: job.created_at,
       accepted_count: attempts.find(a => a.id === job.selected_attempt_id)?.accepted_count ?? 0, attempts };
   }
   preparation(id: string) { return this.rows<StarterPreparation>('SELECT * FROM starter_preparations WHERE session_id=?', id)[0] ?? null; }
   prepare(session: Session, source: Message[]) {
+    if (this.catalogMode()) return;
     if (this.preparation(session.id) || this.jobForSession(session.id)) return;
     if (!source.some(isLearner) && !this.rows('SELECT 1 FROM starter_skips WHERE session_id=? LIMIT 1', session.id).length) return;
     const config = JSON.stringify(starterSnapshot(this.pickGenerator, renewalV5));
     this.run("INSERT INTO starter_preparations VALUES(?,?,?,?,?,?, 'waiting',NULL)", session.id, now(), new Date(Date.now() + intentionPolicy.preparationMs).toISOString(), session.source_hash, config, hash(config));
   }
   release(session: Session, source: Message[], reason: string) {
+    if (this.catalogMode()) return;
     const prepared = this.preparation(session.id);
     if (!prepared || prepared.state === 'released') return;
     if (prepared.source_hash !== session.source_hash || hash(prepared.config) !== prepared.config_hash) throw new AppFailure('starter_source_changed');
@@ -151,6 +169,7 @@ export class StarterStore {
     this.run("UPDATE starter_preparations SET state='released',reason=? WHERE session_id=?", reason, session.id);
   }
   insertIntention(jobId: string, text: string): { id: string; duplicate: boolean } {
+    if (this.catalogMode()) throw new AppFailure('feature_removed');
     this.refill(); const excluded = this.excluded(); for (const q of this.queue()) excluded.add(q.normalized_text);
     const duplicate = excluded.has(questionKey(text)), id = randomUUID(), time = now();
     this.run(`INSERT INTO starter_questions(id,version,text,normalized_text,origin,intention_job_id,state,created_at,expires_at,disposition_at)
@@ -178,10 +197,12 @@ export class StarterStore {
     this.refill();
   }
   outdated(id: string | null): boolean {
+    if (this.catalogMode()) return false;
     return !!id && !!this.rows(`SELECT 1 FROM starter_questions q JOIN intention_question_jobs j ON j.id=q.intention_job_id
       JOIN intention_question_state i ON i.item_id=j.item_id WHERE q.id=? AND (i.text IS NULL OR i.epoch!=j.epoch OR i.text_hash!=j.text_hash)`, id).length;
   }
   freeze(session: Session, source: Message[], selected?: Json) {
+    if (this.catalogMode()) return;
     if (session.state !== 'ended' || this.jobForSession(session.id)) return;
     if (!source.some(isLearner) && !this.rows('SELECT 1 FROM starter_skips WHERE session_id=? LIMIT 1', session.id).length) return;
     this.refill();
@@ -200,6 +221,7 @@ export class StarterStore {
     return this.attempt(id);
   }
   retry(sessionId: string, operationId: string): RenewalAttempt {
+    if (this.catalogMode()) throw new AppFailure('feature_removed');
     return this.db.transaction(() => {
       const job = this.jobForSession(sessionId); if (!job) throw new AppFailure('starter_not_retryable');
       const previous = this.rows<RenewalAttempt>('SELECT * FROM starter_renewal_attempts WHERE id=?', operationId)[0];
@@ -215,6 +237,7 @@ export class StarterStore {
     })();
   }
   dispatch(id: string) {
+    if (this.catalogMode()) throw new AppFailure('feature_removed');
     this.db.transaction(() => {
       const attempt = this.attempt(id); const job = this.job(attempt.job_id);
       if (job.state === 'running' && attempt.status === 'dispatched') return;
@@ -233,6 +256,7 @@ export class StarterStore {
     starterBody(JSON.parse(job.config), job.input_json);
   }
   save(id: string, content: string, metadata: Json) {
+    if (this.catalogMode()) throw new AppFailure('feature_removed');
     this.db.transaction(() => {
       const attempt = this.attempt(id); const job = this.job(attempt.job_id);
       if (attempt.status === 'succeeded' && job.selected_attempt_id === id && attempt.response_content === content) return;

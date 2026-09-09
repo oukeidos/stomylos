@@ -254,7 +254,7 @@ export class Store {
           const restored = parkedStarter(current);
           if (restored && !this.starter.outdated(restored.question.id)) { question = restored.question; this.insertStarter(id, question, restored.message.id); }
           else {
-            const choice = this.starter.select(); question = choice.question; this.insertStarter(id, question);
+            const choice = this.starter.select(undefined, id); question = choice.question; this.insertStarter(id, question);
             this.starter.event(this.event(id, 'presented', question), { slot: choice.question.slot, fallback: choice.fallback, relaxed: choice.relaxed });
           }
           parked = null;
@@ -283,7 +283,7 @@ export class Store {
       if (JSON.parse(current.chat_config).opening && current.opening_revision !== expectedRevision) throw new AppFailure('opening_changed');
       if (current.starter_id !== expectedQuestionId) throw new AppFailure('starter_changed');
       const consumed = this.starter.consume(current.starter_id!, 'skipped');
-      const choice = this.starter.select(current.starter_id!); const next = choice.question;
+      const choice = this.starter.select(current.starter_id!, id); const next = choice.question;
       this.run("UPDATE messages SET content=? WHERE session_id=? AND origin='starter'", next.text, id);
       this.run('UPDATE sessions SET starter_id=?,starter_version=?,starter_text=?,opening_revision=opening_revision+1,last_opening_operation=NULL WHERE id=?', next.id, next.version, next.text, id);
       this.starter.saveSkip(operationId, current, next);
@@ -537,7 +537,7 @@ export class Store {
     const record = this.all<Json>('SELECT * FROM end_processing WHERE session_id=?', id)[0];
     if (!record) return null;
     const session = this.session(id), memory = this.memory.job(id), candidate = this.memory.candidate(id), starter = this.starter.jobForSession(id);
-    const stages = { grammar: session.analysis_state, starter: starter?.state ?? 'skipped',
+    const stages = { grammar: session.analysis_state, starter: this.starter.catalogMode() ? 'skipped' : starter?.state ?? 'skipped',
       update: candidate ? 'completed' : memory?.state ?? 'skipped', cleanup: candidate?.state ?? 'skipped' };
     const attempts: Record<string, Json[]> = {
       grammar: this.all<Json>("SELECT failure,status FROM model_requests WHERE session_id=? AND role='grammar' ORDER BY rowid", id),
@@ -571,6 +571,7 @@ export class Store {
   endResponse(id: string, stage: string): Json | null { return this.all<Json>('SELECT * FROM end_stage_state WHERE session_id=? AND stage=? AND response_content IS NOT NULL', id, stage)[0] ?? null; }
   clearEndResponse(id: string, stage: string) { this.run('UPDATE end_stage_state SET response_id=NULL,response_content=NULL,response_metadata=NULL WHERE session_id=? AND stage=?', id, stage); }
   resumeEndResponse(id: string, stage: string): boolean {
+    if (stage === 'starter' && this.starter.catalogMode()) return false;
     this.assertEndActive(id);
     const saved = this.endResponse(id, stage); if (!saved) return false;
     try {

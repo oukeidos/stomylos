@@ -50,18 +50,13 @@ it('does not accept analysis when SQLite is read-only and makes the exact commit
   const requestCount = store.requests(input.id).length; store.saveAnalysis(input.request, input.content, {});
   expect(store.units(input.id)).toHaveLength(2); expect(store.requests(input.id)).toHaveLength(requestCount);
 });
-it.each(['readonly', 'full', 'second-candidate'])('keeps renewal response admission atomic after a %s storage failure', fault => {
-  const input = source(); store.skipMemory(input.id); store.advanceStarter(input.id); const job = store.starterJob(input.id)!; const attempt = store.starterAttempts(job.id)[0];
-  store.dispatchStarter(attempt.id); const before = store.starterInventory();
-  const content = fault === 'full' ? `${'Public long question '.repeat(6000)}?\nWhere do thoughts rest?` : 'What would a quiet city notice?\nWhere do thoughts rest?';
-  if (fault === 'readonly') raw.pragma('query_only=ON');
-  if (fault === 'full') raw.pragma(`max_page_count=${raw.pragma('page_count', { simple: true })}`);
-  if (fault === 'second-candidate') raw.exec("CREATE TEMP TRIGGER fail_candidate BEFORE INSERT ON starter_questions WHEN NEW.ordinal=1 BEGIN SELECT RAISE(ABORT, 'injected candidate failure'); END");
-  expect(() => store.saveStarter(attempt.id, content, {})).toThrow();
-  expect(store.starterInventory()).toEqual(before); expect(store.starterAttempt(attempt.id).status).toBe('dispatched');
-  expect(store.starterJob(input.id)?.selected_attempt_id).toBeNull();
-  raw.pragma('query_only=OFF'); raw.pragma('max_page_count=10000'); raw.exec('DROP TRIGGER IF EXISTS temp.fail_candidate');
-  store.saveStarter(attempt.id, content, {}); store.saveStarter(attempt.id, content, {});
-  expect(store.starterAttempt(attempt.id).accepted_count).toBe(2); expect(store.starterJob(input.id)?.state).toBe('completed');
-  expect(store.integrity()).toEqual({ integrity: [{ integrity_check: 'ok' }], foreignKeys: [] });
+it('rolls back catalog answer evidence and counters on a storage failure', () => {
+  const session=store.createSession();
+  const before=raw.prepare('SELECT * FROM starter_catalog_entries WHERE question_id=?').get(session.starter_id);
+  raw.exec("CREATE TEMP TRIGGER fail_answer BEFORE INSERT ON starter_events WHEN NEW.kind='answered' BEGIN SELECT RAISE(ABORT, 'injected answer failure'); END");
+  expect(()=>store.submit(session.id,'A thought.','atomic-answer')).toThrow('injected answer failure');
+  expect(raw.prepare('SELECT * FROM starter_catalog_entries WHERE question_id=?').get(session.starter_id)).toEqual(before);
+  expect(store.session(session.id).state).toBe('draft');
+  raw.exec('DROP TRIGGER temp.fail_answer'); store.submit(session.id,'A thought.','atomic-answer');
+  expect(raw.prepare('SELECT answer_count FROM starter_catalog_entries WHERE question_id=?').pluck().get(session.starter_id)).toBe(1);
 });

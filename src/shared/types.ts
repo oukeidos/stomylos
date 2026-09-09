@@ -47,6 +47,7 @@ export interface RenewalJob {
   state: 'pending' | 'running' | 'completed' | 'failed' | 'interrupted'; selected_attempt_id: string | null;
 }
 export interface RenewalView {
+  retired?: boolean;
   id: string; state: RenewalJob['state']; model: string; created_at: string; accepted_count: number;
   attempts: Omit<RenewalAttempt, 'response_content'>[];
 }

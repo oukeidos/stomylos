@@ -353,12 +353,7 @@ export class Coordinator {
         await this.enqueue(id); return;
       }
       case 'retryIntentionQuestions': throw new AppFailure('feature_removed');
-      case 'retryStarterRenewal': {
-        await this.write('suppressAutomaticRetry', id, 'starter');
-        if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
-        if (!(await this.db.call('starterJob', id))) return;
-        await this.enqueueRenewal(id, true); return;
-      }
+      case 'retryStarterRenewal': throw new AppFailure('feature_removed');
       case 'retryMemory': {
         await this.write('suppressAutomaticRetry', id, (await this.db.call('memoryCandidate', id)) ? 'cleanup' : 'update');
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
@@ -366,7 +361,7 @@ export class Coordinator {
       }
       case 'continueEnd': {
         await this.db.call('assertEndActive', id);
-        for (const stage of ['grammar','starter','update']) {
+        for (const stage of ['grammar','update']) {
           try { await this.write('resumeEndResponse', id, stage); }
           catch (error) { this.activity.error = failureCode(error); }
         }
@@ -387,7 +382,7 @@ export class Coordinator {
         if (['pending','failed'].includes(view.session.analysis_state)) {
           await this.write('suppressAutomaticRetry', id, 'grammar'); await this.enqueue(id);
         }
-        if (view.renewal && ['pending','failed','interrupted'].includes(view.renewal.state)) {
+        if (view.renewal && !view.renewal.retired && ['pending','failed','interrupted'].includes(view.renewal.state)) {
           await this.write('suppressAutomaticRetry', id, 'starter'); await this.enqueueRenewal(id, true);
         }
         if (view.memory.job && ['pending','failed','interrupted'].includes(view.memory.job.state)) {
@@ -557,15 +552,10 @@ export class Coordinator {
     }
   }
   private async enqueueRenewal(sessionId: string, explicit = false) {
-    if (this.deleting.has(sessionId) || this.activity.closing) return;
-    const job = await this.db.call('starterJob', sessionId);
-    if (!job) { if (explicit) throw new AppFailure('starter_not_retryable'); return; }
-    const attempt = explicit ? await this.write('retryStarter', sessionId, randomUUID()) :
-      (await this.db.call('starterAttempts', job.id)).find(a => a.status === 'queued');
-    if (!attempt || this.scheduledRenewals.has(attempt.id) || this.deleting.has(sessionId) || this.activity.closing) return;
-    this.scheduledRenewals.add(attempt.id); this.renewalQueue.push({ attempt, sessionId });
-    await this.publish(sessionId); this.pumpRenewal();
+    // Online starter generation is retired; historical requests remain readable.
+    if (explicit) throw new AppFailure('feature_removed');
   }
+
   private pumpRenewal() {
     if (this.backupLocked || this.deleting.size || this.renewal || this.activity.closing) return;
     const next = this.renewalQueue.shift(); if (!next) return;

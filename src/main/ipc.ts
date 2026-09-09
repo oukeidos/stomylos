@@ -112,7 +112,8 @@ export function validateCommand(name: unknown, args: unknown): asserts name is k
   if (name === 'replaceStarter') {
     fields.push('operationId', 'expectedQuestionId');
     for (const key of ['operationId', 'expectedQuestionId']) {
-      if (typeof value[key] !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value[key] as string)) bad();
+      const pattern = key === 'expectedQuestionId' ? /^(?:[a-zA-Z0-9_-]{1,100}|catalog:joint-v1:Q[0-9]{5})$/ : /^[a-zA-Z0-9_-]{1,100}$/;
+      if (typeof value[key] !== 'string' || !pattern.test(value[key] as string)) bad();
     }
   }
   if (name === 'setOpening') {

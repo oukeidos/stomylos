@@ -322,7 +322,7 @@ it('routes once even with a manual override, then saves the ended analysis befor
   await waitFor(() => store.session(id).analysis_state === 'completed');
   expect(store.units(id).map(u => u.text)).toEqual(['  Source\ntext  ', 'Second source.']);
   expect(calls).toHaveLength(4); expect(await controller.command('newSession', undefined)).not.toBe(id);
-  await waitFor(() => store.starterJob(id)?.state === 'completed'); expect(renewalCalls).toHaveLength(1);
+  expect(store.starterJob(id)).toBeNull(); expect(renewalCalls).toHaveLength(0);
   await controller.command('close', undefined);
 });
 it('commits a local route on router failure without a retry', async () => {
@@ -422,85 +422,35 @@ it.each(['queued', 'dispatched'])('blocks new chats during %s grammar and preser
   expect(store.endBlocker()).toBe(id);
   expect(calls).toHaveLength(requestCount);
 });
-it('runs renewal despite grammar failure and retries a failed renewal without changing its frozen request', async () => {
-  const first = activeId(); await send(first); await idle(); grammarFails = true;
-  await controller.command('endSession', { sessionId: first });
-  await waitFor(() => store.starterJob(first)?.state === 'completed' && store.session(first).analysis_state === 'failed');
-  await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
-  const renewalCount = renewalCalls.length; grammarFails = false;
-  await controller.command('retryAnalysis', { sessionId: first });
-  await waitFor(() => store.endStatus(first)?.complete === true);
-  expect(renewalCalls).toHaveLength(renewalCount);
-  const second = await controller.command('newSession', undefined); renewalFails = true;
-  await send(second); await idle(); await controller.command('endSession', { sessionId: second });
-  await waitFor(() => store.starterAttempts(store.starterJob(second)!.id).length === 2 && store.starterJob(second)?.state === 'failed' && store.session(second).analysis_state === 'completed');
-  const frozen = store.starterJob(second)!; const body = renewalCalls.at(-1);
-  expect(renewalCalls).toHaveLength(renewalCount + 2);
-  expect(renewalCalls.at(-2)).toEqual(body);
-  const grammarCount = store.requests(second).filter(r => r.role === 'grammar').length;
-  renewalFails = false;
-  await controller.command('retryStarterRenewal', { sessionId: second });
-  await waitFor(() => store.starterJob(second)?.state === 'completed');
-  expect(renewalCalls.at(-1)).toEqual(body); expect(renewalCalls).toHaveLength(renewalCount + 3);
-  expect(store.requests(second).filter(r => r.role === 'grammar')).toHaveLength(grammarCount);
-  expect(store.starterJob(second)).toMatchObject({ config: frozen.config, input_json: frozen.input_json, model: frozen.model });
-  await expect(controller.command('retryStarterRenewal', { sessionId: second })).rejects.toThrow('starter_not_retryable');
-  await controller.command('close', undefined);
-});
-it('retains malformed visible output and usage without admitting candidates or changing analysis state', async () => {
-  renewalContent = 'Here are two questions:\nOne?\nTwo?';
-  const id = activeId(); await send(id); await idle(); await controller.command('endSession', { sessionId: id });
-  await waitFor(() => store.starterJob(id)?.state === 'failed' && store.session(id).analysis_state === 'completed');
-  const attempt = store.starterAttempts(store.starterJob(id)!.id)[0];
-  expect(attempt).toMatchObject({ failure: 'starter_output_format', response_content: renewalContent, accepted_count: 0 });
-  expect(JSON.parse(attempt.metadata)).toMatchObject({ usage: { cost: 0.001 }, source_turns: 1 });
-  expect(store.starterInventory().queued).toEqual([]); await controller.command('close', undefined);
-});
-it.each(['dispatchStarter', 'saveStarter', 'end'])('recovers a lost %s acknowledgement without a second generator call', async method => {
-  const id = activeId(); await send(id); await idle(); loseAck = method;
-  const ending = controller.command('endSession', { sessionId: id });
-  await waitFor(() => !!snapshots.at(-1)?.activity.storageError);
-  await controller.command('retrySaving', undefined); await ending;
-  await waitFor(() => store.starterJob(id)?.state === 'completed' && store.session(id).analysis_state === 'completed');
-  await controller.command('endSession', { sessionId: id });
-  expect(renewalCalls).toHaveLength(1); expect(store.starterAttempts(store.starterJob(id)!.id)).toHaveLength(1);
-  expect(store.starterInventory().counts.find(c => c.state === 'active')?.count).toBe(20);
-  await controller.command('close', undefined);
-});
-it('retains received renewal in memory during a save failure and retries only the transaction', async () => {
-  const id = activeId(); await send(id); await idle(); failMethod = 'saveStarter';
-  const ending = controller.command('endSession', { sessionId: id });
-  await waitFor(() => !!snapshots.at(-1)?.activity.storageError); expect(renewalCalls).toHaveLength(1);
-  expect(store.starterJob(id)?.state).toBe('running');
-  failMethod = null; await controller.command('retrySaving', undefined); await ending;
-  await waitFor(() => store.starterJob(id)?.state === 'completed'); expect(renewalCalls).toHaveLength(1);
-  await controller.command('close', undefined);
+it('rejects retired starter retry without a provider call', async () => {
+  const id=activeId(); await expect(controller.command('retryStarterRenewal',{sessionId:id})).rejects.toThrow('feature_removed');
+  expect(renewalCalls).toHaveLength(0); await controller.command('close',undefined);
 });
 it('gates a new chat while independent background roles run and interrupts them on close', async () => {
   const first = activeId(); await send(first); await idle(); holdGrammar = true; holdRenewal = true;
-  await controller.command('endSession', { sessionId: first }); await waitFor(() => renewalCalls.length === 1);
+  await controller.command('endSession', { sessionId: first }); await waitFor(() => store.session(first).analysis_state === 'running');
   await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
-  expect(store.session(first).analysis_state).toBe('running'); expect(store.starterJob(first)?.state).toBe('running');
+  expect(store.session(first).analysis_state).toBe('running'); expect(store.starterJob(first)).toBeNull();
   await controller.command('close', undefined); store = new Store(directory, resolve('native/advisory-lock.node'));
-  expect(store.starterJob(first)?.state).toBe('interrupted'); expect(renewalCalls).toHaveLength(1);
+  expect(store.starterJob(first)).toBeNull(); expect(renewalCalls).toHaveLength(0);
   expect(store.endBlocker()).toBe(first);
 });
 it('keeps no-key and restarted jobs pending, and key reload or history inspection never dispatches them', async () => {
   const id = activeId(); await send(id); await idle(); keyAvailable = false;
   await controller.command('refreshKey', undefined); await controller.command('endSession', { sessionId: id });
-  expect(store.starterJob(id)?.state).toBe('pending'); expect(store.view(id).intentions).toBeUndefined(); expect(renewalCalls).toHaveLength(0);
+  expect(store.starterJob(id)).toBeNull(); expect(store.view(id).intentions).toBeUndefined(); expect(renewalCalls).toHaveLength(0);
   keyAvailable = true; await controller.command('refreshKey', undefined); await controller.command('loadSession', { sessionId: id });
   expect(renewalCalls).toHaveLength(0); await controller.command('close', undefined);
   store = new Store(directory, resolve('native/advisory-lock.node')); await controller.initialize();
   await controller.command('loadSession', { sessionId: id }); expect(renewalCalls).toHaveLength(0);
-  expect(store.starterJob(id)?.state).toBe('pending'); expect(store.view(id).intentions).toBeUndefined();
+  expect(store.starterJob(id)).toBeNull(); expect(store.view(id).intentions).toBeUndefined();
 });
-it('generates for an explicitly ended skipped draft but not an untouched draft', async () => {
+it('never generates for skipped or untouched drafts', async () => {
   const empty = activeId(); await controller.command('endSession', { sessionId: empty });
   expect(renewalCalls).toHaveLength(0); const id = await controller.command('newSession', undefined);
   await controller.command('replaceStarter', { sessionId: id, operationId: 'public-skip', expectedQuestionId: store.session(id).starter_id!, expectedRevision: store.session(id).opening_revision });
   expect(renewalCalls).toHaveLength(0); await controller.command('endSession', { sessionId: id });
-  await waitFor(() => store.starterJob(id)?.state === 'completed'); expect(calls).toHaveLength(0); expect(renewalCalls).toHaveLength(1);
+  expect(store.starterJob(id)).toBeNull(); expect(calls).toHaveLength(0); expect(renewalCalls).toHaveLength(0);
   await controller.command('close', undefined);
 });
 
@@ -512,7 +462,7 @@ it('runs memory independently within the end gate and preserves chat snapshots a
   memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys botanical gardens.', source_message_ids: [packet.session.messages.find((m: Json) => m.origin === 'learner').id] }] });
   await controller.command('endSession', { sessionId: first });
   await waitFor(() => memoryCalls.length === 1 && memoryRelease !== null);
-  await waitFor(() => store.session(first).analysis_state === 'completed' && store.starterJob(first)?.state === 'completed');
+  await waitFor(() => store.session(first).analysis_state === 'completed' && store.starterJob(first) === null);
   await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
   holdMemory = false; memoryRelease!();
   await waitFor(() => store.endStatus(first)?.complete === true);
@@ -657,8 +607,8 @@ it('routes direct entry once and retains only real turns across failed reply, re
   expect(calls.filter(body => body.stream).at(-1)!.messages.map((m: Json) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
   expect(store.view(id).memory.snapshot).toEqual(snapshot);
   await controller.command('endSession', { sessionId: id });
-  await waitFor(() => store.starterJob(id)?.state === 'completed' && store.session(id).analysis_state === 'completed');
-  expect(JSON.parse(renewalCalls[0].messages[1].content).session_context).toMatchObject({ opening_kind: 'user', starter_question: null });
+  await waitFor(() => store.starterJob(id) === null && store.session(id).analysis_state === 'completed');
+  expect(renewalCalls).toHaveLength(0);
   expect(store.units(id).map(unit => unit.text)).toEqual(['Explain gravity.', 'What changes on the moon?']);
   expect((await controller.snapshot()).sessions.find(s => s.id === id)?.title).toBe('Explain gravity.');
   await controller.command('close', undefined);
@@ -889,19 +839,13 @@ it('backup releases its gate when an accepted draft write fails during draining'
   await controller.command('close', undefined);
 });
 
-it.each([false, true])('dispatches minimal starter input and records source counts (skip-only: %s)', async skipOnly => {
+it.each([false, true])('does not dispatch starter generation (skip-only: %s)', async skipOnly => {
   const id = activeId();
   if (skipOnly) {
     const session = store.session(id);
     store.replaceQuestion(id, randomUUID(), session.starter_id!, session.opening_revision);
   } else store.submit(id, 'A real user message.');
   await controller.command('endSession', {sessionId:id});
-  await waitFor(() => store.starterJob(id)?.state === 'completed');
-  expect(renewalCalls).toHaveLength(1);
-  expect(JSON.parse(renewalCalls[0].messages[1].content)).toEqual(skipOnly ? [] : ['A real user message.']);
-  expect(renewalCalls[0].messages[0].content).toContain('Use the supplied user messages as loose inspiration.');
-  const job = store.starterJob(id)!;
-  const attempt = store.starterAttempts(job.id).at(-1)!;
-  expect(JSON.parse(attempt.metadata).source_turns).toBe(skipOnly ? 0 : 1);
+  expect(store.starterJob(id)).toBeNull(); expect(renewalCalls).toHaveLength(0);
   await controller.command('close', undefined);
 });

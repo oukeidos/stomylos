@@ -77,6 +77,8 @@ function errorText(error: unknown): string {
     credential_save_failed: 'The key settings could not be saved. Check folder permissions and disk space. The previous key and source were kept.',
     credential_management_disabled: 'Key management is disabled in this isolated development or preview session.',
     analysis_not_retryable: 'This analysis is already running or has been saved.',
+    starter_session_exhausted: 'All questions have been shown in this chat. Use your own opening or start a new chat.',
+    starter_catalog_corrupt: 'The question catalog could not be verified. Restart with a valid application build or restore a verified backup.',
     starter_not_retryable: 'Starter renewal is already running or has been saved.',
     memory_waiting_for_earlier_session: 'Resolve the earlier memory update first. Your conversation can continue.',
     memory_not_retryable: 'This memory update is already running or has been resolved.',
@@ -172,12 +174,12 @@ function Feedback({ view, controls, onReveal }: { view: SessionView; controls: H
     {controls && createPortal(<button className="icon-button" aria-label={`Analysis details · ${view.session.analysis_state === 'completed' ? `${view.units.filter(u => u.changed).length} suggested changes · ${view.units.length} messages analyzed` : labels[view.session.analysis_state]}`} title="Review feedback" aria-expanded={open} aria-controls="conversation-review" onClick={() => { onReveal(); setOpen(value => !value); }}><Icon name="review" /></button>, controls)}
   </>;
 }
-const endStageLabels: Record<string, string> = { grammar: 'Grammar analysis', starter: 'Question generation', update: 'Memory update', cleanup: 'Memory cleanup' };
+const endStageLabels: Record<string, string> = { grammar: 'Grammar analysis', update: 'Memory update', cleanup: 'Memory cleanup' };
 function endSummary(view: SessionView) {
   const processing = view.endProcessing!;
   if (processing.cancelled) return 'Chat saved · Remaining work cancelled';
   if (processing.complete) return 'Chat saved · Processing complete';
-  const stages = Object.entries(processing.stages);
+  const stages = Object.entries(processing.stages).filter(([stage]) => Object.hasOwn(endStageLabels, stage));
   const running = stages.filter(([, state]) => state === 'running').map(([stage]) => endStageLabels[stage]);
   if (running.length) return `Finishing chat · ${running.join(' · ')}`;
   return stages.some(([, state]) => ['failed', 'interrupted'].includes(String(state)))
@@ -189,7 +191,7 @@ function EndProcessingDetails({ view }: { view: SessionView }) {
   const stateLabels: Record<string, string> = { pending: 'Waiting', running: 'Working…', completed: 'Done', skipped: 'Not needed', failed: 'Needs attention', interrupted: 'Interrupted', cancelled: 'Cancelled' };
   return <section className="end-details" aria-label="Processing stages">
     <h3>After this chat</h3><p className="note" role="status">{endSummary(view)}</p>
-    <ul>{Object.entries(processing.stages).map(([stage, state]) => <li key={stage}>
+    <ul>{Object.entries(processing.stages).filter(([stage]) => Object.hasOwn(endStageLabels, stage)).map(([stage, state]) => <li key={stage}>
       <div><span>{endStageLabels[stage]}</span><span>{stateLabels[String(state)] ?? String(state)}</span></div>
       {processing.details?.[stage]?.failure && <p className="note">{errorText(processing.details[stage].failure)}</p>}
     </li>)}</ul>
@@ -199,6 +201,9 @@ function EndProcessingDetails({ view }: { view: SessionView }) {
 function Renewal({ view, onToggle, act, initialOpen = false }: { view: SessionView; onToggle: () => void; act: (fn: () => Promise<unknown>) => void; initialOpen?: boolean }) {
   const renewal = view.renewal;
   if (!renewal) return null;
+  if (renewal.retired) return <Disclosure initialOpen={initialOpen} title="Starter renewal history" subtitle="Archived" onToggle={onToggle}>
+    <p className="note">Past generation records are preserved. Starters now come from the reusable offline question catalog.</p>
+  </Disclosure>;
   const subtitle = renewal.state === 'completed' ? `${renewal.accepted_count} new ${renewal.accepted_count === 1 ? 'question' : 'questions'} saved` :
     renewal.state === 'running' ? 'Generating questions' : renewal.state === 'pending' ? 'Pending' : 'Needs attention';
   return <Disclosure initialOpen={initialOpen} title="Starter renewal" subtitle={subtitle} onToggle={onToggle}>

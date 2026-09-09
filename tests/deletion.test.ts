@@ -29,19 +29,20 @@ it('deletes all owned records atomically while preserving shared questions, memo
   const memory = store.prepareMemory(id, 'memory-public'); store.dispatchMemory(memory.id);
   const packet = JSON.parse(memory.input_json);
   store.saveMemory(memory.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet museums.', source_message_ids: [packet.session.messages.find((m: any) => m.origin === 'learner').id] }] }), {});
-  store.advanceStarter(id);
-  const attempt = store.starterAttempts(store.starterJob(id)!.id)[0]; store.dispatchStarter(attempt.id);
-  store.saveStarter(attempt.id, 'What would a borrowed hour let you do?\nWhich idea would you keep in a pocket?', {});
+  raw.prepare("INSERT INTO starter_renewal_jobs(id,session_id,created_at,source_sequence,source_hash,source_messages,input_json,input_hash,config,config_hash,model,state) VALUES('old-job',?,'2026-09-09',0,'h','[]','[]','h','{}','h','old-model','completed')").run(id);
+  raw.exec("INSERT INTO starter_renewal_attempts(id,job_id,status,created_at) VALUES('old-attempt','old-job','succeeded','2026-09-09')");
+  const attempt={id:'old-attempt'};
+  for (const [ordinal,text] of ['Historical question one?','Historical question two?'].entries()) raw.prepare("INSERT INTO starter_questions(id,version,text,normalized_text,origin,attempt_id,ordinal,state,created_at,expires_at) VALUES(?,'old',?,?,'generated',?,?,'available','2026-09-09','2026-10-09')").run(`old-q-${ordinal}`,text,text.toLowerCase(),attempt.id,ordinal);
   let questions = raw.prepare('SELECT * FROM starter_questions WHERE attempt_id=?').all(attempt.id) as any[];
   expect(questions).toHaveLength(2);
   const next = end('I enjoy astronomy.'); const nextView = store.view(next);
   questions = raw.prepare('SELECT * FROM starter_questions WHERE attempt_id=?').all(attempt.id) as any[];
-  const shared = ['shared_memory', 'starter_slots'].map(rows);
+  const shared = ['shared_memory', 'starter_slots', 'starter_catalog_entries'].map(rows);
   const assets = { speechKeys: ['a'.repeat(64)], dictationIds: ['00000000-0000-0000-0000-000000000000'] };
   store.deleteSession(id, assets);
   expect(store.deletionAssets(id)).toEqual(assets);
   expect(() => store.view(id)).toThrow('session_not_found'); expect(store.view(next)).toEqual(nextView);
-  expect(['shared_memory', 'starter_slots'].map(rows)).toEqual(shared);
+  expect(['shared_memory', 'starter_slots', 'starter_catalog_entries'].map(rows)).toEqual(shared);
   for (const q of questions) expect(raw.prepare('SELECT * FROM starter_questions WHERE id=?').get(q.id)).toEqual({ ...q, origin: 'detached', attempt_id: null, ordinal: null });
   for (const table of ['sessions', 'messages', 'model_requests', 'grammar_units', 'route_decisions', 'starter_events', 'starter_skips', 'session_memories', 'memory_jobs', 'starter_renewal_jobs']) {
     expect(raw.prepare(`SELECT count(*) n FROM ${table} WHERE ${table === 'sessions' ? 'id' : 'session_id'}=?`).get(id)).toEqual({ n: 0 });

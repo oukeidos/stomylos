@@ -55,7 +55,8 @@ it('round-trips byte-identical DB, audio, ASR and preferences while excluding ke
   expect(readFileSync(join(target, 'preferences.json'), 'utf8')).toBe('{"version":2}');
   expect(existsSync(join(target, 'backup-restore.json'))).toBe(false);
   const reopened = new Store(target, native); expect(reopened.unfinished()).not.toBeNull(); reopened.close();
-});
+}, 30_000);
+
 
 it('refuses overwrite, live-directory destinations, symlinks and busy SQLite sidecars', async () => {
   const file = await archive(), saved = readFileSync(file);

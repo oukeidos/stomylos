@@ -55,14 +55,12 @@ it('diffs category membership and exact text, not global document revisions', ()
   expect(intentionDiff([{ id: 'a', text: 'A' }], [{ id: 'b', text: 'B' }])).toEqual([{ id: 'a', previous: 'A', text: null }, { id: 'b', previous: null, text: 'B' }]);
 });
 
-it('keeps Intention memory while ordinary questions freeze independently and no dedicated jobs are created', () => {
+it('keeps Intention memory without any question generation and no dedicated jobs are created', () => {
   const s = ended();
-  const job = store.starterJob(s.id); expect(job?.state).toBe('pending');
-  const input = job!.input_json;
+  expect(store.starterJob(s.id)).toBeNull();
   store.saveMemory(s.attempt.id, JSON.stringify({operations:[{...add(),source_message_ids:[s.message.id]}]}), {});
   expect(store.currentMemory().intentions).toHaveLength(1);
   expect(store.intentionJobs(s.id)).toEqual([]);
-  expect(store.starterJob(s.id)?.input_json).toBe(input);
-  expect(input).not.toContain('Wants to plan a trip.');
+  expect(store.starterJob(s.id)).toBeNull();
   expect(store.view(s.id).intentions).toBeUndefined();
 });
