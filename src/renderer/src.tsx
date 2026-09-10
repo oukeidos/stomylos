@@ -18,7 +18,6 @@ import { loadView, onDeleted, isDeleted, onClose, onViewChanged, useApp, useStre
 import { currentDraft, forgetDraft, editDraft, flushAllDrafts, flushDraft, initializeDraft, submittedDraft, useDraft } from './drafts';
 import { Icon } from './icons';
 import { IconButton } from './icon-button';
-import { ReplyStyleControl, type ReplyStyleOptions } from './reply-style';
 import { SettingsDialog, type SettingsTab } from './settings';
 import { maintenanceNotices } from './maintenance';
 import { AssistantMarkdown } from './markdown';
@@ -288,7 +287,7 @@ function RequestDetails({ view, onToggle }: { view: SessionView; onToggle: () =>
     </div>; })}
   </Disclosure>;
 }
-function Composer({ view, app, act, openingAction, starter, replyStyleAction, blocked, onComposition, afterAcceptedAction }: { view: SessionView; app: AppSnapshot; act: (fn: () => Promise<unknown>) => void; openingAction?: ReactNode; starter?: ReactNode; replyStyleAction?: ReactNode; blocked: boolean; onComposition: (value: boolean) => void; afterAcceptedAction: () => () => void }) {
+function Composer({ view, app, act, openingAction, starter, blocked, onComposition, afterAcceptedAction }: { view: SessionView; app: AppSnapshot; act: (fn: () => Promise<unknown>) => void; openingAction?: ReactNode; starter?: ReactNode; blocked: boolean; onComposition: (value: boolean) => void; afterAcceptedAction: () => () => void }) {
   const dictation = useDictation(); const genie = useGenie();
   const selection = useRef<ReturnType<typeof captureGenieRange> | null>(null);
   const id = view.session.id; const draft = useDraft(id); const composing = useRef(false); const textarea = useRef<HTMLTextAreaElement>(null);
@@ -342,7 +341,7 @@ function Composer({ view, app, act, openingAction, starter, replyStyleAction, bl
           title={view.session.search_mode === 'auto' ? 'Web search: Auto — Search when helpful' : 'Web search: Off — No web search'}
           disabled={blocked || sending || busy || unresolved || genie.locked || dictation.locked || !!app.activity.storageError || app.activity.closing}
           onClick={() => act(() => window.stomylos.command('searchMode', { sessionId: id, mode: view.session.search_mode === 'auto' ? 'off' : 'auto' }))}>
-          <Icon name={view.session.search_mode === 'auto' ? 'globe' : 'globeOff'} /></button>{replyStyleAction}{openingAction}<UndoGenie sessionId={id} textarea={textarea} /><span className="composer-spacer" /><RecordButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} />
+          <Icon name={view.session.search_mode === 'auto' ? 'globe' : 'globeOff'} /></button>{openingAction}<UndoGenie sessionId={id} textarea={textarea} /><span className="composer-spacer" /><RecordButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} />
         <span className={draft.error ? 'draft-error' : 'sr-only'} role="status">{draft.error ? 'Draft not saved' : draft.revision !== draft.saved ? 'Saving draft…' : 'Draft saved'}</span>
         <button className="primary icon-button send" aria-label="Send" title="Send · Enter" onClick={send} disabled={(view.outdatedOpening && draft.text !== '/end') || blocked || genie.locked || sending || dictation.locked || overBudget || !draft.text.trim() || app.activity.closing || (draft.text !== '/end' && (busy || unresolved))}><Icon name="send" /></button></div></div>
   </footer>;
@@ -358,7 +357,6 @@ function App() {
   const dictation = useDictation();
   const [openingBusy, setOpeningBusy] = useState(false);
   const [composing, setComposing] = useState(false);
-  const [replyStylePreview, setReplyStylePreview] = useState<ReplyStyleOptions>({ easier: false, shorter: false, conversational: false });
   const app = useApp(); const [selected, setSelected] = useState<string | null>(null); const [view, setView] = useState<SessionView | null>(null);
   const [error, setError] = useState<string | null>(null); const [settings, setSettings] = useState(false); const [newDialog, setNewDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null);
@@ -513,9 +511,7 @@ function App() {
       const target = document.querySelector<HTMLTextAreaElement>('.composer textarea') ?? scroll.scroller.current;
       target?.focus({ preventScroll: true });
     }}><Icon name="down" /><span aria-live="polite">{scroll.unread ? 'New reply' : 'Latest message'}</span></button></div>}
-    <div className="conversation-footer">{view && view.session.state !== 'ended' ? <Composer key={view.session.id} view={view} app={app} act={act} blocked={openingBusy} onComposition={setComposing} afterAcceptedAction={scroll.afterAcceptedAction} openingAction={<>{openingAction}{starterAction}</>} starter={canChangeOpening && starter && <Bubble message={starter} partner="Partner" />}
-      replyStyleAction={app.settings.simulation ? <ReplyStyleControl value={replyStylePreview} onChange={setReplyStylePreview}
-        disabled={openingBusy || composing || genie.locked || dictation.locked || !!app.endBlocker || !!app.activity.storageError || app.activity.closing} /> : undefined} /> : <footer className="ended-footer">
+    <div className="conversation-footer">{view && view.session.state !== 'ended' ? <Composer key={view.session.id} view={view} app={app} act={act} blocked={openingBusy} onComposition={setComposing} afterAcceptedAction={scroll.afterAcceptedAction} openingAction={<>{openingAction}{starterAction}</>} starter={canChangeOpening && starter && <Bubble message={starter} partner="Partner" />} /> : <footer className="ended-footer">
       <>{unfinished && <IconButton label="Return to current chat" icon="back" onClick={() => act(() => show(unfinished.id))} />}</></footer>}</div>
   </div>
   {app.endBlocker && <EndProcessingDialog key={app.endBlocker} sessionId={app.endBlocker} storageError={app.activity.storageError ?? null} errorText={errorText} />}
