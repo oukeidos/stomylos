@@ -145,7 +145,7 @@ export interface CommandResults extends ExplainCommandResults, GenieCommandResul
   asrChunk: import('./asr').DictationProgress; asrFinish: void; asrTranscribe: void;
   asrCancel: void; asrRetrySave: void; asrInserted: void;
   speechSnapshot: SpeechSnapshot; speechVoice: void; speechPreview: void; speechPreviewStop: void; speechRecover: void; speechMode: void; speechContext: void; speechListen: void; speechRetrySave: void; speechStop: void; speechClear: void;
-  currentMemory: import('./memory').MemoryDocument;
+  currentMemory: import('./memory').StoredMemoryDocument;
   snapshot: AppSnapshot; listSessions: SessionPage; loadSession: SessionView;
   changePartner: void; useSelectedPartner: void; retryPartnerSelection: void;
   saveDraft: { revision: number }; replaceStarter: void; selectPartner: void; searchMode: void;

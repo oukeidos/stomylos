@@ -1,3 +1,6 @@
+import { flattenMemory } from '../src/main/memory-flat';
+import { flatMemoryVersion } from '../src/main/memory-updater';
+import { flat, splitDelta } from './flat-memory-fixtures';
 import { universalSnapshot } from './time-fixtures';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -26,6 +29,7 @@ function start(partner = 'model_04', text = 'I prefer quiet museums.') {
   return { id: session.id, message, snapshot };
 }
 function prepare(id: string) { const a = store.prepareMemory(id, randomUUID()); store.dispatchMemory(a.id); return a; }
+const flatAddition = (source: string, text = 'Prefers quiet museums.') => JSON.stringify({add:[{text,source_message_ids:[source]}],update:[],delete:[]});
 const addition = (source: string, text = 'Prefers quiet museums.') => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text, source_message_ids: [source] }] });
 
 it('preserves the selected prompt/schema/settings and all eight exported reducer examples', () => {
@@ -69,26 +73,26 @@ it('rejects malformed patches, invented sources, duplicate targets and over-budg
 
 it('freezes one memory per conversation, shares new memory across characters and reuses the snapshot after restart', () => {
   const first = start(); store.end(first.id); const attempt = prepare(first.id);
-  const updated = store.saveMemory(attempt.id, addition('u1'), {});
+  const updated = store.saveMemory(attempt.id, flatAddition('u1'), {});
   expect(updated.revision).toBe(1);
-  expect(store.saveMemory(attempt.id, addition('u1'), {})).toEqual(updated);
-  expect(() => store.saveMemory(attempt.id, '{"operations":[]}', {})).toThrow('memory_already_resolved');
+  expect(store.saveMemory(attempt.id, flatAddition('u1'), {})).toEqual(updated);
+  expect(() => store.saveMemory(attempt.id, '{"add":[],"update":[],"delete":[]}',  {})).toThrow('memory_already_resolved');
   expect(() => store.retryMemory(first.id)).toThrow('memory_not_retryable');
   const second = start(); expect(second.snapshot).toEqual(updated);
   const request = store.prepareChat(second.id, randomUUID());
   const saved = JSON.parse(request.config);
   const body = store.chatBody(request.id);
   expect(body.messages[0].content).toContain('Prefers quiet museums.');
-  expect(body.messages[0].content).toContain(memoryContext(updated, sharedMemoryVersion));
+  expect(body.messages[0].content).toContain(memoryContext(updated, flatMemoryVersion));
   expect(saved.time_context.sources[0].message_id).toBe(second.message.id);
-  store.end(second.id); const noop = prepare(second.id); store.saveMemory(noop.id, '{"operations":[]}', {});
+  store.end(second.id); const noop = prepare(second.id); store.saveMemory(noop.id, '{"add":[],"update":[],"delete":[]}',  {});
   expect(store.view(second.id).memory.current?.revision).toBe(1);
   const other = start('model_03'); expect(other.snapshot).toEqual(updated);
-  store.end(other.id); const b = prepare(other.id); store.saveMemory(b.id, addition('u1', 'Enjoys astronomy.'), {});
+  store.end(other.id); const b = prepare(other.id); store.saveMemory(b.id, flatAddition('u1', 'Enjoys astronomy.'), {});
   store.close(); store = new Store(directory, native);
   expect(store.freezeMemory(second.id)).toEqual(updated);
-  expect(store.view(other.id).memory.current?.traits.map(i => i.text)).toEqual(['Prefers quiet museums.', 'Enjoys astronomy.']);
-  expect(store.view(first.id).memory.snapshot).toEqual(emptyMemory('shared'));
+  expect(flat(store.view(other.id).memory.current).database_records.map(i => i.text)).toEqual(['Prefers quiet museums.', 'Enjoys astronomy.']);
+  expect(store.view(first.id).memory.snapshot).toEqual(flattenMemory(emptyMemory('shared')));
   expect(store.view(first.id).memory.current).toEqual(store.view(other.id).memory.current);
   expect(store.integrity().foreignKeys).toEqual([]);
 });
@@ -102,17 +106,17 @@ it('blocks new chats after failed updates, preserves retry input and permits fin
   store.failMemory(retry.id, 'request_timeout', null, {}); store.cancelEnd(first.id);
   expect(() => store.retryMemory(first.id)).toThrow('end_processing_cancelled');
   const second = start('model_03'); store.end(second.id);
-  const next = prepare(second.id); expect(JSON.parse(next.input_json).current_memory).toEqual(emptyMemory('shared'));
-  store.saveMemory(next.id, '{"operations":[]}', {});
+  const next = prepare(second.id); expect(JSON.parse(next.input_json).current_memory).toEqual(flattenMemory(emptyMemory('shared')));
+  store.saveMemory(next.id, '{"add":[],"update":[],"delete":[]}',  {});
   expect(store.memoryJob(first.id)?.state).toBe('skipped');
 });
 
 it('rolls back the whole acceptance transaction after a disk-like fault, then accepts the same saved response once', () => {
-  const s = start(); store.end(s.id); const attempt = prepare(s.id), content = addition('u1');
+  const s = start(); store.end(s.id); const attempt = prepare(s.id), content = flatAddition('u1');
   const raw = new Database(join(directory, 'stomylos.sqlite3'));
   raw.exec("CREATE TRIGGER fail_memory_commit BEFORE UPDATE ON memory_jobs WHEN NEW.state='completed' BEGIN SELECT RAISE(ABORT,'disk failure'); END");
   expect(() => store.saveMemory(attempt.id, content, {})).toThrow();
-  expect(store.view(s.id).memory.current).toEqual(emptyMemory('shared'));
+  expect(store.view(s.id).memory.current).toEqual(flattenMemory(emptyMemory('shared')));
   expect(store.view(s.id).memory.attempts[0].status).toBe('dispatched');
   raw.exec('DROP TRIGGER fail_memory_commit'); raw.close();
   const doc = store.saveMemory(attempt.id, content, {}); store.saveMemory(attempt.id, content, {});
@@ -147,45 +151,45 @@ it('accepts the observed false refusal marker but rejects actual refusal and cro
 
 it('lets another model correct and forget shared facts without changing an already active snapshot', () => {
   const first = start('model_04'); store.end(first.id); const a = prepare(first.id);
-  store.saveMemory(a.id, addition('u1'), {});
+  store.saveMemory(a.id, flatAddition('u1'), {});
   const second = start('model_03', 'I now prefer lively museums.'); store.end(second.id);
   const frozen = structuredClone(second.snapshot), b = prepare(second.id);
-  const target = frozen.traits[0].id;
-  store.saveMemory(b.id, JSON.stringify({ operations: [{ op: 'update', id: 'm1', category: 'traits', text: 'Prefers lively museums.', source_message_ids: ['u1'] }] }), {});
+  const target = flat(frozen).database_records[0].id;
+  store.saveMemory(b.id, splitDelta({ operations: [{ op: 'update', id: 'm1', category: 'traits', text: 'Prefers lively museums.', source_message_ids: ['u1'] }] }), {});
   expect(store.freezeMemory(second.id)).toEqual(frozen);
   const third = start('model_05', 'Please forget my museum preference.');
-  expect(store.view(third.id).memory.current?.traits[0].text).toBe('Prefers lively museums.');
+  expect(flat(store.view(third.id).memory.current).database_records[0].text).toBe('Prefers lively museums.');
   store.end(third.id); const c = prepare(third.id);
-  expect(JSON.parse(c.input_json).current_memory.traits[0].text).toBe('Prefers lively museums.');
-  store.saveMemory(c.id, JSON.stringify({ operations: [{ op: 'delete', id: 'm1', category: null, text: null, source_message_ids: ['u1'] }] }), {});
-  const fourth = start('model_07'); expect(fourth.snapshot.traits).toEqual([]);
-  store.deleteSession(third.id); expect(store.view(fourth.id).memory.current?.traits).toEqual([]);
+  expect(JSON.parse(c.input_json).current_memory.database_records[0].text).toBe('Prefers lively museums.');
+  store.saveMemory(c.id, splitDelta({ operations: [{ op: 'delete', id: 'm1', category: null, text: null, source_message_ids: ['u1'] }] }), {});
+  const fourth = start('model_07'); expect(flat(fourth.snapshot).database_records).toEqual([]);
+  store.deleteSession(third.id); expect(flat(store.view(fourth.id).memory.current).database_records).toEqual([]);
   expect(store.view(second.id).memory.snapshot).toEqual(frozen);
 });
 
 it('shows committed per-chat changes from the update input, preserving history across later updates, restart and deletion', () => {
   const first = start(); store.end(first.id);
-  const a = prepare(first.id); const firstDoc = store.saveMemory(a.id, addition('u1'), {});
+  const a = prepare(first.id); const firstDoc = store.saveMemory(a.id, flatAddition('u1'), {});
   const firstHistory = store.view(first.id).memory.changes;
   expect(firstHistory).toMatchObject({ status: 'ready', scope: 'shared', beforeRevision: 0, afterRevision: 1,
-    items: [{ kind: 'added', before: null, after: { category: 'traits', text: 'Prefers quiet museums.' } }] });
+    items: [{ kind: 'added', before: null, after: { text: 'Prefers quiet museums.' } }] });
   const second = start('model_03'); store.end(second.id);
-  const target = firstDoc.traits[0].id, b = prepare(second.id);
-  store.saveMemory(b.id, JSON.stringify({ operations: [
+  const target = flat(firstDoc).database_records[0].id, b = prepare(second.id);
+  store.saveMemory(b.id, splitDelta({ operations: [
     { op: 'update', id: 'm1', category: 'experiences', text: 'Visited a quiet museum.', source_message_ids: ['u1'] },
     { op: 'add', id: null, category: 'traits', text: 'Enjoys astronomy.', source_message_ids: ['u1'] }
   ] }), {});
-  expect(store.view(second.id).memory.snapshot?.traits).toEqual(firstDoc.traits);
+  expect(flat(store.view(second.id).memory.snapshot).database_records).toEqual(flat(firstDoc).database_records);
   const secondHistory = store.view(second.id).memory.changes;
   expect(secondHistory).toMatchObject({ status: 'ready', beforeRevision: 1, afterRevision: 2 });
   if (secondHistory?.status !== 'ready') throw new Error('Missing history');
   expect(secondHistory.items).toHaveLength(2);
   expect(secondHistory.items).toContainEqual({ id: target, kind: 'updated',
-    before: { category: 'traits', text: 'Prefers quiet museums.' }, after: { category: 'experiences', text: 'Visited a quiet museum.' } });
+    before: { text: 'Prefers quiet museums.' }, after: { text: 'Visited a quiet museum.' } });
   const third = start(); store.end(third.id); const c = prepare(third.id);
-  store.saveMemory(c.id, JSON.stringify({ operations: [{ op: 'delete', id: 'm2', category: null, text: null, source_message_ids: ['u1'] }] }), {});
+  store.saveMemory(c.id, splitDelta({ operations: [{ op: 'delete', id: 'm1', category: null, text: null, source_message_ids: ['u1'] }] }), {});
   expect(store.view(third.id).memory.changes).toMatchObject({ status: 'ready', items: [
-    { id: target, kind: 'deleted', before: { category: 'experiences', text: 'Visited a quiet museum.' }, after: null }
+    { id: target, kind: 'deleted', before: { text: 'Visited a quiet museum.' }, after: null }
   ] });
   store.close(); store = new Store(directory, native);
   expect(store.view(first.id).memory.changes).toEqual(firstHistory);
@@ -193,7 +197,7 @@ it('shows committed per-chat changes from the update input, preserving history a
   store.deleteSession(second.id);
   expect(() => store.view(second.id)).toThrow();
   expect(store.view(first.id).memory.changes).toEqual(firstHistory);
-  expect(store.view(third.id).memory.current?.traits.map(item => item.text)).toEqual(['Enjoys astronomy.']);
+  expect(flat(store.view(third.id).memory.current).database_records.map(item => item.text)).toEqual(['Enjoys astronomy.']);
   expect(store.integrity().foreignKeys).toEqual([]);
 });
 
@@ -201,9 +205,9 @@ it('exposes only the selected successful memory result and distinguishes no-op u
   const s = start(); expect(store.view(s.id).memory.changes).toBeNull();
   store.end(s.id); expect(store.view(s.id).memory.changes).toBeNull();
   const a = prepare(s.id); expect(store.view(s.id).memory.changes).toBeNull();
-  store.failMemory(a.id, 'request_timeout', addition('u1'), {});
+  store.failMemory(a.id, 'request_timeout', flatAddition('u1'), {});
   expect(store.view(s.id).memory.changes).toBeNull();
-  store.retryMemory(s.id); const b = prepare(s.id); store.saveMemory(b.id, '{"operations":[]}', {});
+  store.retryMemory(s.id); const b = prepare(s.id); store.saveMemory(b.id, '{"add":[],"update":[],"delete":[]}',  {});
   expect(store.view(s.id).memory.changes).toMatchObject({ status: 'ready', beforeRevision: 0, afterRevision: 0, items: [] });
   const next = start(); store.end(next.id); const c = prepare(next.id); store.failMemory(c.id, 'interrupted', null, {}, true);
   expect(store.view(next.id).memory.changes).toBeNull();
@@ -212,17 +216,17 @@ it('exposes only the selected successful memory result and distinguishes no-op u
 
 it('ignores unchanged text and ordering even when an accepted operation increments the revision', () => {
   const first = start(); store.end(first.id); const a = prepare(first.id);
-  const doc = store.saveMemory(a.id, JSON.stringify({ operations: [
+  const doc = store.saveMemory(a.id, splitDelta({ operations: [
     { op: 'add', id: null, category: 'traits', text: 'Prefers quiet museums.', source_message_ids: ['u1'] },
     { op: 'add', id: null, category: 'traits', text: 'Enjoys astronomy.', source_message_ids: ['u1'] }
   ] }), {});
   const second = start(); store.end(second.id); const b = prepare(second.id);
-  store.saveMemory(b.id, JSON.stringify({ operations: [{ op: 'update', id: 'm1', category: 'traits', text: doc.traits[0].text, source_message_ids: ['u1'] }] }), {});
+  store.saveMemory(b.id, splitDelta({ operations: [{ op: 'update', id: 'm1', category: 'traits', text: flat(doc).database_records[0].text, source_message_ids: ['u1'] }] }), {});
   expect(store.view(second.id).memory.changes).toMatchObject({ status: 'ready', beforeRevision: 1, afterRevision: 2, items: [] });
 });
 
 it('keeps unreadable memory history local to the history view and supports retained character-scoped records', () => {
-  const s = start(); store.end(s.id); const a = prepare(s.id); const doc = store.saveMemory(a.id, addition('u1'), {});
+  const s = start(); store.end(s.id); const a = prepare(s.id); const doc = store.saveMemory(a.id, flatAddition('u1'), {});
   const job = store.memoryJob(s.id)!, raw = new Database(join(directory, 'stomylos.sqlite3'));
   try {
     const saved = raw.prepare('SELECT * FROM memory_attempts WHERE id=?').get(a.id) as typeof a;

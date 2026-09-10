@@ -1,9 +1,10 @@
-import { memoryCategories, type MemoryAttempt, type MemoryChange, type MemoryChanges, type MemoryChangeValue, type MemoryDocument, type MemoryJob, type MemoryPacket } from '../shared/memory';
+import { validateFlatMemory } from './memory-flat';
+import { memoryCategories, isFlatMemory, type MemoryAttempt, type MemoryChange, type MemoryChanges, type MemoryChangeValue, type StoredMemoryDocument as MemoryDocument, type FlatMemoryPacket, type MemoryJob, type MemoryPacket } from '../shared/memory';
 import { memoryHash, memoryJson, sharedMemoryId, candidateLimits, validateMemory } from './memory-updater';
 
 // Compare committed documents, never the chat's opening snapshot or today's memory.
 function difference(before: MemoryDocument, after: MemoryDocument): MemoryChange[] {
-  const index = (doc: MemoryDocument) => new Map<string, MemoryChangeValue>(memoryCategories.flatMap(category =>
+  const index = (doc: MemoryDocument) => new Map<string, MemoryChangeValue>(isFlatMemory(doc) ? doc.database_records.map(({id,text}) => [id,{text}] as const) : memoryCategories.flatMap(category =>
     doc[category].map(({ id, text }) => [id, { category, text }] as const)));
   const oldItems = index(before), newItems = index(after), changes: MemoryChange[] = [];
   for (const [id, value] of newItems) {
@@ -22,9 +23,9 @@ export function memoryChanges(job: MemoryJob, attempt: MemoryAttempt | undefined
     if (!attempt || attempt.id !== job.selected_attempt_id || attempt.job_id !== job.ordinal || attempt.status !== 'succeeded' ||
       !attempt.result || !attempt.finished_at || !Number.isFinite(Date.parse(attempt.finished_at)) ||
       memoryHash(attempt.input_json) !== attempt.input_hash || memoryHash(job.source) !== job.source_hash) throw new Error('history_unavailable');
-    const packet: MemoryPacket = JSON.parse(attempt.input_json), after: MemoryDocument = JSON.parse(attempt.result);
+    const packet: MemoryPacket | FlatMemoryPacket = JSON.parse(attempt.input_json), after: MemoryDocument = JSON.parse(attempt.result);
     const before = packet.current_memory;
-    validateMemory(before, candidateLimits); validateMemory(after, candidateLimits);
+    for (const doc of [before, after]) isFlatMemory(doc) ? validateFlatMemory(doc, candidateLimits) : validateMemory(doc, candidateLimits);
     if (packet.session.id !== job.session_id || packet.session.character_id !== job.character_id || memoryJson(packet.session) !== job.source ||
       ![sharedMemoryId, job.character_id].includes(before.character_id) || after.character_id !== before.character_id ||
       after.revision < before.revision || after.revision > before.revision + 1) throw new Error('history_unavailable');

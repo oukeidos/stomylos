@@ -1,3 +1,4 @@
+import { flattenMemory } from './memory-flat';
 import { createHash, randomInt } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { version } from '../../package.json';
@@ -11,7 +12,7 @@ import cRuntime from './c-conversation-config.json';
 import type { Character, GrammarUnit, Json, Message, Starter, OpeningKind } from '../shared/types';
 import { AppFailure } from './errors';
 import { parseStrict, strictJson } from './strict-json';
-import { emptyMemory, memoryContext, memoryVersion, sharedMemoryVersion, capacityMemoryVersion, sharedMemoryId, legacyMemoryVersion, memorySupported } from './memory-updater';
+import { emptyMemory, memoryContext, memoryVersion, sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion, sharedMemoryId, legacyMemoryVersion, memorySupported } from './memory-updater';
 import { renderTime, temporalHash, timeVersion, timePrompt } from './time-context';
 import { openingKind, openingVersion } from './opening';
 import directRouterPrompt from './direct-router-prompt.txt?raw';
@@ -30,9 +31,9 @@ export const starters: Starter[] = runtime.starters;
 export const hash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 export const openingAddendum = 'The application-provided opening question does not count as your previous question.';
 const conversationCacheVersion = 'stomylos_conversation_cache_v1';
-export const conversationComponents = (version = runtime.conversation.version, memory = version === runtime.conversation.version ? capacityMemoryVersion : memoryVersion) => ({
+export const conversationComponents = (version = runtime.conversation.version, memory = version === runtime.conversation.version ? flatMemoryVersion : memoryVersion) => ({
   ...(version === conversationV5.conversation.version ? { opening_v1: hash(openingAddendum) } : {}),
-  [memory === capacityMemoryVersion ? 'memory_v4' : memory === sharedMemoryVersion ? 'memory_v3' : 'memory_v2']: hash(memoryContext(emptyMemory('template'), memory)), time_v1: hash(timePrompt)
+  [memory === flatMemoryVersion ? 'memory_v5' : memory === capacityMemoryVersion ? 'memory_v4' : memory === sharedMemoryVersion ? 'memory_v3' : 'memory_v2']: hash(memoryContext(memory === flatMemoryVersion ? flattenMemory(emptyMemory('template')) : emptyMemory('template'), memory)), time_v1: hash(timePrompt)
 });
 export const transcriptJson = (messages: Message[]) => JSON.stringify(messages.map(m => ({ role: m.role, content: m.content })), null, 2);
 export const isLearner = (m: Message) => m.role === 'user' && m.origin === 'learner';
@@ -101,7 +102,7 @@ export function routerSnapshot(snapshot?: Json): Json {
 }
 export function conversationSnapshot(kind?: OpeningKind): Json {
   return { ...structuredClone(runtime.conversation), system_prompt: runtime.conversationPrompt,
-    prompt_id: 'stomylos_conversation_prompt_v5', prompt_sha256: hash(runtime.conversationPrompt), app_version: appVersion, memory_version: capacityMemoryVersion,
+    prompt_id: 'stomylos_conversation_prompt_v5', prompt_sha256: hash(runtime.conversationPrompt), app_version: appVersion, memory_version: flatMemoryVersion,
     time_version: timeVersion, component_hashes: conversationComponents(), router_prompt_version: compactRouterVersion,
     ...(kind ? { opening: { version: openingVersion, kind } } : {}) };
 }
@@ -148,7 +149,7 @@ function validateConversationSnapshot(snapshot: Json) {
   if (snapshot.cache_version !== undefined && snapshot.cache_version !== conversationCacheVersion) throw new AppFailure('unsupported_conversation_settings');
   const modern = [runtime.conversation.version, conversationV6.conversation.version, conversationV5.conversation.version].includes(snapshot.version);
   if (modern) {
-    if (!(snapshot.memory_version === memoryVersion || ([runtime.conversation.version, conversationV6.conversation.version].includes(snapshot.version) && [sharedMemoryVersion, capacityMemoryVersion].includes(snapshot.memory_version))) || snapshot.time_version !== timeVersion ||
+    if (!(snapshot.memory_version === memoryVersion || ([runtime.conversation.version, conversationV6.conversation.version].includes(snapshot.version) && [sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(snapshot.memory_version))) || snapshot.time_version !== timeVersion ||
         !isDeepStrictEqual(snapshot.component_hashes, conversationComponents(snapshot.version, snapshot.memory_version))) throw new AppFailure('unsupported_temporal_settings');
     const promptId = snapshot.version === conversationV5.conversation.version ? 'stomylos_conversation_prompt_v4' : 'stomylos_conversation_prompt_v5';
     if (snapshot.prompt_id !== promptId) throw new AppFailure('unsupported_conversation_prompt');
@@ -188,7 +189,7 @@ export function conversationBody(snapshot: Json, partnerId: string, question: st
   if (!partner) throw new AppFailure('invalid_character');
   const memoryOwner = snapshot.request_partner?.memory_owner_character ?? partnerId;
   if (snapshot.request_partner && requestPartner(snapshot, memoryOwner) !== partnerId) throw new AppFailure('request_partner_changed');
-  if (memorySupported(snapshot.memory_version) && snapshot.memory_context?.character_id !== ([sharedMemoryVersion, capacityMemoryVersion].includes(snapshot.memory_version) ? sharedMemoryId : memoryOwner)) throw new AppFailure('memory_snapshot_missing');
+  if (memorySupported(snapshot.memory_version) && snapshot.memory_context?.character_id !== ([sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(snapshot.memory_version) ? sharedMemoryId : memoryOwner)) throw new AppFailure('memory_snapshot_missing');
   const system = conversationSystem(snapshot, messages);
   if (snapshot.time_version && snapshot.system_sha256 !== hash(system)) throw new AppFailure('system_snapshot_changed');
   return { model: partner.model, stream: true, max_tokens: snapshot.max_tokens, provider: snapshot.provider,

@@ -1,3 +1,4 @@
+import { flattenMemory } from './memory-flat';
 import { currentSchema, inspectMigration, migrateDatabase } from './database-migrations';
 import { ExplainStore } from './explain-store';
 import type { ExplainTarget } from '../shared/explain';
@@ -74,7 +75,7 @@ export class Store {
       if (version === 0 && this.db.prepare("SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").all().length === 0) {
         this.db.transaction(() => {
           this.db.exec(schema); this.starter.initialize();
-          const initial = memoryJson(emptyMemory(sharedMemoryId));
+          const initial = memoryJson(flattenMemory(emptyMemory(sharedMemoryId)));
           this.run('INSERT INTO shared_memory VALUES(1,?,?)', initial, memoryHash(initial));
           this.db.pragma(`user_version = ${currentSchema}`);
         })();
@@ -140,6 +141,7 @@ export class Store {
       this.partners.delete(id);
       for (const table of ['grammar_units', 'route_decisions', 'starter_events', 'starter_skips', 'starter_renewal_jobs',
         'session_memories', 'memory_jobs', 'messages', 'model_requests', 'sessions']) this.run(`DELETE FROM ${table} WHERE ${table === 'sessions' ? 'id' : 'session_id'}=?`, id);
+      this.memory.retireBridge();
       this.starter.verify();
     });
   }
@@ -603,6 +605,7 @@ export class Store {
       this.run("UPDATE memory_attempts SET status='interrupted',failure='request_cancelled' WHERE job_id IN (SELECT ordinal FROM memory_jobs WHERE session_id=?) AND status IN ('queued','dispatched')", id);
       this.run("UPDATE memory_jobs SET state='skipped' WHERE session_id=? AND state!='completed'", id);
       this.run("UPDATE memory_candidates SET state='cancelled' WHERE session_id=? AND state!='completed'", id);
+      this.memory.retireBridge();
       this.run("UPDATE memory_cleanup_attempts SET status='cancelled' WHERE session_id=? AND status IN ('queued','dispatched','received')", id);
       this.run("UPDATE starter_renewal_jobs SET state='failed' WHERE session_id=? AND state!='completed'", id);
       this.run("UPDATE starter_renewal_attempts SET status='interrupted',failure='request_cancelled' WHERE job_id IN (SELECT id FROM starter_renewal_jobs WHERE session_id=?) AND status IN ('queued','dispatched')", id);

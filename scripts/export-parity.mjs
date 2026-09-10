@@ -129,3 +129,6 @@ assert.deepEqual(readFileSync('src/main/pattern-system-v3.txt'), readFileSync('.
 console.log('Direct report v3 system exactly matches the selected EXP-031 round-five bytes.');
 
 assert.equal(readFileSync('src/main/memory-prompt-compact.txt', 'utf8'), readFileSync('../experiments/EXP-017-character-memory/prompt-compression/prompt-full.txt', 'utf8'));
+
+// Updater v7 uses the exact selected baseline; later rejected refinements stay out.
+assert.equal(readFileSync('src/main/memory-prompt-flat.txt', 'utf8'), readFileSync('../experiments/EXP-017-character-memory/gemini-product-comparison/prompt.md', 'utf8'));

@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
-import { applyMemoryResponse, memoryBody, memoryConfig, currentUpdaterVersion, candidateLimits, emptyMemory } from '../src/main/memory-updater';
+import { applyMemoryResponse, memoryBody, memoryConfig, compactUpdaterVersion, candidateLimits, emptyMemory } from '../src/main/memory-updater';
 import { recordedTime } from '../src/main/time-context';
 import type { MemoryPacket } from '../src/shared/memory';
-const config = memoryConfig(currentUpdaterVersion);
+const config = memoryConfig(compactUpdaterVersion);
 function packet(): MemoryPacket {
   const current_memory = emptyMemory('shared');
   current_memory.traits = [{ id: 'stored-trait', text: 'Likes hiking.' }];

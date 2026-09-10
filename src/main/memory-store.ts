@@ -1,13 +1,16 @@
-import { cleanupConfig, parseCleanup } from './memory-cleanup';
+import { flattenMemory, validateFlatMemory, isFlatMemory } from './memory-flat';
+import { cleanupConfig, parseCleanupResponse, flatCleanupVersion, legacyCleanupVersion } from './memory-cleanup';
 import { memoryCharacters, memoryCharacterCap } from './memory-render';
 import type Database from 'better-sqlite3';
 import type { Json, Message, Session } from '../shared/types';
-import type { MemoryAttempt, MemoryDocument, MemoryJob, MemoryPacket, MemoryView } from '../shared/memory';
+import type { MemoryAttempt, StoredMemoryDocument as MemoryDocument, MemoryJob, MemoryPacket as LegacyMemoryPacket, FlatMemoryPacket, MemoryView } from '../shared/memory';
 import { readMessageTime } from './time-context';
 import { AppFailure } from './errors';
 import { memoryChanges } from './memory-history';
-import { applyMemoryResponse, memoryConfig, memoryHash, memoryJson, memoryLimits, memoryVersion, sharedMemoryVersion, sharedMemoryId, sharedUpdaterVersion, currentUpdaterVersion, isCapacityUpdater, capacityMemoryVersion, candidateLimits, memorySupported, validateMemory } from './memory-updater';
+import { applyMemoryResponse, memoryConfig, memoryHash, memoryJson, memoryLimits, memoryVersion, sharedMemoryVersion, sharedMemoryId, sharedUpdaterVersion, flatUpdaterVersion, flatMemoryVersion, isCapacityUpdater, capacityMemoryVersion, candidateLimits, memorySupported, validateMemory } from './memory-updater';
 
+type MemoryPacket = LegacyMemoryPacket | FlatMemoryPacket;
+const validateStored = (doc: any) => doc && typeof doc === 'object' && Object.hasOwn(doc, 'database_records') ? validateFlatMemory(doc, candidateLimits) : validateMemory(doc, candidateLimits);
 const now = () => new Date().toISOString();
 function fail(code: string): never { throw new AppFailure('memory_' + code); }
 export class MemoryStore {
@@ -18,10 +21,33 @@ export class MemoryStore {
     const saved = this.row<{ document: string; document_hash: string }>('SELECT * FROM shared_memory WHERE id=1');
     if (!saved) fail('shared_missing');
     if (memoryHash(saved.document) !== saved.document_hash) fail('document_hash');
-    const doc = JSON.parse(saved.document); validateMemory(doc, candidateLimits);
+    const doc = JSON.parse(saved.document); validateStored(doc);
     if (doc.character_id !== sharedMemoryId) fail('character_mismatch');
     if (memoryCharacters(doc) > memoryCharacterCap) fail('recovery_required');
+    if (Number(this.db.pragma('user_version', { simple: true })) >= 22 && !isFlatMemory(doc)) fail('document');
     return doc;
+  }
+  private inputMemory(version: string): MemoryDocument {
+    const active = this.load();
+    if (version === flatUpdaterVersion) return flattenMemory(active);
+    if (!isFlatMemory(active)) return active;
+    const bridge = this.row<{document:string;document_hash:string}>('SELECT * FROM memory_legacy_bridge WHERE id=1');
+    if (!bridge || memoryHash(bridge.document) !== bridge.document_hash) fail('legacy_bridge_missing');
+    const doc = JSON.parse(bridge.document); validateMemory(doc, candidateLimits);
+    if (memoryJson(flattenMemory(doc)) !== memoryJson(active)) fail('stale_input');
+    return doc;
+  }
+  private commitMemory(doc: MemoryDocument) {
+    const active = this.load();
+    if (!isFlatMemory(doc) && isFlatMemory(active)) {
+      const encoded = memoryJson(doc);
+      if (this.run('UPDATE memory_legacy_bridge SET document=?,document_hash=? WHERE id=1', encoded, memoryHash(encoded)).changes !== 1) fail('legacy_bridge_missing');
+    }
+    const encoded = memoryJson(flattenMemory(doc));
+    this.run('UPDATE shared_memory SET document=?,document_hash=? WHERE id=1', encoded, memoryHash(encoded));
+  }
+  retireBridge() {
+    if (!this.row("SELECT 1 FROM memory_jobs WHERE state NOT IN ('completed','skipped') AND json_extract(config,'$.version')!=? LIMIT 1", flatUpdaterVersion)) this.run('DELETE FROM memory_legacy_bridge');
   }
   snapshot(session: Session): MemoryDocument | null {
     if (!memorySupported(JSON.parse(session.chat_config).memory_version)) return null;
@@ -29,21 +55,27 @@ export class MemoryStore {
     const saved = this.row<{ document: string; document_hash: string; character_id: string }>('SELECT * FROM session_memories WHERE session_id=?', session.id);
     if (saved) {
       if (memoryHash(saved.document) !== saved.document_hash || saved.character_id !== session.character) fail('snapshot_changed');
-      const doc = JSON.parse(saved.document); validateMemory(doc, candidateLimits);
-      if (doc.character_id !== ([sharedMemoryVersion, capacityMemoryVersion].includes(JSON.parse(session.chat_config).memory_version) ? sharedMemoryId : session.character)) fail('character_mismatch');
+      const doc = JSON.parse(saved.document); validateStored(doc);
+      if (doc.character_id !== ([sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(JSON.parse(session.chat_config).memory_version) ? sharedMemoryId : session.character)) fail('character_mismatch');
       return doc;
     }
     if (session.state === 'ended') return null;
-    const doc = this.load();
+    let doc = this.load();
+    if (JSON.parse(session.chat_config).memory_version !== flatMemoryVersion && isFlatMemory(doc)) {
+      const seed = this.row<{document:string;document_hash:string}>('SELECT * FROM memory_legacy_seeds WHERE session_id=?', session.id);
+      if (!seed || memoryHash(seed.document) !== seed.document_hash) fail('legacy_snapshot_missing');
+      doc = JSON.parse(seed.document); validateStored(doc);
+    }
     // Historical conversation contracts retain their original wrapper and ownership field.
-    if (![sharedMemoryVersion, capacityMemoryVersion].includes(JSON.parse(session.chat_config).memory_version)) doc.character_id = session.character;
+    if (![sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(JSON.parse(session.chat_config).memory_version)) doc.character_id = session.character;
     const encoded = memoryJson(doc);
     this.run('INSERT INTO session_memories VALUES(?,?,?,?)', session.id, session.character, encoded, memoryHash(encoded));
+    this.run('DELETE FROM memory_legacy_seeds WHERE session_id=?', session.id);
     return doc;
   }
   freeze(session: Session, messages: Message[]) {
     if (!memorySupported(JSON.parse(session.chat_config).memory_version) || !session.character || !messages.some(m => m.role === 'user' && m.origin === 'learner' && m.delivery === 'complete')) return;
-    const temporal = [memoryVersion, sharedMemoryVersion, capacityMemoryVersion].includes(JSON.parse(session.chat_config).memory_version);
+    const temporal = [memoryVersion, sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(JSON.parse(session.chat_config).memory_version);
     const source = memoryJson({ id: session.id, character_id: session.character, ended_at: session.ended_at,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       messages: messages.map(({ id, role, origin, delivery, content }) => {
@@ -51,7 +83,7 @@ export class MemoryStore {
         if (temporal && role === 'user' && origin === 'learner' && !sent_time) fail('source_time');
         return { id, role, origin, delivery, content, sent_time };
       }) });
-    const config = memoryJson(memoryConfig(currentUpdaterVersion));
+    const config = memoryJson(memoryConfig(flatUpdaterVersion));
     this.run("INSERT INTO memory_jobs(session_id,character_id,source,source_hash,config,config_hash,created_at,state) VALUES(?,?,?,?,?,?,?,'pending')", session.id, session.character, source, memoryHash(source), config, memoryHash(config), now());
   }
   job(sessionId: string) { return this.row<MemoryJob>('SELECT * FROM memory_jobs WHERE session_id=?', sessionId) ?? null; }
@@ -79,6 +111,7 @@ export class MemoryStore {
       if (job?.state === 'skipped') return;
       if (!job || !['pending', 'failed', 'interrupted'].includes(job.state)) fail('not_skippable');
       this.run("UPDATE memory_jobs SET state='skipped' WHERE ordinal=?", job!.ordinal);
+      this.retireBridge();
     })();
   }
   prepare(sessionId: string, id: string): MemoryAttempt {
@@ -90,8 +123,8 @@ export class MemoryStore {
       if (memoryHash(job.source) !== job.source_hash || memoryHash(job.config) !== job.config_hash) fail('source_changed');
       if (JSON.parse(job.config).version !== sharedUpdaterVersion && !isCapacityUpdater(JSON.parse(job.config).version)) fail('legacy_job_requires_resolution');
       const older = this.attempts(job.ordinal).at(-1);
-      const packet: MemoryPacket = older ? JSON.parse(older.input_json) : { current_memory: this.load(), session: JSON.parse(job.source), limits: { ...(isCapacityUpdater(JSON.parse(job.config).version) ? candidateLimits : memoryLimits) } };
-      if (packet.session.id !== sessionId || memoryJson(packet.session) !== job.source || memoryJson(packet.current_memory) !== memoryJson(this.load())) fail('stale_input');
+      const packet: MemoryPacket = older ? JSON.parse(older.input_json) : { current_memory: this.inputMemory(JSON.parse(job.config).version), session: JSON.parse(job.source), limits: { ...(isCapacityUpdater(JSON.parse(job.config).version) ? candidateLimits : memoryLimits) } };
+      if (packet.session.id !== sessionId || memoryJson(packet.session) !== job.source || memoryJson(packet.current_memory) !== memoryJson(this.inputMemory(JSON.parse(job.config).version))) fail('stale_input');
       const input = memoryJson(packet); if (older && memoryHash(input) !== older.input_hash) fail('input_changed');
       this.run("INSERT INTO memory_attempts(id,job_id,parent_id,input_json,input_hash,status,created_at) VALUES(?,?,?,?,?,'queued',?)", id, job.ordinal, older?.id ?? null, input, memoryHash(input), now());
       this.run("UPDATE memory_jobs SET state='running' WHERE ordinal=?", job.ordinal);
@@ -110,19 +143,20 @@ export class MemoryStore {
       if (attempt.status !== 'dispatched' || job.state !== 'running' || this.blocker(job)) fail('already_resolved');
       if (memoryHash(attempt.input_json) !== attempt.input_hash || memoryHash(job.source) !== job.source_hash || memoryHash(job.config) !== job.config_hash) fail('source_changed');
       const packet: MemoryPacket = JSON.parse(attempt.input_json);
-      if (packet.session.id !== job.session_id || packet.session.character_id !== job.character_id || memoryJson(packet.session) !== job.source || memoryJson(packet.current_memory) !== memoryJson(this.load())) fail('stale_input');
+      if (packet.session.id !== job.session_id || packet.session.character_id !== job.character_id || memoryJson(packet.session) !== job.source || memoryJson(packet.current_memory) !== memoryJson(this.inputMemory(JSON.parse(job.config).version))) fail('stale_input');
       const doc = applyMemoryResponse(JSON.parse(job.config), packet, content), encoded = memoryJson(doc);
       if (isCapacityUpdater(JSON.parse(job.config).version) && memoryCharacters(doc) > memoryCharacterCap) {
-        const config = memoryJson(cleanupConfig());
+        const config = memoryJson(cleanupConfig(isFlatMemory(doc) ? flatCleanupVersion : legacyCleanupVersion));
         this.run("INSERT INTO memory_candidates(session_id,update_attempt_id,document,document_hash,config,config_hash,state,created_at) VALUES(?,?,?,?,?,?,'pending',?)", job.session_id, id, encoded, memoryHash(encoded), config, memoryHash(config), now());
         this.run("UPDATE memory_attempts SET status='succeeded',finished_at=?,response_content=?,result=?,metadata=? WHERE id=?", now(), content, encoded, JSON.stringify(metadata), id);
         this.run("UPDATE memory_jobs SET state='pending' WHERE ordinal=?", job.ordinal);
         return doc;
       }
-      this.run('UPDATE shared_memory SET document=?,document_hash=? WHERE id=1', encoded, memoryHash(encoded));
+      this.commitMemory(doc);
       this.synchronized?.(job.session_id, packet.current_memory, doc);
       this.run("UPDATE memory_attempts SET status='succeeded',finished_at=?,response_content=?,result=?,metadata=? WHERE id=?", now(), content, encoded, JSON.stringify(metadata), id);
       this.run("UPDATE memory_jobs SET state='completed',selected_attempt_id=? WHERE ordinal=?", id, job.ordinal);
+      this.retireBridge();
       return doc;
     })();
   }
@@ -173,12 +207,13 @@ export class MemoryStore {
         || memoryHash(original.input_json) !== original.input_hash || memoryHash(job.source) !== job.source_hash
         || memoryHash(job.config) !== job.config_hash || memoryHash(c.config) !== c.config_hash
         || memoryJson(packet.session) !== job.source || packet.session.id !== a.session_id) fail('cleanup_source_changed');
-      if (memoryJson(packet.current_memory) !== memoryJson(this.load()) || memoryHash(c.document) !== c.document_hash || a.input_hash !== c.document_hash) fail('cleanup_stale_input');
-      const doc = parseCleanup(a.response_content, JSON.parse(c.document)), encoded = memoryJson(doc);
-      this.run('UPDATE shared_memory SET document=?,document_hash=? WHERE id=1', encoded, memoryHash(encoded));
+      if (memoryJson(packet.current_memory) !== memoryJson(this.inputMemory(JSON.parse(job.config).version)) || memoryHash(c.document) !== c.document_hash || a.input_hash !== c.document_hash) fail('cleanup_stale_input');
+      const doc = parseCleanupResponse(JSON.parse(c.config), a.response_content, JSON.parse(c.document)), encoded = memoryJson(doc);
+      this.commitMemory(doc);
       this.run("UPDATE memory_cleanup_attempts SET status='succeeded',result=?,finished_at=? WHERE id=?", encoded, now(), id);
       this.run("UPDATE memory_candidates SET state='completed',selected_attempt_id=? WHERE session_id=?", id, a.session_id);
       this.run("UPDATE memory_jobs SET state='completed',selected_attempt_id=? WHERE session_id=?", original.id, a.session_id);
+      this.retireBridge();
       return doc;
     })();
   }
@@ -198,6 +233,7 @@ export class MemoryStore {
     this.run("UPDATE memory_candidates SET state='interrupted' WHERE state='running'");
     this.run("UPDATE memory_attempts SET status='interrupted',failure=CASE WHEN status='queued' THEN 'queued_not_dispatched' ELSE 'interrupted_unknown_outcome' END,finished_at=? WHERE status IN ('queued','dispatched')", now());
     this.run("UPDATE memory_jobs SET state='interrupted' WHERE state='running'");
+    this.retireBridge();
   }
   view(session: Session): MemoryView {
     const saved = this.row<{ document: string }>('SELECT document FROM session_memories WHERE session_id=?', session.id);

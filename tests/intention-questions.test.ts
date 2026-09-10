@@ -1,3 +1,4 @@
+import { flat, splitDelta } from './flat-memory-fixtures';
 import selectedIntention from './fixtures/intention-selected.json';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -58,8 +59,8 @@ it('diffs category membership and exact text, not global document revisions', ()
 it('keeps Intention memory without any question generation and no dedicated jobs are created', () => {
   const s = ended();
   expect(store.starterJob(s.id)).toBeNull();
-  store.saveMemory(s.attempt.id, JSON.stringify({operations:[{...add(),source_message_ids:['u1']}]}), {});
-  expect(store.currentMemory().intentions).toHaveLength(1);
+  store.saveMemory(s.attempt.id, splitDelta({operations:[{...add(),source_message_ids:['u1']}]}), {});
+  expect(flat(store.currentMemory()).database_records).toHaveLength(1);
   expect(store.intentionJobs(s.id)).toEqual([]);
   expect(store.starterJob(s.id)).toBeNull();
   expect(store.view(s.id).intentions).toBeUndefined();

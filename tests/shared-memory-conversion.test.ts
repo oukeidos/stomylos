@@ -1,4 +1,8 @@
-import { convertToCurrent, currentTestSchema } from './conversion-chain';
+import { currentSchema } from '../src/main/database-migrations';
+import { flat } from './flat-memory-fixtures';
+import { validateFlatMemory } from '../src/main/memory-flat';
+import { candidateLimits } from '../src/main/memory-updater';
+import { convertToCurrent } from './conversion-chain';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, copyFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -34,10 +38,10 @@ it('merges exact duplicates with stable unique IDs, preserves different claims a
   convertToCurrent(file);
   for (let i = 0; i < 2; i++) {
     const store = new Store(directory, native); const memory = store.view('old').memory.current!;
-    expect(memory.character_id).toBe('shared'); expect(memory.traits.map(i => i.text)).toEqual(['Enjoys museums.', 'Prefers tea.', 'Prefers coffee.']); validateMemory(memory);
+    expect(memory.character_id).toBe('shared'); expect(flat(memory).database_records.map(i => i.text)).toEqual(['Enjoys museums.', 'Prefers tea.', 'Prefers coffee.']); validateFlatMemory(memory,candidateLimits);
     expect(store.session('old').draft).toBe('An exact draft.'); store.close();
   }
-  const raw = new Database(file); expect(raw.pragma('user_version', { simple: true })).toBe(currentTestSchema);
+  const raw = new Database(file); expect(raw.pragma('user_version', { simple: true })).toBe(currentSchema);
   expect(raw.prepare('SELECT COUNT(*) AS n FROM character_memories').get()).toEqual({ n: 2 });
   expect(() => raw.prepare("UPDATE character_memories SET document='{}'").run()).toThrow('archived'); raw.close();
 });

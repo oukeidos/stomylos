@@ -1,8 +1,9 @@
+import { MemoryRecords } from './memory-records';
 import { UsageSettings } from './usage';
 import { useEffect, useId, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { Settings } from '../shared/types';
-import { memoryCategories, type MemoryDocument } from '../shared/memory';
+import { type StoredMemoryDocument as MemoryDocument } from '../shared/memory';
 import { SpeechSettings } from './speech';
 import { IconButton } from './icon-button';
 import { CredentialSettings } from './credentials';
@@ -32,9 +33,7 @@ function CurrentMemory({ active }: { active: boolean }) {
     {state === 'loading' && <p className="note" role="status">Loading memory…</p>}
     {state === 'failed' && <div role="alert"><p>Memory could not be loaded.</p><button onClick={() => setRetry(value => value + 1)}>Retry loading memory</button></div>}
     {state === 'ready' && document && <div className="current-memory">
-      {memoryCategories.map(category => <section key={category}><h3>{category[0].toUpperCase() + category.slice(1)}</h3>
-        {document[category].length ? <ul>{document[category].map(item => <li key={item.id}>{item.text}</li>)}</ul> : <p className="note">Nothing recorded.</p>}
-      </section>)}
+      <MemoryRecords document={document} />
       <p className="note">Memories can contain mistakes. Ask a partner to correct or forget a detail in a conversation.</p>
     </div>}
   </>;

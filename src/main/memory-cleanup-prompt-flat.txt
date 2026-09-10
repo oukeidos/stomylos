@@ -1,0 +1,9 @@
+Summarize the database records below.
+
+Select only important items and describe them in detail.
+
+Keep what remains faithful to the source without inventing facts or making uncertain information more definite.
+
+Write one record per line, without section headings, bullets or numbering.
+
+Return only the summarized database records.

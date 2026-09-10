@@ -1,3 +1,4 @@
+import { MemoryRecords } from './memory-records';
 import type { MemoryCategory, MemoryView } from '../shared/memory';
 
 const categories: Record<MemoryCategory, string> = { traits: 'Traits', relationships: 'Relationships', experiences: 'Experiences', intentions: 'Intentions' };
@@ -20,14 +21,15 @@ export function MemoryChangeHistory({ memory, ended }: { memory: MemoryView; end
     {memory.cleanup?.after && <section aria-label="Memory cleanup history">
       <h4>Memory cleanup</h4><p>{memory.cleanup.beforeChars.toLocaleString()} → {memory.cleanup.afterChars?.toLocaleString()} characters</p>
       {(['before','after'] as const).map(which => <details key={which}><summary>{which === 'before' ? 'Before cleanup' : 'After cleanup'}</summary>
-        {Object.entries(categories).map(([category, label]) => <div key={category}><strong>{label}</strong>{memory.cleanup![which]![category as MemoryCategory].map(item => <p key={item.id}>{item.text}</p>)}</div>)}
+        <MemoryRecords document={memory.cleanup![which]!} />
       </details>)}<h4>Factual update before cleanup</h4>
     </section>}
     <p className="note">{memory.cleanup?.after ? 'These factual changes produced the candidate before cleanup; cleanup may discard some of them. The after-cleanup snapshot shows what was committed.' : 'These changes reflect this chat’s completed update, even if memory changed again later.'}</p>
     <p role="status">{changes.items.length ? (['added', 'updated', 'deleted'] as const).map(kind => `${kinds[kind]} ${changes.items.filter(item => item.kind === kind).length}`).join(' · ') : 'No memory changes from this chat.'}</p>
     {changes.items.length > 0 && <ul className="memory-change-list">{changes.items.map(item => <li key={item.id}>
-      <strong>{kinds[item.kind]} · {item.before && item.after && item.before.category !== item.after.category
-        ? `${categories[item.before.category]} → ${categories[item.after.category]}` : categories[(item.after ?? item.before)!.category]}</strong>
+      <strong>{kinds[item.kind]}{item.before?.category && item.after?.category && item.before.category !== item.after.category
+        ? ` · ${categories[item.before.category]} → ${categories[item.after.category]}`
+        : (item.after ?? item.before)?.category ? ` · ${categories[(item.after ?? item.before)!.category!]}` : ''}</strong>
       <dl>
         {item.before && <><dt>Before</dt><dd>{item.before.text}</dd></>}
         {item.after && <><dt>After</dt><dd>{item.after.text}</dd></>}

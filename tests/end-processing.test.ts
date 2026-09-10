@@ -1,3 +1,4 @@
+import { flat, splitDelta } from './flat-memory-fixtures';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -17,7 +18,7 @@ function fixture(behavior: (kind: string, body: Json, signal: AbortSignal) => Pr
   const client = { ready: Promise.resolve(), call: async (method: StoreMethod, ...args: any[]) => (store[method] as Function).apply(store, args), close: async () => store.close() } as unknown as DatabaseClient;
   const calls: string[] = [], bodies: {kind: string; body: Json}[] = [];
   const gateway: Gateway = { async complete(body, _identity, signal) {
-    const kind = body.model.startsWith('qwen/') ? 'cleanup' : body.response_format?.json_schema.name === 'stomylos_memory_delta_v1' ? 'update' : body.response_format ? 'grammar' : 'starter';
+    const kind = body.model.startsWith('qwen/') ? 'cleanup' : ['stomylos_memory_delta_v1','experimental_database_records_format'].includes(body.response_format?.json_schema.name) ? 'update' : body.response_format ? 'grammar' : 'starter';
     calls.push(kind); bodies.push({kind,body:structuredClone(body)}); return { content: await behavior(kind, body, signal), metadata: {} };
   }, async stream() { throw new Error('not used'); } };
   const settings = { keyPresent: true, keyPath: '', dataPath: dir, appVersion: 'test', development: true };
@@ -28,7 +29,7 @@ function fixture(behavior: (kind: string, body: Json, signal: AbortSignal) => Pr
   return { get store() { return store; }, reopen() { store.close(); store = new Store(dir, resolve('native/advisory-lock.node')); }, controller, id: session.id, calls, settings, bodies };
 }
 function valid(kind: string, body: Json) {
-  if (kind === 'update') return '{"operations":[]}';
+  if (kind === 'update') return '{"add":[],"update":[],"delete":[]}';
   if (kind === 'starter') return 'What would you like to explore?\nHow would you describe a favorite place?';
   return JSON.stringify({ units: JSON.parse(body.messages[1].content).filter((m: Json) => m.role === 'user').map((m: Json) => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) });
 }
@@ -77,17 +78,17 @@ it('commits a saved cleanup response locally without credentials or repeating th
   f.store.saveAnalysis(grammar.id, JSON.stringify({ units: [{index: 0, corrected_text: learner.content, explanation: ''}] }), {});
   expect(f.store.starterJob(f.id)).toBeNull();
   const update = f.store.prepareMemory(f.id, 'update-op'); f.store.dispatchMemory(update.id);
-  const content = JSON.stringify({ operations: [{ op:'add', id:null, category:'traits', text:'x'.repeat(31000), source_message_ids:['u1'] }] });
+  const content = splitDelta({ operations: [{ op:'add', id:null, category:'traits', text:'x'.repeat(31000), source_message_ids:['u1'] }] });
   f.store.saveMemory(update.id, content, {});
-  expect(f.store.saveMemory(update.id, content, {}).traits[0].text.length).toBe(31000);
+  expect(flat(f.store.saveMemory(update.id, content, {})).database_records[0].text.length).toBe(31000);
   const cleanup = f.store.prepareCleanup(f.id, 'cleanup-op'); f.store.dispatchCleanup(cleanup.id);
-  f.store.receiveCleanup(cleanup.id, 'Traits\nLikes quiet museums.\nRelationships\nExperiences\nIntentions', {});
+  f.store.receiveCleanup(cleanup.id, 'Likes quiet museums.', {});
   f.reopen(); await f.controller.initialize();
   f.settings.keyPresent = false;
   await f.controller.command('continueEnd', { sessionId: f.id });
   expect(f.calls).toEqual([]);
   expect(f.store.endBlocker()).toBeNull();
-  expect(f.store.currentMemory().traits[0].text).toBe('Likes quiet museums.');
+  expect(flat(f.store.currentMemory()).database_records[0].text).toBe('Likes quiet museums.');
 });
 
 it('gives memory stages independent same-input retries and never reruns a successful updater', async () => {
@@ -96,10 +97,10 @@ it('gives memory stages independent same-input retries and never reruns a succes
     if (kind === 'update') {
       if (++updateCalls === 1) return 'invalid';
       const packet = JSON.parse(body.messages[1].content);
-      return JSON.stringify({operations:[{op:'add',id:null,category:'traits',text:'x'.repeat(31000),source_message_ids:[packet.messages.find((m: Json)=>m.role==='user' && m.evidence!==false).id]}]});
+      return splitDelta({operations:[{op:'add',id:null,category:'traits',text:'x'.repeat(31000),source_message_ids:[packet.messages.find((m: Json)=>m.role==='user' && m.evidence!==false).id]}]});
     }
-    if (!recover) return 'invalid';
-    return kind === 'cleanup' ? 'Traits\nKeeps useful detail.\nRelationships\nExperiences\nIntentions' : valid(kind,body);
+    if (!recover) return '# invalid format';
+    return kind === 'cleanup' ? 'Keeps useful detail.' : valid(kind,body);
   });
   await f.controller.command('endSession',{sessionId:f.id});
   await vi.waitFor(()=> {

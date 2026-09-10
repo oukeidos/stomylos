@@ -2,6 +2,10 @@ export const memoryCategories = ['traits', 'relationships', 'experiences', 'inte
 export type MemoryCategory = typeof memoryCategories[number];
 export interface MemoryItem { id: string; text: string }
 export type MemoryDocument = { character_id: string; revision: number } & Record<MemoryCategory, MemoryItem[]>;
+export interface FlatMemoryDocument { character_id: string; revision: number; database_records: MemoryItem[] }
+export type StoredMemoryDocument = MemoryDocument | FlatMemoryDocument;
+export type FlatMemoryPacket = Omit<MemoryPacket, 'current_memory'> & { current_memory: FlatMemoryDocument };
+export const isFlatMemory = (doc: StoredMemoryDocument): doc is FlatMemoryDocument => Object.hasOwn(doc, 'database_records');
 export interface MemoryOperation { op: 'add' | 'update' | 'delete'; id: string | null; category: MemoryCategory | null; text: string | null; source_message_ids: string[] }
 export interface MemoryPacket {
   current_memory: MemoryDocument;
@@ -22,14 +26,14 @@ export interface MemoryAttempt {
   response_content: string | null; result: string | null; metadata: string; failure: string | null;
 }
 export interface MemoryView {
-  cleanup?: { state: string; before: MemoryDocument; after: MemoryDocument | null; beforeChars: number; afterChars: number | null; attempts: import('./types').Json[] } | null;
+  cleanup?: { state: string; before: StoredMemoryDocument; after: StoredMemoryDocument | null; beforeChars: number; afterChars: number | null; attempts: import('./types').Json[] } | null;
   changes: MemoryChanges | null;
-  current: MemoryDocument | null; snapshot: MemoryDocument | null;
+  current: StoredMemoryDocument | null; snapshot: StoredMemoryDocument | null;
   job: Pick<MemoryJob, 'state' | 'created_at' | 'character_id'> | null;
   blockedBy: string | null;
   attempts: Omit<MemoryAttempt, 'input_json' | 'response_content' | 'result'>[];
 }
-export interface MemoryChangeValue { category: MemoryCategory; text: string }
+export interface MemoryChangeValue { category?: MemoryCategory; text: string }
 export type MemoryChange =
   | { id: string; kind: 'added'; before: null; after: MemoryChangeValue }
   | { id: string; kind: 'updated'; before: MemoryChangeValue; after: MemoryChangeValue }

@@ -1,3 +1,4 @@
+import { flat } from './flat-memory-fixtures';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -22,8 +23,8 @@ it('reads validated current memory without a session or any database mutation', 
     const before = rows(db), first = store!.currentMemory();
     expect(store!.unfinished()).toBeNull();
     expect(first.character_id).toBe('shared');
-    first.traits.push({ id: 'untrusted', text: 'Must not mutate stored memory.' });
-    expect(store!.currentMemory().traits).toEqual([]);
+    flat(first).database_records.push({ id: 'untrusted', text: 'Must not mutate stored memory.' });
+    expect(flat(store!.currentMemory()).database_records).toEqual([]);
     expect(rows(db)).toEqual(before);
   } finally { db.close(); }
 });

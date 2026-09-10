@@ -38,3 +38,15 @@ it('distinguishes empty successful history, unavailable records and each unresol
   for (const state of ['failed', 'interrupted'] as const) expect(render(state)).toContain('No changes were applied.');
   expect(render('skipped')).toContain('was skipped.');
 });
+
+import { MemoryRecords } from '../src/renderer/memory-records';
+it('renders flat current records and cleanup history without category headings or badges', () => {
+  const doc={character_id:'shared',revision:1,database_records:[{id:'one',text:'<script>literal</script>'}]};
+  const current=renderToStaticMarkup(createElement(MemoryRecords,{document:doc}));
+  expect(current).toContain('&lt;script&gt;literal&lt;/script&gt;');expect(current).not.toContain('Traits');expect(current).not.toContain('<h3>');
+  const changes={...ready,items:[{id:'one',kind:'added' as const,before:null,after:{text:'Useful detail.'}}]};
+  const history=render('completed',changes);expect(history).toContain('<strong>Added</strong>');expect(history).not.toContain('Traits');
+  const memory:MemoryView={current:doc,snapshot:doc,changes,attempts:[],blockedBy:null,job:{state:'completed',character_id:'model_04',created_at:'2026-09-10'},cleanup:{state:'completed',before:doc,after:doc,beforeChars:30,afterChars:20,attempts:[]}};
+  const cleanup=renderToStaticMarkup(createElement(MemoryChangeHistory,{memory,ended:true}));
+  expect(cleanup).toContain('Before cleanup');expect(cleanup).toContain('After cleanup');expect(cleanup).not.toContain('Traits');
+});

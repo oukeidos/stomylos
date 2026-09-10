@@ -1,3 +1,4 @@
+import { flat, splitDelta } from './flat-memory-fixtures';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -47,7 +48,7 @@ beforeEach(async () => {
   patternCalls=[];patternPolicies=[];holdPattern=false;latePattern=false; lateGrammar = false; calls = []; snapshots = []; failMethod = null; loseAck = null; routerFails = false; grammarFails = false; holdStream = false; holdGrammar = false; streamReady = null;
   streamFails = false;
   holdPrepare = false; releasePrepare = null;
-  memoryCalls = []; memoryFails = false; memoryRelease = null; holdMemory = false; memoryOutput = () => '{"operations":[]}';
+  memoryCalls = []; memoryFails = false; memoryRelease = null; holdMemory = false; memoryOutput = () => '{"add":[],"update":[],"delete":[]}';
   renewalCalls = []; renewalFails = false; holdRenewal = false; keyAvailable = true; renewalContent = null;
   const database = {
     ready: Promise.resolve(),
@@ -68,7 +69,7 @@ beforeEach(async () => {
         if(holdPattern) await new Promise<void>((r,j)=>signal.addEventListener('abort',()=>latePattern?r():j(new AppFailure('request_cancelled')),{once:true}));
         return {content:patternHtml,metadata:{usage:{cost:0.25}}};
       }
-      if (body.response_format?.json_schema.name === 'stomylos_memory_delta_v1') {
+      if (['stomylos_memory_delta_v1','experimental_database_records_format'].includes(body.response_format?.json_schema.name)) {
         memoryCalls.push(body);
         if (holdMemory) await new Promise<void>((resolve, reject) => { memoryRelease = resolve; signal.addEventListener('abort', () => reject(new AppFailure('request_cancelled')), { once: true }); });
         if (memoryFails) throw new AppFailure('request_timeout');
@@ -459,7 +460,7 @@ it('runs memory independently within the end gate and preserves chat snapshots a
   await controller.command('selectPartner', { sessionId: first, character: 'model_04' });
   await send(first, 'I enjoy botanical gardens.'); await idle();
   holdMemory = true;
-  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys botanical gardens.', source_message_ids: [packet.messages.find((m: Json) => m.role === 'user' && m.evidence !== false).id] }] });
+  memoryOutput = packet => splitDelta({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys botanical gardens.', source_message_ids: [packet.messages.find((m: Json) => m.role === 'user' && m.evidence !== false).id] }] });
   await controller.command('endSession', { sessionId: first });
   await waitFor(() => memoryCalls.length === 1 && memoryRelease !== null);
   await waitFor(() => store.session(first).analysis_state === 'none' && store.starterJob(first) === null);
@@ -471,18 +472,18 @@ it('runs memory independently within the end gate and preserves chat snapshots a
   await send(second, 'A fresh topic.', 2); await idle();
   const before = store.requests(second).find(r => r.role === 'chat')!;
   const frozenMemory = JSON.parse(before.config).memory_context;
-  expect(frozenMemory.traits[0].text).toBe('Enjoys botanical gardens.');
+  expect(frozenMemory.database_records[0].text).toBe('Enjoys botanical gardens.');
   await send(second, 'I enjoy quiet libraries.', 3); await idle();
   const after = store.requests(second).findLast(r => r.role === 'chat')!;
   expect(JSON.parse(after.config).memory_context).toEqual(frozenMemory);
   expect(memoryCalls).toHaveLength(1);
-  memoryOutput = packet => JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet libraries.', source_message_ids: [packet.messages.findLast((m: Json) => m.role === 'user' && m.evidence !== false).id] }] });
+  memoryOutput = packet => splitDelta({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet libraries.', source_message_ids: [packet.messages.findLast((m: Json) => m.role === 'user' && m.evidence !== false).id] }] });
   await controller.command('endSession', { sessionId: second });
   await waitFor(() => store.endStatus(second)?.complete === true);
-  expect(JSON.parse(memoryCalls[1].messages[1].content).memory.traits).toEqual([{ id: 'm1', text: 'Enjoys botanical gardens.' }]);
+  expect(JSON.parse(memoryCalls[1].messages[1].content).database_records).toEqual([{ id: 'm1', text: 'Enjoys botanical gardens.' }]);
   expect(store.requests(second).find(r => r.id === before.id)?.config).toBe(before.config);
   expect(store.requests(second).find(r => r.id === after.id)?.config).toBe(after.config);
-  expect(store.view(second).memory.current?.traits.map(t => t.text)).toContain('Enjoys quiet libraries.');
+  expect(flat(store.view(second).memory.current).database_records.map(t => t.text)).toContain('Enjoys quiet libraries.');
   const third = await controller.command('newSession', undefined);
   await controller.command('selectPartner', { sessionId: third, character: 'model_04' });
   await send(third, 'Do you remember my interests?', 4); await idle();
@@ -531,7 +532,7 @@ it('cancels active memory on close and requires explicit recovery after restart'
   await controller.command('close', undefined);
   store = new Store(directory, resolve('native/advisory-lock.node'));
   expect(store.memoryJob(id)?.state).toBe('interrupted');
-  const complete = vi.fn(async (body: Json) => ({ content: body.max_tokens === 8192 && body.model === 'google/gemini-3.8-flash' ? '{"operations":[]}' : 'What is next?\nWhat feels different?', metadata: {} }));
+  const complete = vi.fn(async (body: Json) => ({ content: body.model === 'google/gemini-3.8-flash' ? '{"add":[],"update":[],"delete":[]}' : 'What is next?\nWhat feels different?', metadata: {} }));
   const db = { ready: Promise.resolve(), call: async (method: StoreMethod, ...args: any[]) => (store[method] as Function).apply(store, args), close: async () => store.close() } as unknown as DatabaseClient;
   const reopened = new Coordinator(db, { complete, stream: vi.fn() }, { keyPresent: true, keyPath: '/test/key', dataPath: directory, appVersion: 'test', development: true }, () => undefined, () => true);
   await reopened.initialize(); await reopened.command('snapshot', undefined);

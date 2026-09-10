@@ -1,3 +1,6 @@
+import step22 from './migrations/022.sql?raw';
+import source21 from './migrations/schema-v21.sql?raw';
+import { migrate22Data } from './migrations/022-data';
 import { createHash } from 'node:crypto';
 import { migrate14Data } from './migrations/014-data';
 import Database from 'better-sqlite3';
@@ -20,7 +23,7 @@ import { AppFailure } from './errors';
 
 // v0.1.0 ships schema 13. Keep published source schemas and steps immutable.
 export const minimumPublicSchema = 13;
-export const currentSchema = 21;
+export const currentSchema = 22;
 export function schemaSignature(db: Database.Database) {
   return db.prepare("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
     .map((r: any) => ({ ...r, sql: r.sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim().replace(/;$/, '') }));
@@ -45,11 +48,11 @@ function dataFingerprint(db: Database.Database): string {
   }
   return digest.digest('hex');
 }
-const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }];
+const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }, { from: 21, to: 22, sql: step22 }];
 export function inspectMigration(db: Database.Database): number {
   const version = Number(db.pragma('user_version', { simple: true }));
   if (version < minimumPublicSchema || version > currentSchema) throw new AppFailure('unsupported_schema_version');
-  validateSchema(db, version === 13 ? source13 : version < 19 ? source18 : version === 19 ? source19 : current);
+  validateSchema(db, version === 13 ? source13 : version < 19 ? source18 : version === 19 ? source19 : version < 22 ? source21 : current);
   integrity(db);
   return version;
 }
@@ -83,6 +86,7 @@ export function migrateDatabase(db: Database.Database, directory: string) {
       db.exec(step.sql);
       if (step.to === 14) migrate14Data(db);
       if (step.to === 19) installCatalog19(db);
+      if (step.to === 22) migrate22Data(db);
       db.pragma(`user_version = ${step.to}`);
       next = step.to;
     }

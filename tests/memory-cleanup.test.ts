@@ -41,9 +41,9 @@ it('keeps the selected automatic-routing cleanup request and new factual-only up
 
 it('adds low effort only for v5 while replaying the frozen v4 medium request unchanged', async () => {
   const { default: historical } = await import('./fixtures/memory-updater-v4.json');
-  const { currentUpdaterVersion } = await import('../src/main/memory-updater');
+  const { lowUpdaterVersion } = await import('../src/main/memory-updater');
   expect(memoryConfig(capacityUpdaterVersion)).toEqual(historical);
-  const current = memoryConfig(currentUpdaterVersion);
+  const current = memoryConfig(lowUpdaterVersion);
   const comparison = structuredClone(current);
   comparison.version = historical.version; comparison.parameters.reasoning.effort = 'medium';
   expect(comparison).toEqual(historical);

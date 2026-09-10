@@ -1,3 +1,4 @@
+import { MemoryRecords } from './memory-records';
 import { EndProcessingDialog } from './end-processing';
 import { Explainable, ExplainHistory, ExplainDialog } from './explain';
 import { SearchSources, SearchCost, SearchAttempts } from './search';
@@ -11,7 +12,6 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type R
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { AppSnapshot, Character, Message, SessionView, SessionSummary } from '../shared/types';
-import { memoryCategories } from '../shared/memory';
 import { MemoryChangeHistory } from './memory-changes';
 import { loadView, onDeleted, isDeleted, onClose, onViewChanged, useApp, useStream, useStartupError, reloadSnapshot } from './client';
 import { currentDraft, forgetDraft, editDraft, flushAllDrafts, flushDraft, initializeDraft, submittedDraft, useDraft } from './drafts';
@@ -33,7 +33,7 @@ function errorText(error: unknown): string {
     end_processing_pending: 'Finish or force cancel the previous chat’s processing before starting another chat.',
     end_processing_cancelled: 'This chat’s remaining work was cancelled and cannot be resumed.',
     memory_cleanup_over_cap: 'The cleaned memory still exceeds 30,000 characters. Retry cleanup or force cancel.',
-    memory_cleanup_format: 'The cleanup response did not use the required four-section format. Retry cleanup or force cancel.',
+    memory_cleanup_format: 'The cleanup response did not use the format required by this saved cleanup task. Retry cleanup or force cancel.',
     bookmark_requires_message: 'Send a message before bookmarking.',
     delete_requires_ended: 'End this chat before deleting it.',
     session_deleting: 'This chat is being deleted.',
@@ -231,10 +231,7 @@ function MemoryDetails({ view, act, show, openShared, initialOpen }: { view: Ses
       <MemoryChangeHistory memory={memory} ended={view.session.state === 'ended'} />
     </Disclosure>
     {([['Used in this chat', memory?.snapshot]] as const).map(([title, doc]) => <Disclosure title={title} key={title}>
-      {!doc ? <p className="note">{JSON.parse(view.session.chat_config).memory_version ? 'Memory is chosen when the partner first replies.' : 'This older chat did not use memory.'}</p> : memoryCategories.map(category => <section key={category}>
-        <strong>{category[0].toUpperCase() + category.slice(1)}</strong>
-        {doc[category].length ? <ul>{doc[category].map(item => <li key={item.id}>{item.text}</li>)}</ul> : <p className="note">Nothing recorded.</p>}
-      </section>)}
+      {!doc ? <p className="note">{JSON.parse(view.session.chat_config).memory_version ? 'Memory is chosen when the partner first replies.' : 'This older chat did not use memory.'}</p> : <MemoryRecords document={doc} />}
     </Disclosure>)}
   </Disclosure>;
 }

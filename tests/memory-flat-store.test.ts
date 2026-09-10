@@ -1,0 +1,23 @@
+import { afterEach, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { Store } from '../src/main/database';
+import { flatUpdaterVersion, flatMemoryVersion } from '../src/main/memory-updater';
+const dirs:string[]=[], stores:Store[]=[];
+afterEach(()=>{for(const s of stores)s.close();for(const d of dirs)rmSync(d,{recursive:true,force:true});stores.length=dirs.length=0;});
+it('creates flat memory, freezes new context and commits a split-array result through the product store',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'stomylos-flat-'));dirs.push(dir);
+ const store=new Store(dir,resolve('native/advisory-lock.node'));stores.push(store);
+ expect(store.currentMemory()).toEqual({character_id:'shared',revision:0,database_records:[]});
+ const session=store.createSession();expect(JSON.parse(session.chat_config).memory_version).toBe(flatMemoryVersion);
+ store.searchMode(session.id,'off');store.selectManual(session.id,'model_04');store.submit(session.id,'I like quiet museums.');store.commitRoute(session.id,null,'public_fixture',null);
+ expect(store.freezeMemory(session.id)).toEqual(store.currentMemory());store.end(session.id);
+ expect(JSON.parse(store.memoryJob(session.id)!.config).version).toBe(flatUpdaterVersion);
+ const a=store.prepareMemory(session.id,randomUUID());store.dispatchMemory(a.id);
+ const result=store.saveMemory(a.id,JSON.stringify({add:[{text:'Likes quiet museums.',source_message_ids:['u1']}],update:[],delete:[]}),{});
+ expect(result).toEqual(store.currentMemory());
+ expect(store.view(session.id).memory.changes).toMatchObject({status:'ready',items:[{kind:'added',after:{text:'Likes quiet museums.'}}]});
+ expect(store.view(session.id).memory.snapshot).toEqual({character_id:'shared',revision:0,database_records:[]});
+});

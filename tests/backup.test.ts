@@ -83,7 +83,7 @@ it.each(['checksum', 'truncated', 'traversal', 'duplicate', 'oversized', 'extra'
   expect(bytes(target)).toEqual(original); expect(readdirSync(target).some(n => n.startsWith('.backup-stage-'))).toBe(false);
 });
 
-it.each([12, 13, 15, 20])('refuses schema v%i before installation', async version => {
+it.each([12, 13, 15, 20, 21])('refuses schema v%i before installation', async version => {
   const file = await archive(); seed(target, 'Keep target');
   const changed = join(root, 'changed.sqlite3'); writeFileSync(changed, bytes(source));
   const db = new Database(changed); db.pragma(`user_version = ${version}`); db.close(); const replacement = readFileSync(changed);
