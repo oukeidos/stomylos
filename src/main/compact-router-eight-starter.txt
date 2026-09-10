@@ -1,0 +1,18 @@
+Use the starter question and the user's first answer.
+
+Score how well each character fits the interaction the user wants next.
+
+0 = unsuitable
+1 = acceptable
+2 = strong fit
+
+model_01 — Debate: Test arguments.
+model_03 — Explain: Clarify with explanations and examples.
+model_02 — Explore: Develop interpretations.
+model_04 — Chat: Engage with experiences, feelings and play.
+model_07 — Share: Share concrete everyday episodes.
+model_08 — Prefer: Exchange personal preferences and reasons.
+model_05 — Imagine: Offer vivid imagery and expressive perspectives.
+model_09 — Expand: Build on the current topic with related ideas and perspectives.
+
+Return only the eight integer fields required by the schema.

@@ -1,3 +1,4 @@
+import sevenRuntime from '../src/main/conversation-v7-config.json';
 import { flat, splitDelta } from './flat-memory-fixtures';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -134,6 +135,19 @@ it.each(['failure', 'lost-ack'])('recovers a bookmark %s through save-only retry
   expect([calls.length, searchCalls.length, memoryCalls.length, renewalCalls.length, intentionCalls.length]).toEqual(beforeCalls);
   await controller.command('setSessionBookmark', { sessionId: id, bookmarked: false });
   expect(store.view(id).bookmarked).toBe(false); await controller.command('close', undefined);
+});
+
+function useSeven(id: string) {
+  const raw=(store as unknown as {db:Database.Database}).db;
+  const saved=JSON.parse(store.session(id).chat_config);
+  raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify({...saved,...structuredClone(sevenRuntime.conversation),router_prompt_version:'stomylos_compact_router_v1'}),id);
+}
+it('bypasses the new router chain for a manual partner and preserves ordinary retries',async()=>{
+  const id=activeId();await controller.command('selectPartner',{sessionId:id,character:'model_09'});
+  streamFails=true;await send(id);await idle();expect(routerCalls()).toHaveLength(0);
+  expect(chatCalls()[0].model).toBe('deepseek/deepseek-v4.1-flash');
+  streamFails=false;await controller.command('retryReply',{sessionId:id});
+  await waitFor(()=>chatCalls().length===2);await idle();expect(routerCalls()).toHaveLength(0);expect(chatCalls()[1]).toEqual(chatCalls()[0]);
 });
 
 it('marks while a reply streams without stopping or redispatching it', async () => {
@@ -315,7 +329,7 @@ it('uses the increased budget for a legacy session and explicit retry while pres
 });
 
 it('routes once even with a manual override, then saves the ended analysis before another chat', async () => {
-  const id = activeId(); await controller.command('selectPartner', { sessionId: id, character: 'model_04' });
+  const id = activeId(); useSeven(id); await controller.command('selectPartner', { sessionId: id, character: 'model_04' });
   await send(id, '  Source\ntext  '); await idle();
   expect(calls).toHaveLength(2); expect(calls[1].model).toBe('openai/gpt-6-astra'); expect(calls[1].reasoning).toEqual({ effort: 'low', exclude: true });
   await send(id, 'Second source.', 2); await idle(); expect(calls).toHaveLength(3);
@@ -326,11 +340,11 @@ it('routes once even with a manual override, then saves the ended analysis befor
   expect(store.starterJob(id)).toBeNull(); expect(renewalCalls).toHaveLength(0);
   await controller.command('close', undefined);
 });
-it('commits a local route on router failure without a retry', async () => {
+it('commits a local route after Luna and Terra fail without same-model retries', async () => {
   routerFails = true; const id = activeId(); await send(id); await idle();
   expect(store.requests(id).find(r => r.role === 'router')?.failure).toBe('request_timeout');
-  expect(calls).toHaveLength(2); expect(store.session(id).character).toBeTruthy();
-  await send(id, 'Next.', 2); await idle(); expect(calls).toHaveLength(3);
+  expect(calls).toHaveLength(3); expect(store.session(id).character).toBeTruthy();
+  await send(id, 'Next.', 2); await idle(); expect(calls).toHaveLength(4);
   await controller.command('close', undefined);
 });
 it('retains chat after grammar failure and retries once automatically before manually retrying the identical frozen analysis', async () => {
@@ -720,8 +734,8 @@ it('continues a manual switch through ordinary Send and one-shot Auto excludes t
   expect(store.session(id).character).toBe(original); expect(memoryCalls).toHaveLength(0);
 });
 
-it('keeps failed Auto explicit and retries its frozen selection without duplicating the user source', async () => {
-  const id = activeId(); await send(id); await idle(); await switchPartner(id, null);
+it('keeps legacy failed Auto explicit and retries its frozen selection without duplicating the user source', async () => {
+  const id = activeId(); useSeven(id); await send(id); await idle(); await switchPartner(id, null);
   routerFails = true; await send(id, 'A question for someone else.', 2); await idle();
   expect(store.view(id).partner.pending?.state).toBe('failed'); expect(chatCalls()).toHaveLength(1);
   const failed = store.requests(id).findLast(r => r.role === 'router')!;
@@ -750,7 +764,7 @@ it('keeps original Retry independent of pending replacement and never reroutes t
   expect(JSON.parse(replacement.config).request_partner.supersedes_request_id).toBe(store.requests(id).filter(r => r.role === 'chat')[1].id);
 });
 
-it.each(['changePartner', 'preparePartner', 'finishPartnerRoute', 'prepareChat'])('recovers a lost %s acknowledgement without replaying inference or selection', async method => {
+it.each(['changePartner', 'preparePartner', 'finishRecoveryRoute', 'prepareChat'])('recovers a lost %s acknowledgement without replaying inference or selection', async method => {
   const id = activeId(); await send(id); await idle();
   const original = store.view(id).partner.currentModel;
   if (method === 'changePartner') loseAck = method;

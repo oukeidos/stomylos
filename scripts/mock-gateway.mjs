@@ -14,7 +14,7 @@ export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay
       response.end(`data: ${JSON.stringify({ model: input.model, provider: 'Public mock', choices: [{ delta: { content: '{"search":false}' }, finish_reason: 'stop' }], usage: { total_tokens: 50, cost: 0 } })}\n\ndata: [DONE]\n\n`); return;
     }
     if (input.model === 'qwen/qwen3.8-2.4t-a95b' && !input.stream && cleanupHandler) { await cleanupHandler(input, response); return; }
-    if (input.response_format?.json_schema?.name === 'stomylos_memory_delta_v1' && memoryHandler) { await memoryHandler(input, response); return; }
+    if (['stomylos_memory_delta_v1','experimental_database_records_format'].includes(input.response_format?.json_schema?.name) && memoryHandler) { await memoryHandler(input, response); return; }
     if (input.response_format?.json_schema?.name === 'genie_expression_v1' && genieHandler) { await genieHandler(input, response); return; }
     if (input.model === 'openai/gpt-6-astra' && !input.stream && [32768,128000].includes(input.max_tokens) && patternHandler) { await patternHandler(input, response); return; }
     if (!input.stream && input.messages?.[0]?.content.startsWith('Generate one English conversation-opening question')) {
@@ -57,6 +57,7 @@ export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay
         content = `Which small invention would help on day ${requests.length}?\nWhat would courage sound like at hour ${requests.length}?`;
         provider = { 'google-ai-studio': 'Google AI Studio', 'novita/fp8': 'Novita', anthropic: 'Anthropic' }[input.provider.only[0]];
       } else if (input.response_format.json_schema.name === 'stomylos_memory_delta_v1') { content = '{"operations":[]}'; provider = 'Google AI Studio'; }
+      else if (input.response_format.json_schema.name === 'experimental_database_records_format') { content = '{"add":[],"update":[],"delete":[]}'; provider = 'Google AI Studio'; }
       else if (input.response_format.json_schema.name.startsWith('stomylos_character_scores_v')) content = JSON.stringify(Object.fromEntries(input.response_format.json_schema.schema.required.map(id => [id, ['informative_generalist', 'model_03'].includes(id) ? 2 : 1])));
       else if (input.response_format.json_schema.name === 'genie_expression_v1') content = JSON.stringify({ reply: 'This wording keeps your meaning.', suggested_text: 'I enjoy quiet mornings.' });
       else content = JSON.stringify({ units: JSON.parse(input.messages[1].content).filter(m => m.role === 'user').map(m => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) });

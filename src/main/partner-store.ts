@@ -80,14 +80,14 @@ export class PartnerStore {
     const op = this.pending(session); if (!op || op.choice !== null || !['routing','failed'].includes(op.state)) fail('not_retryable');
     this.run("UPDATE partner_selection_operations SET router_request_id=?,state='routing' WHERE id=?", requestId, op!.id);
   }
-  resolve(session: Session, requestId: string, scores: Record<string, number>) {
+  resolve(session: Session, requestId: string, scores: Record<string, number>, fallback: string | null = null) {
     const op = this.pending(session);
     if (op?.state === 'ready' && op.router_request_id === requestId) return;
     if (!op || op.state !== 'routing' || op.router_request_id !== requestId) fail('selection_changed');
     const counts = Object.fromEntries((this.db.prepare('SELECT character,COUNT(*) AS n FROM route_decisions GROUP BY character').all() as {character: string; n: number}[]).map(r => [r.character,r.n]));
     const decision = chooseOtherPartner(JSON.parse(session.chat_config), op!.excluded_model, scores, counts);
     this.run("UPDATE partner_selection_operations SET state='ready',selected_character=?,selected_model=?,decision=? WHERE id=?",
-      decision.character, decision.model, JSON.stringify({ ...decision, scores }), op!.id);
+      decision.character, decision.model, JSON.stringify({ ...decision, scores, ...(fallback ? { reason: 'local_fallback', fallback_reason: fallback } : {}) }), op!.id);
   }
   fail(requestId: string) { this.run("UPDATE partner_selection_operations SET state='failed' WHERE router_request_id=? AND state='routing'", requestId); }
   apply(session: Session, request: RequestRecord) {

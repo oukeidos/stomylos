@@ -46,22 +46,25 @@ console.log('Report v2 exact prompt/settings and five generated fixtures match t
 
 const selectionArea = '../auxiliary/conversation-model-evaluation/';
 const selectedSeven = JSON.parse(readFileSync(selectionArea + 'selected-conversation-models.json', 'utf8'));
+const previousSeven = JSON.parse(readFileSync('src/main/conversation-v7-config.json', 'utf8'));
 const current = JSON.parse(readFileSync('src/main/runtime-config.json', 'utf8'));
 assert.deepEqual(current.conversation.characters.map(({model, reasoning}) => ({model, reasoning})), selectedSeven.models.map(({model, reasoning}) => ({model, reasoning})));
 const reciprocal = readFileSync(selectionArea + 'reciprocal-replacement-prompt.txt', 'utf8');
 assert.equal(current.conversationPrompt, reciprocal);
 assert.equal(readFileSync('src/main/reciprocal-replacement-prompt.txt', 'utf8'), reciprocal);
 assert.equal(createHash('sha256').update(reciprocal).digest('hex'), 'c70cffeace85121e193f76373a69ccb77785bce8688ab82df88da3f9b95bca00');
-assert.equal(current.routerPrompt, readFileSync('src/main/starter-router-seven-prompt.txt', 'utf8'));
+assert.equal(current.routerPrompt, readFileSync('src/main/compact-router-eight-starter.txt', 'utf8'));
+assert.equal(previousSeven.routerPrompt, readFileSync('src/main/starter-router-seven-prompt.txt', 'utf8'));
 const directSeven = readFileSync('src/main/direct-router-seven-prompt.txt', 'utf8');
-assert.equal(current.routerPrompt.split('Characters:')[1].split('The starter question')[0], directSeven.split('Characters:')[1].split('The first message')[0]);
+assert.equal(previousSeven.routerPrompt.split('Characters:')[1].split('The starter question')[0], directSeven.split('Characters:')[1].split('The first message')[0]);
 assert.equal(createHash('sha256').update(readFileSync('src/main/conversation-v5-config.json')).digest('hex'), '1169531c2ec10701c7c7c3db5e11b086216c654a86e010f2e56699cf0d031d24');
 console.log('Seven-model selection and exact replacement bytes match; both router cards agree and frozen v5 is intact.');
 
 assert.equal(createHash('sha256').update(readFileSync('src/main/conversation-v6-config.json')).digest('hex'), '291ea61aa8be5945ac389427ba7bae943de14a1b73e7e2617c8865d1ba6251c7');
 const previousSix = JSON.parse(readFileSync('src/main/conversation-v6-config.json', 'utf8'));
-assert.deepEqual(previousSix.conversation.characters, current.conversation.characters.slice(0, 6));
-assert.deepEqual(previousSix.router.route_policy, current.router.route_policy);
+assert.deepEqual(previousSix.conversation.characters, previousSeven.conversation.characters.slice(0, 6));
+assert.deepEqual(previousSix.router.route_policy, previousSeven.router.route_policy);
+assert.deepEqual(current.router.route_policy, { ...previousSeven.router.route_policy, insufficient_signal_pool: ['model_02', 'model_09'] });
 assert.ok(!/cost|cheap|price|budget/i.test(current.routerPrompt + directSeven + current.conversation.characters.map(c => c.description).join(' ')));
 
 assert.equal(readFileSync('src/main/intention-prompt.txt', 'utf8'), readFileSync('../experiments/EXP-021-intention-questions/prompt-single-v2.txt', 'utf8'));
@@ -77,7 +80,7 @@ for (const row of intentionFixture.routes) {
 console.log('Intention prompt and product-owned selected-route fixture match the experiment exactly.');
 
 const reselectionCards = JSON.parse(readFileSync('src/main/partner-router-cards.json', 'utf8'));
-for (const name of ['runtime-config', 'conversation-v6-config', 'conversation-v5-config', 'universal-v1-config', 'c-conversation-config', 'legacy-conversation-config']) {
+for (const name of ['conversation-v7-config', 'conversation-v6-config', 'conversation-v5-config', 'universal-v1-config', 'c-conversation-config', 'legacy-conversation-config']) {
   const saved = JSON.parse(readFileSync(`src/main/${name}.json`, 'utf8'));
   const reference = reselectionCards[saved.conversation.version];
   assert.equal(reference.source_sha256, createHash('sha256').update(saved.routerPrompt).digest('hex'));
@@ -132,3 +135,21 @@ assert.equal(readFileSync('src/main/memory-prompt-compact.txt', 'utf8'), readFil
 
 // Updater v7 uses the exact selected baseline; later rejected refinements stay out.
 assert.equal(readFileSync('src/main/memory-prompt-flat.txt', 'utf8'), readFileSync('../experiments/EXP-017-character-memory/gemini-product-comparison/prompt.md', 'utf8'));
+
+const order = ['model_01','model_03','model_02','model_04','model_07','model_08','model_05','model_09'];
+assert.deepEqual(current.conversation.characters.map(c=>c.id),order);
+assert.deepEqual(Object.keys(current.router.response_format.json_schema.schema.properties),order);
+assert.deepEqual(current.router.response_format.json_schema.schema.required,order);
+const proposal=readFileSync('../experiments/EXP-022-conversation-model-selection/PROVISIONAL_EIGHT_PARTNERS.md','utf8');
+for(const kind of ['direct','starter','reselection']){
+  const prompt=readFileSync(`src/main/compact-router-eight-${kind}.txt`,'utf8');
+  assert.deepEqual(prompt.match(/model_\d+/g),order);
+  for(const c of current.conversation.characters){
+    const line=prompt.split('\n').find(l=>l.startsWith(c.id+' — '));
+    assert.ok(line.startsWith(`${c.id} — ${c.label}: `));
+    assert.ok(proposal.includes(`| ${c.label} | ${line.split(': ').slice(1).join(': ')} |`));
+  }
+}
+assert.deepEqual(previousSeven.conversation.characters.map(({model,reasoning})=>({model,reasoning})),
+  JSON.parse(readFileSync(selectionArea+'selected-seven-conversation-models-2026-09-07.json','utf8')).models.map(({model,reasoning})=>({model,reasoning})));
+console.log('Eight adopted cards, display/schema order, model settings and preserved seven-model selection agree.');

@@ -1,21 +1,6 @@
 # Stomylos
 
-A Linux desktop app for practicing English with AI conversation partners, voice
-input, writing assistance and optional learning reports.
-
-## Conversation partners
-
-Choose a partner or use **Automatic** to select one for your conversation.
-
-| Partner | Model | Focus |
-| --- | --- | --- |
-| Debate | `anthropic/claude-fable-5.1` | Discuss arguments and opposing views. |
-| Explore | `xiaomi/mimo-v2.5-pro` | Explore ideas and their implications. |
-| Explain | `anthropic/claude-sonnet-5` | Understand topics through clear examples. |
-| Chat | `openai/gpt-6-astra` | Have casual, everyday conversations. |
-| Imagine | `google/gemini-3.8-flash` | Play with creative ideas and imagery. |
-| Stories | `bytedance-seed/seed-2-1-turbo` | Share stories and experiences. |
-| Taste | `deepseek/deepseek-v4-pro-0813` | Discuss interests and preferences. |
+A Linux desktop app for English practice through AI chat and grammar pattern reports.
 
 ## Installation
 

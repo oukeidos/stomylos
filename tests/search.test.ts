@@ -162,3 +162,16 @@ it('retains sources and terminal search usage without inventing live tool calls 
   expect(result.metadata.search.sources).toEqual([{ url: 'https://example.org/source', title: 'Public source' }]);
   expect(JSON.stringify(result.metadata)).not.toContain('fetched page'); expect(result.metadata.search.endpoints[0].provider).toBe('Xiaomi');
 });
+
+it.each(['auto','off'] as const)('supports Expand streaming, privacy and exact retry with search %s',async mode=>{
+  const session=store.createSession();store.selectManual(session.id,'model_09');store.searchMode(session.id,mode);
+  store.submit(session.id,'Please verify the current opening hours.');store.commitRoute(session.id,null,'manual_override',null);
+  const net=gateway(['{"search":true}']);await routeSearch(hooks(session.id),net,new AbortController().signal);
+  const request=store.prepareChat(session.id,randomUUID()),body=store.chatBody(request.id);
+  expect(body.model).toBe('deepseek/deepseek-v4.1-flash');expect(body.reasoning).toEqual({enabled:false,exclude:true});
+  expect(body.provider.data_collection).toBe('deny');expect(body.provider.allow_fallbacks).toBe(false);
+  expect(body.cache_control).toBeUndefined();expect(body.max_tokens).toBe(8192);expect(body.stream).toBe(true);
+  expect(!!body.tools).toBe(mode==='auto');
+  store.dispatch(request.id);store.prepareReply(session.id,request.id);store.failRequest(request.id,'request_timeout','Partial',{});
+  const retry=store.prepareChat(session.id,randomUUID(),'retry');expect(store.chatBody(retry.id)).toEqual(body);expect(retry.config).toBe(request.config);
+});

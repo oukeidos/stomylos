@@ -1,3 +1,4 @@
+import { flattenMemory } from '../src/main/memory-flat';
 import { timed } from './time-fixtures';
 import v5 from '../src/main/conversation-v5-config.json';
 import universal from '../src/main/universal-v1-config.json';
@@ -46,11 +47,12 @@ it('keeps old and new prompt/model bundles separate and rejects mixed snapshots'
   expect(upgraded.system_prompt).toBe(old.system_prompt);
   expect(conversationBody(upgraded, 'warm_reflection', 'Public question?', []).model).toBe('google/gemini-3.1-pro-preview');
   const current = conversationSnapshot();
-  current.memory_context = emptyMemory('shared');
+  current.memory_context = flattenMemory(emptyMemory('shared'));
   expect(conversationBody(timed(current, []), 'model_04', 'Public question?', []).model).toBe('openai/gpt-6-astra');
   expect(() => conversationRequestSnapshot({ ...current, characters: old.characters })).toThrow();
   expect(() => conversationRequestSnapshot({ ...current, system_prompt: old.system_prompt })).toThrow();
-  expect(eligible(null)).toEqual(['model_03', 'model_04']);
+  expect(eligible(null)).toEqual(['model_02', 'model_09']);
+  expect(eligible(Object.fromEntries(config.conversation.characters.map(c => [c.id, 1])))).toEqual(['model_02', 'model_09']);
   expect(eligible(null, old)).toEqual(['informative_generalist', 'warm_reflection', 'everyday_listening']);
   const oldScores = JSON.stringify(Object.fromEntries(old.characters.map(c => [c.id, 1])));
   expect(() => routerScores(oldScores)).toThrow();
@@ -67,8 +69,9 @@ it('preserves C sessions and rejects mixed universal/C contracts', () => {
   expect(body.messages[0].content).toBe(saved.system_prompt);
   expect(body.messages[1].content).toBe(saved.seed_template.replace('{{QUESTION}}', 'Public question?'));
   const current = conversationSnapshot();
-  expect(current.version).toBe('stomylos_conversation_v7');
-  expect(eligible(null, saved)).toEqual(eligible(null, current));
+  expect(current.version).toBe('stomylos_conversation_v8');
+  expect(eligible(null, saved)).toEqual(['model_03', 'model_04']);
+  expect(eligible(null, current)).toEqual(['model_02', 'model_09']);
   for (const mixed of [
     { ...current, system_prompt: saved.system_prompt, prompt_sha256: saved.prompt_sha256 },
     { ...current, seed_template: saved.seed_template },

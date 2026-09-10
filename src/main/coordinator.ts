@@ -1,3 +1,4 @@
+import { recoverRouter, routerRecoveryVersion } from './router-recovery';
 import { endRetryDelay, waitEndRetry } from './end-retry';
 import { cleanupBody } from './memory-cleanup';
 import { ExplainController } from './explain-controller';
@@ -432,23 +433,49 @@ export class Coordinator {
     });
     this.interactive = { abort, promise };
   }
+  private async recoverRoute(request: RequestRecord, saved: Json, body: Json, signal: AbortSignal) {
+    return recoverRouter(request, saved, body, {
+      dispatch: async requestId => {
+        await this.write('dispatch', requestId);
+        this.activity.phase = 'routing'; this.activity.requestId = requestId; await this.publish(request.session_id);
+      },
+      finish: (...args) => this.write('finishRecoveryRoute', ...args),
+      secondary: id => this.write('prepareRouterRecovery', id, randomUUID())
+    }, this.gateway, signal);
+  }
   private async reply(id: string, signal: AbortSignal, kind: 'send' | 'retry' | 'different_model' | 'retry_selection') {
     let view = await this.db.call('view', id);
     if (!view.session.character) {
       let scores: Record<string, number> | null = null; let fallback: string | null = null;
       let request = view.requests.find(r => r.role === 'router' && JSON.parse(r.config).purpose !== 'partner_reselection');
-      if (request) fallback = 'router_already_attempted';
-      else {
-        request = await this.write('createRequest', id, 'router', routerSnapshot(JSON.parse(view.session.chat_config)));
-        try {
-          if (signal.aborted) throw new AppFailure('request_cancelled');
-          await this.write('dispatch', request.id);
-          this.activity.phase = 'routing'; this.activity.requestId = request.id; await this.publish(id);
-          const source = view.messages.find(isLearner)!; const snapshot = JSON.parse(request.config);
-          const result = await this.gateway.complete(routerBody(view.session.starter_text, source.content, JSON.parse(view.session.chat_config)), snapshot.response_identity, signal, 10_000);
-          scores = routerScores(result.content, JSON.parse(view.session.chat_config)); await this.write('finishRequest', request.id, result.content, result.metadata);
-        } catch (error) {
-          fallback = failureCode(error); await this.write('failRequest', request.id, fallback, null, {}, signal.aborted);
+      const saved = JSON.parse(view.session.chat_config);
+      if (!request && saved.version === 'stomylos_conversation_v8') {
+        if (view.session.manual_character) fallback = 'manual_override';
+        else {
+          request = await this.write('createRequest', id, 'router', routerSnapshot(saved));
+          const result = await this.recoverRoute(request, saved, routerBody(view.session.starter_text, view.messages.find(isLearner)!.content, saved), signal);
+          request = result.request; scores = result.scores; fallback = result.failure;
+        }
+      } else {
+        if (request) {
+          fallback = 'router_already_attempted';
+          if (saved.version === 'stomylos_conversation_v8') {
+            request = view.requests.findLast(r => r.role === 'router' && JSON.parse(r.config).purpose !== 'partner_reselection')!;
+            if (request.status === 'succeeded' && request.response_content !== null) { scores = routerScores(request.response_content, saved); fallback = null; }
+          }
+        }
+        else {
+          request = await this.write('createRequest', id, 'router', routerSnapshot(JSON.parse(view.session.chat_config)));
+          try {
+            if (signal.aborted) throw new AppFailure('request_cancelled');
+            await this.write('dispatch', request.id);
+            this.activity.phase = 'routing'; this.activity.requestId = request.id; await this.publish(id);
+            const source = view.messages.find(isLearner)!; const snapshot = JSON.parse(request.config);
+            const result = await this.gateway.complete(routerBody(view.session.starter_text, source.content, JSON.parse(view.session.chat_config)), snapshot.response_identity, signal, 10_000);
+            scores = routerScores(result.content, JSON.parse(view.session.chat_config)); await this.write('finishRequest', request.id, result.content, result.metadata);
+          } catch (error) {
+            fallback = failureCode(error); await this.write('failRequest', request.id, fallback, null, {}, signal.aborted);
+          }
         }
       }
       if (signal.aborted) return;
@@ -458,7 +485,9 @@ export class Coordinator {
     if (signal.aborted) return;
     if (kind !== 'retry') {
       const route = await this.write('preparePartner', id, kind, randomUUID());
-      if (route) {
+      if (route && JSON.parse(route.config).recovery_version === routerRecoveryVersion) {
+        await this.recoverRoute(route, JSON.parse(view.session.chat_config), partnerRouterBody(JSON.parse(route.config)), signal);
+      } else if (route) {
         try {
           if (signal.aborted) throw new AppFailure('request_cancelled');
           await this.write('dispatch', route.id);

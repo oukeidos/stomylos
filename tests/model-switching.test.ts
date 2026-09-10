@@ -1,3 +1,5 @@
+import { emptyMemory, memoryJson, memoryHash } from '../src/main/memory-updater';
+import { grammarSnapshot } from '../src/main/contracts';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,9 +17,13 @@ let directory: string, store: Store, raw: Database.Database;
 const native = resolve('native/advisory-lock.node');
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-switch-')); store = new Store(directory, native); raw = (store as unknown as { db: Database.Database }).db; });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
+function seedLegacy(id: string) {
+  const doc=memoryJson(emptyMemory('shared'));
+  raw.prepare('INSERT INTO memory_legacy_seeds VALUES(?,?,?)').run(id,doc,memoryHash(doc));
+}
 function start(snapshot?: Json) {
   const s = store.createSession();
-  if (snapshot) raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(snapshot), s.id);
+  if (snapshot) { raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(snapshot), s.id); seedLegacy(s.id); }
   store.searchMode(s.id, 'off'); store.selectManual(s.id, 'model_01'); store.submit(s.id, 'An original user turn.');
   store.commitRoute(s.id, null, 'public-fixture', null); return s.id;
 }
@@ -50,7 +56,7 @@ it('keeps A→B→A in one transcript with immutable originals, source IDs and m
   expect(store.view(id).memory.snapshot).toEqual(memory); expect(store.memoryJob(id)).toBeNull();
   for (const request of store.requests(id)) expect(hash(request.config)).toBe(request.config_hash);
   store.end(id);
-  const grammar = store.createRequest(id,'grammar',JSON.parse(store.session(id).grammar_config!)); store.dispatch(grammar.id);
+  const grammar = store.createRequest(id,'grammar',grammarSnapshot()); store.dispatch(grammar.id);
   const users=store.messages(id).filter(m=>m.role==='user');
   store.saveAnalysis(grammar.id,JSON.stringify({units:users.map((m,index)=>({index,corrected_text:m.content,explanation:''}))}),{});
   expect(store.units(id).map(u=>u.source_message_id)).toEqual(users.map(m=>m.id));
@@ -177,16 +183,16 @@ it.each(['failed', 'ready'])('carries an unused %s Auto choice to the next Send 
   expect(store.messages(id).filter(m => m.origin === 'learner')).toHaveLength(2);
 });
 
-it.each(['conversation-v6-config', 'c-conversation-config', 'legacy-conversation-config'])('switches and retries the supported %s roster without rewriting the saved contract', name => {
+it.each(['conversation-v7-config', 'conversation-v6-config', 'c-conversation-config', 'legacy-conversation-config'])('switches and retries the supported %s roster without rewriting the saved contract', name => {
   const runtime = JSON.parse(readFileSync(`src/main/${name}.json`, 'utf8'));
   const snapshot: Json = { ...runtime.conversation, system_prompt: runtime.conversationPrompt, prompt_sha256: hash(runtime.conversationPrompt) };
-  if (name === 'conversation-v6-config') Object.assign(snapshot, {
+  if (['conversation-v7-config','conversation-v6-config'].includes(name)) Object.assign(snapshot, {
     prompt_id: 'stomylos_conversation_prompt_v5',
     memory_version: 'stomylos_memory_context_v2', time_version: 'stomylos_time_context_v1',
     component_hashes: conversationComponents(snapshot.version, 'stomylos_memory_context_v2'),
     opening: { version: 'stomylos_opening_v1', kind: 'starter' }
   });
-  const s = store.createSession(); raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(snapshot), s.id);
+  const s = store.createSession(); raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(snapshot), s.id); seedLegacy(s.id);
   store.searchMode(s.id, 'off'); store.selectManual(s.id, snapshot.characters[0].id);
   store.submit(s.id, 'An original user source.'); store.commitRoute(s.id, null, 'public-fixture', null); complete(s.id);
   select(s.id, null); store.submit(s.id, 'A new direction.');

@@ -432,3 +432,7 @@ footer.help-open { max-height: calc(100dvh - 150px); overflow-y: auto; }
 .learning-history-heading h2 { font-size: 12px; color: #697970; font-weight: 500; }
 .learning-card > div:first-child { min-width: 0; }
 .learning-card p, .learning-card .note { font-size: 11px; overflow-wrap: anywhere; }
+
+.partner { min-width: 0; max-width: 100%; }
+.partner-label, .current-partner { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.partner .chevron, .partner-pending { flex-shrink: 0; }

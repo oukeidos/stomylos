@@ -1,8 +1,10 @@
+import seven from '../src/main/conversation-v7-config.json';
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { config, conversationSnapshot, hash, routerBody, routerSnapshot } from '../src/main/contracts';
+import { conversationSnapshot as latestSnapshot, hash, routerBody, routerSnapshot } from '../src/main/contracts';
 import { partnerRouterBody, partnerRouterSnapshot } from '../src/main/partner-router';
 import type { Message } from '../src/shared/types';
+const conversationSnapshot = (kind: 'user' | 'starter' = 'starter'): import('../src/shared/types').Json => ({ ...latestSnapshot(kind), ...structuredClone(seven.conversation), router_prompt_version: 'stomylos_compact_router_v1' });
 import cards from '../src/main/partner-router-cards.json';
 const source = (kind: string) => readFileSync(`../experiments/EXP-002-character-router-selection/prompt-compression-no-independent-2026-09-08/compact-${kind}.txt`, 'utf8');
 it.each(['user', 'starter'] as const)('uses selected exact %s wording while preserving historical input and parameters', kind => {
@@ -12,7 +14,7 @@ it.each(['user', 'starter'] as const)('uses selected exact %s wording while pres
   expect(body.messages[0].content).toBe(source(kind === 'user' ? 'direct' : 'starter'));
   expect({ ...body, messages: previous.messages }).toEqual(previous);
   expect(routerSnapshot(saved).prompt).toBe(body.messages[0].content);
-  expect(previous.messages[0].content).toBe(kind === 'user' ? readFileSync('src/main/direct-router-seven-prompt.txt', 'utf8') : config.routerPrompt);
+  expect(previous.messages[0].content).toBe(kind === 'user' ? readFileSync('src/main/direct-router-seven-prompt.txt', 'utf8') : seven.routerPrompt);
   expect(() => routerBody(question, answer, { ...saved, router_prompt_version: 'unknown' })).toThrow('unsupported_router_settings');
 });
 it('uses compact new reselection for existing seven-model chats and reconstructs frozen v1 exactly', () => {

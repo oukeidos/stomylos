@@ -1,3 +1,4 @@
+import { recoverySnapshot, validateRecovery } from './router-recovery';
 import { flattenMemory } from './memory-flat';
 import { currentSchema, inspectMigration, migrateDatabase } from './database-migrations';
 import { ExplainStore } from './explain-store';
@@ -372,6 +373,45 @@ export class Store {
       return request;
     });
   }
+  prepareRouterRecovery(parentId: string, requestId: string): RequestRecord {
+    return this.transaction(() => {
+      const existing = this.all<RequestRecord>('SELECT * FROM model_requests WHERE id=?', requestId)[0];
+      if (existing) { if (existing.parent_id !== parentId) throw new AppFailure('request_operation_conflict'); return existing; }
+      const parent = this.request(parentId), snapshot = JSON.parse(parent.config);
+      if (parent.role !== 'router' || parent.status !== 'failed' || hash(parent.config) !== parent.config_hash) throw new AppFailure('router_recovery_changed');
+      if (this.all('SELECT id FROM model_requests WHERE parent_id=?', parentId).length) throw new AppFailure('router_recovery_exhausted');
+      const session = this.session(parent.session_id);
+      if (snapshot.purpose === 'partner_reselection') {
+        const op = this.partners.pending(session);
+        if (!op || op.state !== 'routing' || op.router_request_id !== parentId || op.id !== snapshot.selection_operation_id) throw new AppFailure('partner_selection_changed');
+      }
+      const request = this.createRequest(parent.session_id, 'router', recoverySnapshot(snapshot), parentId, requestId);
+      if (request.source_hash !== parent.source_hash) throw new AppFailure('frozen_source_changed');
+      if (snapshot.purpose === 'partner_reselection') this.partners.routerRequest(session, request.id);
+      return request;
+    });
+  }
+  finishRecoveryRoute(id: string, content: string | null, metadata: Json, failure: string | null, terminal: boolean, interrupted: boolean) {
+    this.transaction(() => {
+      const request = this.request(id), snapshot = JSON.parse(request.config);
+      validateRecovery(snapshot);
+      if (hash(request.config) !== request.config_hash) throw new AppFailure('router_recovery_changed');
+      if (!['queued', 'dispatched'].includes(request.status)) {
+        if (interrupted && snapshot.purpose === 'partner_reselection') this.partners.fail(id);
+        return;
+      }
+      const session = this.session(request.session_id), reselection = snapshot.purpose === 'partner_reselection';
+      if (!failure) {
+        if (content === null) throw new AppFailure('invalid_router_output');
+        const scores = routerScores(content, JSON.parse(session.chat_config));
+        if (reselection) this.partners.resolve(session, id, scores);
+        this.finishRequest(id, content, metadata);
+      } else {
+        this.failRequest(id, failure, content, metadata, interrupted, !interrupted && reselection);
+        if (reselection && terminal && !interrupted) this.partners.resolve(session, id, {}, failure);
+      }
+    });
+  }
   finishPartnerRoute(requestId: string, content: string, metadata: Json) {
     this.transaction(() => {
       const request = this.request(requestId), session = this.session(request.session_id);
@@ -492,12 +532,12 @@ export class Store {
       this.finishRequest(requestId, content, metadata);
     });
   }
-  failRequest(id: string, failure: string, content: string | null = null, metadata: Json = {}, interrupted = false) {
+  failRequest(id: string, failure: string, content: string | null = null, metadata: Json = {}, interrupted = false, preservePartner = false) {
     this.transaction(() => {
       const request = this.request(id);
       if (!['queued', 'dispatched'].includes(request.status)) return;
       this.run('UPDATE model_requests SET status=?,finished_at=?,failure=?,response_content=COALESCE(?,response_content),metadata=? WHERE id=?', interrupted ? 'interrupted' : 'failed', now(), failure, content, JSON.stringify(metadata), id);
-      this.partners.fail(id);
+      if (!preservePartner) this.partners.fail(id);
       if (request.role === 'grammar') this.run('UPDATE sessions SET analysis_state=? WHERE id=? AND selected_analysis_id IS NULL', failure === 'queued_not_dispatched' && request.dispatched_at === null ? 'pending' : 'failed', request.session_id);
       this.run("UPDATE messages SET delivery='interrupted',content=COALESCE(?,content) WHERE request_id=? AND delivery='streaming'", content, id);
     });
@@ -624,7 +664,7 @@ export class Store {
   prepareMemory(sessionId: string, operationId: string) { return this.memory.prepare(sessionId, operationId); }
   dispatchMemory(id: string) { return this.memory.dispatch(id); }
   saveMemory(id: string, content: string, metadata: Json) { return this.memory.save(id, content, metadata); }
-  failMemory(id: string, failure: string, content: string | null = null, metadata: Json = {}, interrupted = false) { return this.memory.fail(id, failure, content, metadata, interrupted); }
+  failMemory(id: string, failure: string, content: string | null = null, metadata: Json = {}, interrupted = false, preservePartner = false) { return this.memory.fail(id, failure, content, metadata, interrupted); }
   advanceStarter(id: string) {
     return this.transaction(() => {
       this.intentions.expire(id);
@@ -658,7 +698,7 @@ export class Store {
   retryStarter(sessionId: string, operationId: string) { this.assertEndActive(sessionId); return this.starter.retry(sessionId, operationId); }
   dispatchStarter(id: string) { return this.starter.dispatch(id); }
   saveStarter(id: string, content: string, metadata: Json) { this.assertEndActive(this.starter.job(this.starter.attempt(id).job_id).session_id); return this.starter.save(id, content, metadata); }
-  failStarter(id: string, failure: string, content: string | null = null, metadata: Json = {}, interrupted = false) { return this.starter.fail(id, failure, content, metadata, interrupted); }
+  failStarter(id: string, failure: string, content: string | null = null, metadata: Json = {}, interrupted = false, preservePartner = false) { return this.starter.fail(id, failure, content, metadata, interrupted); }
   patternPreview(asOf?: string, selection?: import('../shared/pattern-report').PatternSelection) { return this.patterns.preview(asOf, selection); }
   patternCreate(fingerprint: string, operationId: string, asOf?: string, selection?: import('../shared/pattern-report').PatternSelection) { return this.patterns.create(fingerprint, operationId, asOf, selection); }
   patternAttempt(id: string) { return this.patterns.attempt(id); }

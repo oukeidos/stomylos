@@ -1,3 +1,4 @@
+import { orderedPartners, partnerDisplayName } from '../shared/partners';
 import { MemoryRecords } from './memory-records';
 import { EndProcessingDialog } from './end-processing';
 import { Explainable, ExplainHistory, ExplainDialog } from './explain';
@@ -102,20 +103,20 @@ function Modal({ open, onOpenChange, title, children }: { open: boolean; onOpenC
 }
 const Partner = memo(function Partner({ view, characters, act, blocked }: { view: SessionView; characters: Character[]; blocked: boolean; act: (fn: () => Promise<unknown>) => void }) {
   const [open, setOpen] = useState(false); const { session } = view;
-  characters = JSON.parse(session.chat_config).characters as Character[];
+  characters = orderedPartners(JSON.parse(session.chat_config).characters as Character[]);
   const selected = session.state === 'draft' ? session.manual_character : session.state !== 'ended' && view.partner.pending ? view.partner.pending.choice : view.partner.currentCharacter;
   const genie = useGenie(); useDictation();
   const locked = genie.locked || dictationBusy() || blocked;
-  const label = characters.find(c => c.id === selected)?.label ?? 'Automatic';
-  if (session.state === 'ended') return <span className="current-partner">{selected ? label : 'No partner selected'}</span>;
-  return <Menu.Root open={open} onOpenChange={setOpen}><Menu.Trigger className="partner" aria-label={`Partner: ${label}`} title="Choose a conversation partner" disabled={locked || (session.state === 'active' && !session.character)}>
-    <strong>{label}</strong><Chevron open={open} />{view.partner.pending && <span className="partner-pending" role="status">{view.partner.pending.state === 'failed' ? 'Selection incomplete' : 'Next reply'}</span>}</Menu.Trigger>
+  const label = partnerDisplayName(characters.find(c => c.id === selected));
+  if (session.state === 'ended') return <span className="current-partner" title={label}>{selected ? label : 'No partner selected'}</span>;
+  return <Menu.Root open={open} onOpenChange={setOpen}><Menu.Trigger className="partner" aria-label={`Partner: ${label}`} title={`Choose a conversation partner · ${label}`} disabled={locked || (session.state === 'active' && !session.character)}>
+    <strong className="partner-label">{label}</strong><Chevron open={open} />{view.partner.pending && <span className="partner-pending" role="status">{view.partner.pending.state === 'failed' ? 'Selection incomplete' : 'Next reply'}</span>}</Menu.Trigger>
     <Menu.Portal><Menu.Content className="partner-menu" sideOffset={8} align="start" collisionPadding={12}>
       <Menu.RadioGroup value={selected ?? 'automatic'} onValueChange={value => act(() => session.state === 'draft'
         ? window.stomylos.command('selectPartner', { sessionId: session.id, character: value === 'automatic' ? null : value })
         : window.stomylos.command('changePartner', { sessionId: session.id, character: value === 'automatic' ? null : value, operationId: crypto.randomUUID(), expectedRevision: view.partner.revision }))}>
         {[{ id: 'automatic', label: 'Automatic', description: session.state === 'draft' ? 'Choose a partner from your first message.' : 'Choose another partner from recent conversation on your next message.' }, ...characters].map(option => <Menu.RadioItem className="partner-option" key={option.id} value={option.id}>
-          <span><strong>{option.label}</strong><small>{option.description}</small></span><Menu.ItemIndicator><Icon name="check" /></Menu.ItemIndicator>
+          <span><strong>{'model' in option ? partnerDisplayName(option as Character) : option.label}</strong><small>{option.description}</small></span><Menu.ItemIndicator><Icon name="check" /></Menu.ItemIndicator>
         </Menu.RadioItem>)}
       </Menu.RadioGroup>
     </Menu.Content></Menu.Portal>
