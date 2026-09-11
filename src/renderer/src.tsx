@@ -16,7 +16,7 @@ import * as Menu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { AppSnapshot, Character, Message, SessionView, SessionSummary } from '../shared/types';
 import { MemoryChangeHistory } from './memory-changes';
-import { loadView, onDeleted, isDeleted, onClose, onViewChanged, useApp, useStream, useStartupError, reloadSnapshot } from './client';
+import { endAndStartSession, loadView, onDeleted, isDeleted, onClose, onViewChanged, useApp, useStream, useStartupError, reloadSnapshot } from './client';
 import { unsavedDraftText, currentDraft, forgetDraft, editDraft, flushAllDrafts, flushDraft, initializeDraft, submittedDraft, useDraft } from './drafts';
 import { Icon } from './icons';
 import { IconButton } from './icon-button';
@@ -443,8 +443,9 @@ function App() {
   const history = library.sessions;
   const bookmarkDisabled = (id: string) => bookmarks.pending.has(id) || genie.locked || deleting || !!app.activity.storageError || app.activity.closing;
   const currentSummary = view ? { ...view.session, title: view.session.starter_text ?? view.messages.find(m => m.origin === 'learner')?.content ?? 'New chat', bookmarked: view.bookmarked, canBookmark: view.canBookmark } : null;
-  const startNew = async () => { if (app.endBlocker) { setNewDialog(false); await show(app.endBlocker); return; } if (!await beforeDictationNavigation()) return; await flushAllDrafts(); if (unfinished) { await window.stomylos.command('endSession', { sessionId: unfinished.id }); setNewDialog(false); await show(unfinished.id); return; }
-    const id = await window.stomylos.command('newSession', undefined); setNewDialog(false); library.reset(); await show(id); };
+  const startNew = async () => { if (app.endBlocker) { setNewDialog(false); await show(app.endBlocker); return; } if (!await beforeDictationNavigation()) return; await flushAllDrafts();
+    const id = unfinished ? await endAndStartSession(unfinished.id) : await window.stomylos.command('newSession', undefined);
+    setNewDialog(false); library.reset(); await show(id); };
   const requestDelete = (session: SessionSummary) => { setDeleteError(null); setDeleteTarget(session); };
   const confirmDelete = async () => {
     if (!deleteTarget || deleting) return;

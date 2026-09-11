@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix End and start new to open a new chat automatically after blocking end processing resolves.
 - Consolidate conversation memory details into the fixed snapshot and per-input changes with exact-input recovery.
 - Fix startup for existing schema-28 databases by removing the previous-memory archive through a backed-up schema-29 migration.
 

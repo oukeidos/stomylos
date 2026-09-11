@@ -66,6 +66,27 @@ export function reloadSnapshot() {
 reloadSnapshot();
 export function useApp() { return useSyncExternalStore(callback => { listeners.add(callback); return () => listeners.delete(callback); }, () => snapshot); }
 export function useStartupError() { return useSyncExternalStore(callback => { listeners.add(callback); return () => listeners.delete(callback); }, () => startupError); }
+let startingAfterEnd: Promise<string> | null = null;
+export function endAndStartSession(sessionId: string): Promise<string> {
+  if (startingAfterEnd) return startingAfterEnd;
+  startingAfterEnd = (async () => {
+    await window.stomylos.command('endSession', { sessionId });
+    // End acknowledges scheduling, not completion of the blocking jobs.
+    const fresh = await window.stomylos.command('snapshot', undefined);
+    event({ type: 'snapshot', snapshot: fresh });
+    await new Promise<void>((resolve, reject) => {
+      const check = () => {
+        if (snapshot?.activity.closing) { listeners.delete(check); reject(new Error('app_closing')); }
+        else if (snapshot && !snapshot.endBlocker && snapshot.unfinished?.id !== sessionId) {
+          listeners.delete(check); resolve();
+        }
+      };
+      listeners.add(check); check();
+    });
+    return window.stomylos.command('newSession', undefined);
+  })().finally(() => { startingAfterEnd = null; });
+  return startingAfterEnd;
+}
 export function useStream(id: string, fallback: string, active: boolean) {
   return useSyncExternalStore(callback => {
     let list = streamListeners.get(id); if (!list) { list = new Set(); streamListeners.set(id, list); }

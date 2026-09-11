@@ -64,3 +64,39 @@ it('discards a late view and draft acknowledgement after deleting their chat', a
   await rejected; await save; expect(drafts.currentDraft('s')).toBeUndefined();
   await expect(client.loadView('s')).rejects.toThrow('session_not_found');
 });
+
+it('ends and starts a new chat once after blocking end jobs finish', async () => {
+  const client = await import('../src/renderer/client'); await Promise.resolve();
+  command.mockImplementation(async (name: string) => {
+    if (name === 'snapshot') return { ...snapshot(1), endBlocker: 'old', unfinished: null };
+    if (name === 'newSession') return 'new';
+  });
+  const pending = client.endAndStartSession('old');
+  expect(client.endAndStartSession('old')).toBe(pending);
+  await vi.waitFor(() => expect(client.useApp()?.endBlocker).toBe('old'));
+  expect(command.mock.calls.filter(([name]) => name === 'newSession')).toHaveLength(0);
+  // A failed job remains blocking until retry or explicit cancellation resolves it.
+  receive({ type: 'snapshot', snapshot: { ...snapshot(2), endBlocker: 'old', unfinished: null } });
+  expect(command.mock.calls.filter(([name]) => name === 'newSession')).toHaveLength(0);
+  receive({ type: 'snapshot', snapshot: { ...snapshot(3), endBlocker: null, unfinished: null } });
+  expect(await pending).toBe('new');
+  expect(command.mock.calls.filter(([name]) => name === 'endSession')).toEqual([['endSession', { sessionId: 'old' }]]);
+  expect(command.mock.calls.filter(([name]) => name === 'newSession')).toHaveLength(1);
+});
+
+it('starts a new chat when ending finishes without blocking jobs', async () => {
+  const client = await import('../src/renderer/client'); await Promise.resolve();
+  command.mockImplementation(async (name: string) => name === 'snapshot'
+    ? { ...snapshot(1), endBlocker: null, unfinished: null } : name === 'newSession' ? 'new' : undefined);
+  expect(await client.endAndStartSession('old')).toBe('new');
+});
+
+it('does not start a new chat when ending fails and allows an explicit retry', async () => {
+  const client = await import('../src/renderer/client'); await Promise.resolve();
+  command.mockRejectedValueOnce(new Error('storage_error'));
+  await expect(client.endAndStartSession('old')).rejects.toThrow('storage_error');
+  expect(command.mock.calls.some(([name]) => name === 'newSession')).toBe(false);
+  command.mockImplementation(async (name: string) => name === 'snapshot'
+    ? { ...snapshot(1), endBlocker: null, unfinished: null } : name === 'newSession' ? 'new' : undefined);
+  expect(await client.endAndStartSession('old')).toBe('new');
+});
