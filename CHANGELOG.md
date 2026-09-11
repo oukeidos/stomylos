@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Group closely related memory facts and their supporting references into a single note for new ADD requests.
 - Show chat-local user input numbers in memory history, recovery and request details, and distinguish moves to Older from historical capacity deletions.
 
 - Preserve FIFO memory evictions as original Older notes, group them with local embeddings and recall up to three notes per new eligible chat, with schema 30 migration, explicit deletion and resumable indexing.
