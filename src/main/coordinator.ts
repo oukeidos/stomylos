@@ -88,6 +88,11 @@ export class Coordinator {
     await this.dictation?.bindDraft(source.sessionId, ids, revision, text).catch(() => undefined);
     await this.publish(source.sessionId);
   }
+  private memoryAdmission: Promise<unknown> = Promise.resolve();
+  private admitMemory<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.memoryAdmission.then(operation);
+    this.memoryAdmission = pending.catch(() => undefined); return pending;
+  }
   private cachedEndBlockers: { sessionId: string; title: string }[] = [];
   async initialize() { await this.db.ready; if (!(await this.db.call('endBlocker'))) await this.db.call('createSession'); }
   async snapshot(): Promise<AppSnapshot> {
@@ -95,6 +100,7 @@ export class Coordinator {
     let page = this.cachedPage; let unfinished = this.cachedUnfinished;
     try {
       [page, unfinished, this.cachedEndBlockers] = await Promise.all([this.db.call('sessionPage'), this.db.call('unfinished'), this.db.call('endBlockers')]);
+      settings.memory = await this.db.call('memoryPreference');
       this.cachedPage = page; this.cachedUnfinished = unfinished;
     } catch (error) { if (!this.activity.storageError) throw error; }
     return { endBlocker: this.cachedEndBlockers[0]?.sessionId ?? null, endBlockers: this.cachedEndBlockers, revision, sessions: page.sessions, historyHasMore: page.hasMore, unfinished, activity, settings, characters };
@@ -251,6 +257,10 @@ export class Coordinator {
     if (this.dictation?.locked && ['saveDraft', 'sendMessage', 'endSession', 'newSession', 'replaceStarter', 'setOpening', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) throw new AppFailure('asr_busy');
     if (['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) this.speech?.stop();
     switch (name) {
+      case 'setMemoryPreference': {
+        const value = await this.admitMemory(() => this.write('setMemoryPreference', args.enabled, args.revision));
+        this.settings.memory = value; await this.publish(); return value;
+      }
       case 'editMemory': {
         if (this.interactive) throw new AppFailure('memory_in_use');
         const prepared = await this.db.call('prepareMemoryEdit', args);
@@ -521,24 +531,31 @@ export class Coordinator {
       finish: (attemptId, content, metadata, failure, interrupted) => this.write('searchFinish', attemptId, content, metadata, failure, interrupted)
     }, this.gateway, signal);
     if (signal.aborted) return;
-    const request = await this.write('prepareChat', id, randomUUID(), kind === 'retry_selection' ? 'different_model' : kind);
+    let request = await this.write('prepareChat', id, randomUUID(), kind === 'retry_selection' ? 'different_model' : kind);
     let text = ''; let checkpoint = 0; let pendingCheckpoint: Promise<unknown> = Promise.resolve(); let searchEvidence: Json = {};
     let firstAnswerAt: number | null = null;
     try {
-      const body = await this.db.call('chatBody', request.id);
-      const bubble = await this.write('prepareReply', id, request.id);
-      if (signal.aborted) throw new AppFailure('request_cancelled');
-      await this.write('dispatch', request.id);
-      this.activity.phase = 'reply'; this.activity.requestId = request.id; this.activity.streamingMessageId = bubble.id;
-      await this.publish(id);
-      const result = await this.gateway.stream(body, signal, content => {
-        if (content && firstAnswerAt === null) firstAnswerAt = Date.now();
-        text = content; this.activity.streamingText = content;
-        this.emit({ type: 'stream', revision: ++this.revision, sessionId: id, requestId: request.id, messageId: bubble.id, text });
-        if (Date.now() - checkpoint >= 250 && !this.activity.storageError) {
-          checkpoint = Date.now(); pendingCheckpoint = this.write('checkpoint', bubble.id, text, body.tools ? searchEvidence : undefined);
-        }
-      }, body.tools ? { search: true, evidence: metadata => { searchEvidence = metadata; } } : undefined);
+      // Serialize setting changes only through gateway entry, never the network wait.
+      const launch = this.admitMemory(async () => {
+        if (signal.aborted) throw new AppFailure('request_cancelled');
+        const begun = await this.write('startChat', request.id);
+        request = begun.request;
+        const {body,bubble} = begun;
+        if (signal.aborted) throw new AppFailure('request_cancelled');
+        this.activity.phase = 'reply'; this.activity.requestId = request.id; this.activity.streamingMessageId = bubble.id;
+        const response = this.gateway.stream(body, signal, content => {
+          if (content && firstAnswerAt === null) firstAnswerAt = Date.now();
+          text = content; this.activity.streamingText = content;
+          this.emit({ type: 'stream', revision: ++this.revision, sessionId: id, requestId: request.id, messageId: bubble.id, text });
+          if (Date.now() - checkpoint >= 250 && !this.activity.storageError) {
+            checkpoint = Date.now(); pendingCheckpoint = this.write('checkpoint', bubble.id, text, body.tools ? searchEvidence : undefined);
+          }
+        }, body.tools ? { search: true, evidence: metadata => { searchEvidence = metadata; } } : undefined);
+        void this.publish(id).catch(() => undefined);
+        return {bubble,response};
+      });
+      const {bubble,response} = await launch;
+      const result = await response;
       if (view.search) {
         const sentAt = Date.parse(view.search.turn.created_at);
         result.metadata.send_to_completion_seconds = Math.max(0, Date.now() - sentAt) / 1000;

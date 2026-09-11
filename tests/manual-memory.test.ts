@@ -92,7 +92,7 @@ it('validates the narrow management commands and rejects arbitrary documents, em
  for(const bad of [undefined,{...args,document:{}},{...args,text:''},{...args,revision:-1},{...args,hash:'bad'},{...args,text:'a'.repeat(1_000_001)}])expect(()=>validateCommand('editMemory',bad)).toThrow('invalid_command');
 });
 it('admits schema 24 through step 25 with unchanged data, verified backup, rollback/restart, no-op and newer-version refusal',()=>{
- const {store,db,dir}=fixture();store.close();db.pragma('user_version=24');
+ const {store,db,dir}=fixture();store.close();db.exec('DROP TABLE session_memory_policy; DROP TABLE memory_preferences;');db.pragma('user_version=24');
  const before=db.prepare('SELECT * FROM shared_memory').all();const exec=db.exec.bind(db);
  const fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=exec(sql);if(sql.includes('Admit direct user memory edits'))throw new Error('step25 fault');return result;});
  expect(()=>migrateDatabase(db,dir)).toThrow('step25 fault');fault.mockRestore();expect(db.pragma('user_version',{simple:true})).toBe(24);expect(db.prepare('SELECT * FROM shared_memory').all()).toEqual(before);

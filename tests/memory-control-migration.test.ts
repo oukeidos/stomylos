@@ -1,0 +1,25 @@
+import { afterEach,expect,it } from 'vitest';
+import Database from 'better-sqlite3';
+import { mkdtempSync,readFileSync,rmSync,existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { StarterStore } from '../src/main/starter-store';
+import { installCatalog19 } from '../src/main/migrations/019-data';
+import { emptyMemory,memoryJson,memoryHash } from '../src/main/memory-updater';
+import { flattenMemory } from '../src/main/memory-flat';
+import { migrateDatabase,validateSchema,currentSchema } from '../src/main/database-migrations';
+import current from '../src/main/schema.sql?raw';
+const fixtures:{dir:string;db:Database.Database}[]=[];
+afterEach(()=>{for(const {dir,db} of fixtures.splice(0)){db.close();rmSync(dir,{recursive:true,force:true});}});
+it.each(Array.from({length:13},(_,i)=>i+13))('preserves the supported schema %i forward path into memory controls',version=>{
+ const dir=mkdtempSync('/tmp/stomylos-memory-chain-'),db=new Database(join(dir,'stomylos.sqlite3'));fixtures.push({dir,db});
+ const source=version===13?13:version<19?18:version===19?19:version<22?21:version<24?23:25;
+ db.transaction(()=>{db.exec(readFileSync(`src/main/migrations/schema-v${source}.sql`,'utf8'));db.pragma(`user_version=${version}`);
+ if(version>=19&&version<24)installCatalog19(db);else new StarterStore(db).initialize();
+ const document=memoryJson(version>=22?flattenMemory(emptyMemory('shared')):emptyMemory('shared'));
+ db.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run(document,memoryHash(document));})();
+ migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
+ expect(db.prepare('SELECT * FROM memory_preferences').all()).toEqual([{id:1,enabled:1,revision:0}]);expect(db.prepare('SELECT * FROM session_memory_policy').all()).toEqual([]);
+ expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
+ expect(existsSync(join(dir,`stomylos.pre-migration-v${version}.sqlite3`))).toBe(true);
+ db.pragma(`user_version=${currentSchema+1}`);expect(()=>migrateDatabase(db,dir)).toThrow('unsupported_schema_version');
+});

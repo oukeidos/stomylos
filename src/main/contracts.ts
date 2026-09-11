@@ -1,3 +1,4 @@
+import { memoryControlVersion } from '../shared/memory-control';
 import { flattenMemory } from './memory-flat';
 import { createHash, randomInt } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
@@ -153,6 +154,8 @@ function runtimeForVersion(version: string) {
 }
 function validateConversationSnapshot(snapshot: Json) {
   openingKind(snapshot);
+  if (snapshot.memory_control !== undefined && snapshot.memory_control !== memoryControlVersion) throw new AppFailure('unsupported_memory_settings');
+  if (snapshot.memory_control === memoryControlVersion && snapshot.memory_context !== undefined) throw new AppFailure('unsupported_memory_settings');
   if (snapshot.version === runtime.conversation.version && snapshot.router_prompt_version !== eightRouterVersion) throw new AppFailure('unsupported_router_settings');
   if (snapshot.router_prompt_version !== undefined && !((snapshot.router_prompt_version === compactRouterVersion && snapshot.version === conversationV7.conversation.version) || (snapshot.router_prompt_version === eightRouterVersion && snapshot.version === runtime.conversation.version))) throw new AppFailure('unsupported_router_settings');
   if (snapshot.cache_version !== undefined && snapshot.cache_version !== conversationCacheVersion) throw new AppFailure('unsupported_conversation_settings');
@@ -198,7 +201,7 @@ export function conversationBody(snapshot: Json, partnerId: string, question: st
   if (!partner) throw new AppFailure('invalid_character');
   const memoryOwner = snapshot.request_partner?.memory_owner_character ?? partnerId;
   if (snapshot.request_partner && requestPartner(snapshot, memoryOwner) !== partnerId) throw new AppFailure('request_partner_changed');
-  if (memorySupported(snapshot.memory_version) && snapshot.memory_context?.character_id !== ([sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(snapshot.memory_version) ? sharedMemoryId : memoryOwner)) throw new AppFailure('memory_snapshot_missing');
+  if (snapshot.memory_control !== memoryControlVersion && memorySupported(snapshot.memory_version) && snapshot.memory_context?.character_id !== ([sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(snapshot.memory_version) ? sharedMemoryId : memoryOwner)) throw new AppFailure('memory_snapshot_missing');
   const system = conversationSystem(snapshot, messages);
   if (snapshot.time_version && snapshot.system_sha256 !== hash(system)) throw new AppFailure('system_snapshot_changed');
   return { model: partner.model, stream: true, max_tokens: snapshot.max_tokens, provider: snapshot.provider,
@@ -213,7 +216,7 @@ export function conversationBody(snapshot: Json, partnerId: string, question: st
 export function conversationSystem(snapshot: Json, messages: Message[]): string {
   let system = snapshot.system_prompt;
   if (snapshot.version === conversationV5.conversation.version && snapshot.time_version && openingKind(snapshot) !== 'user') system += '\n\n' + openingAddendum;
-  if (memorySupported(snapshot.memory_version)) {
+  if (snapshot.memory_control !== memoryControlVersion && memorySupported(snapshot.memory_version)) {
     if (!snapshot.memory_context) throw new AppFailure('memory_snapshot_missing');
     system += memoryContext(snapshot.memory_context, snapshot.memory_version);
   }

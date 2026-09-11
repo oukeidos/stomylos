@@ -82,6 +82,8 @@ function errorText(error: unknown): string {
     starter_catalog_corrupt: 'The question catalog could not be verified. Restart with a valid application build or restore a verified backup.',
     starter_not_retryable: 'Starter renewal is already running or has been saved.',
     memory_waiting_for_earlier_session: 'Resolve the earlier memory update first. Your conversation can continue.',
+    memory_retry_disabled: 'This reply used memory. Turn Memory on to retry it.',
+    memory_setting_conflict: 'The memory setting changed. Review its current state and try again.',
     memory_in_use: 'Finish the current chat and its memory processing before editing. Your edit is preserved.',
     memory_edit_conflict: 'Saved memory changed. Review the latest version before saving.',
     memory_edit_capacity: 'Memory is over capacity. Shorten the edit before saving.',
@@ -224,10 +226,12 @@ function Renewal({ view, onToggle, act, initialOpen = false }: { view: SessionVi
 }
 function MemoryDetails({ view, act, show, openShared, initialOpen }: { view: SessionView; act: (fn: () => Promise<unknown>) => void; show: (id: string) => Promise<void>; openShared(): void; initialOpen: boolean }) {
   const memory = view.memory, job = memory?.job;
+  const policy=view.memoryPolicy;
+  const memoryStatus=policy?.firstEnabled === null ? 'Not used yet' : policy?.firstEnabled === false ? 'Not used in this chat' : policy?.updatesDisabled ? 'Used in this chat · Updates disabled' : 'Used in this chat';
   const state = job?.state;
   const recover = !view.endProcessing?.cancelled && !!state && ['pending', 'failed', 'interrupted'].includes(state);
   return <Disclosure initialOpen={initialOpen} title="Shared memory" subtitle={state === 'completed' ? 'Updated' : state === 'running' ? 'Updating' : state === 'skipped' ? 'Update skipped' : recover ? 'Update pending' : undefined}>
-    <p className="note">This chat keeps the memory it used. Its update contributes to future chats.</p><button onClick={openShared}>Open shared memory</button>
+    <p className="note">{memoryStatus}</p><button onClick={openShared}>Open shared memory</button>
     {recover && <p className="note">Your chat is saved. {memory.blockedBy ? 'An earlier memory update needs to be resolved first.' : 'Retry the unfinished memory stage or force cancel remaining work. Force cancellation preserves already saved results and discards uncommitted memory.'}</p>}
     {memory?.blockedBy && recover && <button onClick={() => act(() => show(memory.blockedBy!))}>Open earlier chat</button>}
     {recover && !memory.blockedBy && <button onClick={() => act(() => window.stomylos.command('retryMemory', { sessionId: view.session.id }))}>Retry memory update</button>}
@@ -236,7 +240,7 @@ function MemoryDetails({ view, act, show, openShared, initialOpen }: { view: Ses
       <MemoryChangeHistory memory={memory} ended={view.session.state === 'ended'} />
     </Disclosure>
     {([['Used in this chat', memory?.snapshot]] as const).map(([title, doc]) => <Disclosure title={title} key={title}>
-      {!doc ? <p className="note">{JSON.parse(view.session.chat_config).memory_version ? 'Memory is chosen when the partner first replies.' : 'This older chat did not use memory.'}</p> : <MemoryRecords document={doc} />}
+      {!doc || policy?.firstEnabled !== true ? <p className="note">{memoryStatus}</p> : <MemoryRecords document={doc} />}
     </Disclosure>)}
   </Disclosure>;
 }

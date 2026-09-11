@@ -12,7 +12,7 @@ import { ASR } from '../shared/asr';
 import { dictationId } from './asr-store';
 import { validApiKey } from '../shared/credentials';
 
-const commands: (keyof CommandArgs)[] = [...explainCommands, ...patternCommands, ...genieCommands, 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'loadSession', 'saveDraft', 'replaceStarter', 'setOpening', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
+const commands: (keyof CommandArgs)[] = [...explainCommands, ...patternCommands, ...genieCommands, 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'setMemoryPreference', 'memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'loadSession', 'saveDraft', 'replaceStarter', 'setOpening', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
   'searchMode', 'sendMessage', 'retryReply', 'endSession', 'newSession', 'retryAnalysis', 'cancelAnalysis', 'retryStarterRenewal', 'continueEnd', 'cancelEnd', 'retryMemory', 'skipMemory', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'manageKey', 'close'];
 const noArgs = new Set(['usageSnapshot', 'speechPreviewStop', 'retryDeletionCleanup', 'asrSnapshot', 'speechSnapshot', 'speechStop', 'speechClear', 'memoryManagement', 'currentMemory', 'snapshot', 'newSession', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'close']);
 export function validateCommand(name: unknown, args: unknown): asserts name is keyof CommandArgs {
@@ -24,6 +24,10 @@ export function validateCommand(name: unknown, args: unknown): asserts name is k
   if (noArgs.has(name)) { if (args !== undefined) bad(); return; }
   if (!args || typeof args !== 'object' || Array.isArray(args)) return bad();
   const value = args as Record<string, unknown>;
+  if (name === 'setMemoryPreference') {
+    if (Object.keys(value).length !== 2 || typeof value.enabled !== 'boolean' || !Number.isSafeInteger(value.revision) || (value.revision as number) < 0) bad();
+    return;
+  }
   if (name === 'editMemory') {
     if (Object.keys(value).length !== 4 || typeof value.id !== 'string' || !value.id || value.id.length > 1000 ||
       !Number.isSafeInteger(value.revision) || (value.revision as number) < 0 || typeof value.hash !== 'string' || !/^[a-f0-9]{64}$/.test(value.hash) ||

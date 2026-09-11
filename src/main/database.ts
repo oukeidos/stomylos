@@ -1,3 +1,5 @@
+import { memoryControlVersion } from '../shared/memory-control';
+import { memoryPreference, memoryPolicy, memoryReadAllowed } from './memory-control';
 import type { MemoryEdit, MemoryManagement } from '../shared/memory-management';
 import { memoryCharacters, memoryCharacterCap } from './memory-render';
 import { validateFlatMemory } from './memory-flat';
@@ -27,7 +29,7 @@ import { lockDirectory } from './storage';
 import { StarterStore } from './starter-store';
 import { IntentionQuestionStore } from './intention-question-store';
 import { MemoryStore } from './memory-store';
-import { emptyMemory, memoryJson, memoryHash, sharedMemoryId } from './memory-updater';
+import { emptyMemory, memoryJson, memoryHash, sharedMemoryId, memorySupported } from './memory-updater';
 import { openingVersion, parkedStarter, sessionOpening, validateOpeningSource } from './opening';
 import type { DeletionAssets } from '../shared/types';
 import { SearchStore } from './search-store';
@@ -206,7 +208,7 @@ export class Store {
   units(id: string): GrammarUnit[] {
     return this.all('SELECT u.* FROM grammar_units u JOIN sessions s ON s.selected_analysis_id=u.analysis_attempt_id WHERE s.id=? ORDER BY u.ordinal', id);
   }
-  view(id: string): SessionView { const session = this.session(id); return { session, endProcessing: this.endStatus(id), partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: undefined, outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && this.starter.outdated(session.starter_id), memory: this.memory.view(session), search: this.search.view(id), searches: this.search.history(id) }; }
+  view(id: string): SessionView { const session = this.session(id); return { session, memoryPolicy: memoryPolicy(this.db,id), endProcessing: this.endStatus(id), partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: undefined, outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && this.starter.outdated(session.starter_id), memory: this.memory.view(session), search: this.search.view(id), searches: this.search.history(id) }; }
   searchMode(id: string, mode: SearchMode) { this.transaction(() => this.search.setMode(this.session(id), this.messages(id), mode)); }
   searchView(id: string) { this.session(id); return this.search.view(id); }
   searchPrepare(id: string) { return this.search.prepare(id); }
@@ -442,21 +444,24 @@ export class Store {
       const source = messages.filter(m => m.sequence <= user.sequence);
       const last = this.requests(id).findLast(r => r.role === 'chat' && r.source_sequence === user.sequence);
       if (kind === 'automatic') kind = last && last.status !== 'succeeded' ? 'retry' : 'send';
-      const parent = kind === 'retry' ? last ?? null : null;
+      // Never-transmitted recovery uses the current first-send policy, not an old prepared body.
+      const parent = kind === 'retry' && memoryPolicy(this.db,id).firstEnabled !== null ? last ?? null : null;
       if (last && !['failed', 'interrupted'].includes(last.status)) throw new AppFailure('reply_not_retryable');
       const pending = kind === 'retry' ? null : this.partners.bind(session, messages);
       if (kind === 'different_model' && !pending) throw new AppFailure('partner_selection_missing');
       if (pending && pending.state !== 'ready') throw new AppFailure('partner_selection_pending');
+      if (parent && JSON.parse(parent.config).memory_context && !memoryReadAllowed(this.db,id)) throw new AppFailure('memory_retry_disabled');
       const memory = this.memory.snapshot(session);
       let snapshot = conversationRequestSnapshot(JSON.parse(session.chat_config));
       if (memory) snapshot.memory_context = memory;
+      else snapshot.memory_control = memoryControlVersion;
       let target = pending?.selected_character ?? this.partners.state(session).current_character ?? session.character;
       if (parent) {
         if (parent.source_hash !== hash(transcriptJson(source)) || hash(parent.config) !== parent.config_hash) throw new AppFailure('retry_source_changed');
         snapshot = JSON.parse(parent.config);
         target = requestPartner(snapshot, session.character);
         if (snapshot.time_version && (!isDeepStrictEqual(snapshot.time_context?.sources, timeSources(source, messageId => readMessageTime(this.db, messageId))) ||
-          !isDeepStrictEqual(snapshot.memory_context, memory))) throw new AppFailure('temporal_source_changed');
+          (snapshot.memory_control !== memoryControlVersion && !isDeepStrictEqual(snapshot.memory_context, memory)))) throw new AppFailure('temporal_source_changed');
       } else {
         if (snapshot.time_version) {
           const sources = timeSources(source, messageId => readMessageTime(this.db, messageId));
@@ -504,8 +509,57 @@ export class Store {
       return this.request(requestId);
     });
   }
+  memoryPreference() { return memoryPreference(this.db); }
+  setMemoryPreference(enabled: boolean, revision: number) {
+    return this.transaction(() => {
+      if (this.endBlocker() || this.all("SELECT 1 FROM memory_jobs WHERE state NOT IN ('completed','skipped') LIMIT 1").length) throw new AppFailure('end_processing_pending');
+      const current = this.memoryPreference();
+      if (current.enabled === enabled) return current;
+      if (current.revision !== revision) throw new AppFailure('memory_setting_conflict');
+      this.run('UPDATE memory_preferences SET enabled=?,revision=revision+1 WHERE id=1', Number(enabled));
+      if (!enabled) this.run("UPDATE session_memory_policy SET updates_disabled=1 WHERE session_id IN (SELECT id FROM sessions WHERE state!='ended')");
+      return this.memoryPreference();
+    });
+  }
+  /** Final dispatch admission; caller serializes this short step with preference changes. */
+  startChat(requestId: string) {
+    return this.transaction(() => {
+      let request = this.request(requestId);
+      if (request.role !== 'chat' || request.status !== 'queued') throw new AppFailure('request_not_queued');
+      const policy = memoryPolicy(this.db, request.session_id), snapshot = JSON.parse(request.config);
+      const allowed = memoryReadAllowed(this.db, request.session_id) && memorySupported(snapshot.memory_version);
+      const exactRetry = request.parent_id !== null && policy.firstEnabled !== null;
+      if (exactRetry && snapshot.memory_context && !allowed) throw new AppFailure('memory_retry_disabled');
+      if (!exactRetry && !!snapshot.memory_context !== allowed) {
+        const session = this.session(request.session_id);
+        delete snapshot.memory_context; delete snapshot.memory_control;
+        if (allowed) snapshot.memory_context = this.memory.snapshot(session);
+        else snapshot.memory_control = memoryControlVersion;
+        const source = this.messages(session.id).filter(m => m.sequence <= request.source_sequence);
+        if (snapshot.time_version) snapshot.system_sha256 = hash(conversationSystem(snapshot, source));
+        this.failRequest(request.id, 'memory_setting_changed');
+        const original = request;
+        request = this.createRequest(session.id,'chat',snapshot);
+        this.search.attach(request,source.findLast(isLearner)!);
+        // Keep the never-transmitted original request immutable for diagnostics.
+        if (original.dispatched_at !== null) throw new AppFailure('request_already_dispatched');
+      }
+      const body = this.chatBody(request.id);
+      const bubble = this.prepareReply(request.session_id,request.id);
+      this.dispatch(request.id);
+      return { request:this.request(request.id), body, bubble };
+    });
+  }
   dispatch(id: string) {
+    return this.transaction(() => {
+    const request = this.request(id);
+    if (request.role === 'chat') {
+      const context = JSON.parse(request.config).memory_context;
+      if (context && !memoryReadAllowed(this.db,request.session_id)) throw new AppFailure('memory_retry_disabled');
+      this.run('INSERT OR IGNORE INTO session_memory_policy VALUES(?,?,?)',request.session_id,Number(!!context),Number(!context));
+    }
     if (this.run("UPDATE model_requests SET status='dispatched',dispatched_at=? WHERE id=? AND status='queued'", now(), id).changes !== 1) throw new AppFailure('request_not_queued');
+    });
   }
   prepareReply(id: string, requestId: string): Message {
     return this.transaction(() => {

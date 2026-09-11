@@ -41,7 +41,7 @@ export const SettingsDialog = forwardRef<SettingsHandle, {
           {item.id !== 'memory' && <h3 className="settings-title">{item.label}</h3>}
           {item.id === 'voice' && <SpeechSettings active={open && tab === 'voice'} />}
           {item.id === 'usage' && <UsageSettings active={open && tab === 'usage'} />}
-          {item.id === 'memory' && <MemoryManager ref={memory} active={open && tab === 'memory'} errorText={errorText} openChat={id => { onOpenChange(false); openChat(id); }} />}
+          {item.id === 'memory' && <MemoryManager preference={settings.memory} ref={memory} active={open && tab === 'memory'} errorText={errorText} openChat={id => { onOpenChange(false); openChat(id); }} />}
           {item.id === 'data' && <>
             <CredentialSettings active={open && tab === 'data'} settings={settings} errorText={errorText} />
             <section className="setting"><strong>History on this computer</strong><p className="note">Model requests go through OpenRouter to external providers. Provider retention policies apply.</p><details className="settings-details"><summary>Storage details</summary><code>{settings.dataPath}</code></details></section>

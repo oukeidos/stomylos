@@ -51,14 +51,14 @@ export interface RenewalView {
   id: string; state: RenewalJob['state']; model: string; created_at: string; accepted_count: number;
   attempts: Omit<RenewalAttempt, 'response_content'>[];
 }
-export interface SessionView { endProcessing?: Json | null; partner: PartnerView; bookmarked: boolean; canBookmark: boolean; session: Session; messages: Message[]; requests: RequestRecord[]; units: GrammarUnit[]; renewal: RenewalView | null; intentions?: import('./intention').IntentionView; outdatedOpening?: boolean; memory: import('./memory').MemoryView; search?: import('./search').SearchView | null; searches?: import('./search').SearchView[] }
+export interface SessionView { memoryPolicy?: import('./memory-control').MemoryPolicy; endProcessing?: Json | null; partner: PartnerView; bookmarked: boolean; canBookmark: boolean; session: Session; messages: Message[]; requests: RequestRecord[]; units: GrammarUnit[]; renewal: RenewalView | null; intentions?: import('./intention').IntentionView; outdatedOpening?: boolean; memory: import('./memory').MemoryView; search?: import('./search').SearchView | null; searches?: import('./search').SearchView[] }
 export type SessionSummary = Pick<Session, 'id' | 'state' | 'starter_text' | 'created_at' | 'analysis_state'> & { title: string; bookmarked: boolean; canBookmark: boolean };
 export type HistoryFilter = 'all' | 'bookmarked';
 export interface SessionPage { sessions: SessionSummary[]; hasMore: boolean; offset: number; filter: HistoryFilter }
 export interface DeletionAssets { speechKeys: string[]; dictationIds: string[] }
 export interface Starter { id: string; text: string; version: string }
 export interface Character { id: string; label: string; description: string; model: string; reasoning?: Json }
-export interface Settings { keyPresent: boolean; keyPath: string; dataPath: string; appVersion: string; development: boolean; simulation?: boolean; credentials?: import('./credentials').KeyStatus }
+export interface Settings { memory?: import('./memory-control').MemoryPreference; keyPresent: boolean; keyPath: string; dataPath: string; appVersion: string; development: boolean; simulation?: boolean; credentials?: import('./credentials').KeyStatus }
 export interface Activity {
   sessionId: string | null; requestId: string | null; phase: 'idle' | 'preparing' | 'routing' | 'reply';
   streamingMessageId: string | null; streamingText: string;
@@ -82,6 +82,7 @@ export type AppEvent = { type: 'usage-changed' } | { type: 'explain'; record: im
   { type: 'session-deleted'; revision: number; sessionId: string } |
   { type: 'close-requested'; revision: number };
 export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, PatternCommandArgs {
+  setMemoryPreference: { enabled: boolean; revision: number };
   usageSnapshot: undefined;
   usageBudget: { amount: string | null };
   asrSnapshot: undefined;
@@ -141,6 +142,7 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   close: undefined;
 }
 export interface CommandResults extends ExplainCommandResults, GenieCommandResults, PatternCommandResults {
+  setMemoryPreference: import('./memory-control').MemoryPreference;
   usageSnapshot: import('./usage').UsageSnapshot;
   usageBudget: import('./usage').UsageSnapshot;
   asrSnapshot: import('./asr').DictationSnapshot; asrContext: void; asrBegin: void;

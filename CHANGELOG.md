@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-09-11
 
+- Add a global Memory On/Off switch in Settings with schema 26 upgrades.
 - Add compact memory search, editing and confirmed deletion in Settings, with draft protection and schema 25 compatibility.
 - Update the 5,000-question English catalog automatically while preserving usage counts, conversation history and unfinished drafts.
 - Add Expand (DeepSeek V4.1 Flash), adopt Share/Prefer and a centered partner order, show model names, and introduce Luna→Terra Auto recovery with schema 23 compatibility.

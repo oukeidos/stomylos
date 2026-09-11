@@ -1,6 +1,7 @@
 import { flattenMemory, validateFlatMemory, isFlatMemory } from './memory-flat';
 import { cleanupConfig, parseCleanupResponse, flatCleanupVersion, legacyCleanupVersion } from './memory-cleanup';
 import { memoryCharacters, memoryCharacterCap } from './memory-render';
+import { memoryReadAllowed, memoryWriteAllowed } from './memory-control';
 import type Database from 'better-sqlite3';
 import type { Json, Message, Session } from '../shared/types';
 import type { MemoryAttempt, StoredMemoryDocument as MemoryDocument, MemoryJob, MemoryPacket as LegacyMemoryPacket, FlatMemoryPacket, MemoryView } from '../shared/memory';
@@ -55,6 +56,7 @@ export class MemoryStore {
     if (!this.row("SELECT 1 FROM memory_jobs WHERE state NOT IN ('completed','skipped') AND json_extract(config,'$.version')!=? LIMIT 1", flatUpdaterVersion)) this.run('DELETE FROM memory_legacy_bridge');
   }
   snapshot(session: Session): MemoryDocument | null {
+    if (!memoryReadAllowed(this.db, session.id)) return null;
     if (!memorySupported(JSON.parse(session.chat_config).memory_version)) return null;
     if (!session.character) return null;
     const saved = this.row<{ document: string; document_hash: string; character_id: string }>('SELECT * FROM session_memories WHERE session_id=?', session.id);
@@ -79,6 +81,7 @@ export class MemoryStore {
     return doc;
   }
   freeze(session: Session, messages: Message[]) {
+    if (!memoryWriteAllowed(this.db, session.id)) return;
     if (!memorySupported(JSON.parse(session.chat_config).memory_version) || !session.character || !messages.some(m => m.role === 'user' && m.origin === 'learner' && m.delivery === 'complete')) return;
     const temporal = [memoryVersion, sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(JSON.parse(session.chat_config).memory_version);
     const source = memoryJson({ id: session.id, character_id: session.character, ended_at: session.ended_at,

@@ -1,3 +1,5 @@
+import { MemoryControl } from './memory-control';
+import type { MemoryPreference } from '../shared/memory-control';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { IconButton } from './icon-button';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -8,11 +10,10 @@ import { memoryCharacters, memoryCharacterCap } from '../main/memory-render';
 export interface MemoryManagerHandle { beforeLeave(): Promise<boolean> }
 type Editor = { id: string; mode: 'edit' | 'delete'; original: string; text: string; base: MemoryManagement };
 export const MemoryManager = forwardRef<MemoryManagerHandle, {
-  active: boolean; errorText(error: unknown): string; openChat(id: string): void;
-}>(function MemoryManager({active, errorText, openChat}, ref) {
+  preference?: MemoryPreference; active: boolean; errorText(error: unknown): string; openChat(id: string): void;
+}>(function MemoryManager({active, preference, errorText, openChat}, ref) {
   const [data, setData] = useState<MemoryManagement | null>(null);
   const [query, setQuery] = useState('');
-  const [showInfo, setShowInfo] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -101,9 +102,8 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
   };
   return <div className="current-memory memory-manager" aria-busy={busy}>
     <div className="memory-heading"><h3 className="settings-title">Memory</h3>
-      <div className="memory-scope"><span>Shared across all partners</span><IconButton label="About memory" icon="info" aria-expanded={showInfo} aria-controls="memory-info" onClick={() => setShowInfo(value => !value)} /></div>
+      <MemoryControl active={active} preference={preference} errorText={errorText} />
     </div>
-    {showInfo && <p className="note memory-info" id="memory-info">Edit or delete saved details here. An untouched new chat uses your changes on its first Send. Existing chats and backups are unchanged; later conversations can learn the same information again.</p>}
     {!data && !loadError && <p role="status">Loading memory…</p>}
     {loadError && <div role="alert"><p>Memory could not be loaded.{editor ? ' Your edit is preserved.' : ''}</p><button onClick={() => void refresh()}>Retry loading memory</button></div>}
     {saveRecovery && busy && <div role="alert"><p>Memory could not be saved. Your edit is preserved.</p><button disabled={retryingSave} onClick={async () => {
