@@ -17,7 +17,7 @@
     "test": "node scripts/test.mjs",
     "test:all": "node scripts/test.mjs --all",
     "test:conversion": "node scripts/test.mjs --conversion",
-    "package": "npm run build && electron-builder --linux --dir",
+    "package": "npm run model:verify && npm run build && electron-builder --linux --dir",
     "test:e2e": "node scripts/verify-native.mjs",
     "test:models": "node scripts/verify-models.mjs",
     "test:scroll": "node scripts/verify-scroll.mjs",
@@ -35,7 +35,9 @@
     "assets:icon": "node scripts/render-icon.mjs",
     "test:model-switching": "node scripts/verify-model-switching.mjs",
     "artifacts:prune": "python3 scripts/prune-artifacts.py",
-    "test:retention": "python3 tests/artifact-retention.test.py"
+    "test:retention": "python3 tests/artifact-retention.test.py",
+    "model:fetch": "node scripts/fetch-memory-model.mjs",
+    "model:verify": "node scripts/fetch-memory-model.mjs --verify"
   },
   "build": {
     "appId": "io.github.oukeidos.stomylos",
@@ -59,7 +61,8 @@
       "!node_modules/better-sqlite3/prebuilds/win32-*.node"
     ],
     "asarUnpack": [
-      "**/*.node"
+      "**/*.node",
+      "**/*.so*"
     ],
     "linux": {
       "target": "dir",
@@ -83,9 +86,20 @@
       },
       "THIRD_PARTY_NOTICES.md"
     ],
-    "npmRebuild": true
+    "npmRebuild": true,
+    "extraResources": [
+      {
+        "from": "assets/memory-model",
+        "to": "memory-model",
+        "filter": [
+          "**/*",
+          "!**/*.partial"
+        ]
+      }
+    ]
   },
   "dependencies": {
+    "@huggingface/transformers": "4.2.0",
     "better-sqlite3": "13.0.3",
     "libflacjs": "5.6.0"
   },

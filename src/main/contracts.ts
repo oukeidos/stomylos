@@ -1,3 +1,4 @@
+import { coldContextVersion, coldRecallPolicy, renderCold, validateRecall } from './memory-recall';
 import { memoryControlVersion } from '../shared/memory-control';
 import { flattenMemory } from './memory-flat';
 import { createHash, randomInt } from 'node:crypto';
@@ -33,9 +34,10 @@ export const starters: Starter[] = runtime.starters;
 export const hash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 export const openingAddendum = 'The application-provided opening question does not count as your previous question.';
 const conversationCacheVersion = 'stomylos_conversation_cache_v1';
-export const conversationComponents = (version = runtime.conversation.version, memory = version === runtime.conversation.version ? flatMemoryVersion : memoryVersion) => ({
+export const conversationComponents = (version = runtime.conversation.version, memory = version === runtime.conversation.version ? coldContextVersion : memoryVersion) => ({
   ...(version === conversationV5.conversation.version ? { opening_v1: hash(openingAddendum) } : {}),
-  [memory === flatMemoryVersion ? 'memory_v5' : memory === capacityMemoryVersion ? 'memory_v4' : memory === sharedMemoryVersion ? 'memory_v3' : 'memory_v2']: hash(memoryContext(memory === flatMemoryVersion ? flattenMemory(emptyMemory('template')) : emptyMemory('template'), memory)), time_v1: hash(timePrompt)
+  [memory === coldContextVersion ? 'memory_v6' : memory === flatMemoryVersion ? 'memory_v5' : memory === capacityMemoryVersion ? 'memory_v4' : memory === sharedMemoryVersion ? 'memory_v3' : 'memory_v2']: hash(memoryContext([coldContextVersion,flatMemoryVersion].includes(memory) ? flattenMemory(emptyMemory('template')) : emptyMemory('template'), memory)), time_v1: hash(timePrompt),
+  ...(memory === coldContextVersion ? {cold_recall_v1: hash(coldRecallPolicy + renderCold([{id:'template',text:'template',text_hash:hash('template'),observed_at:null,edited_at:null,time_basis:'unknown'}]))} : {})
 });
 export const transcriptJson = (messages: Message[]) => JSON.stringify(messages.map(m => ({ role: m.role, content: m.content })), null, 2);
 export const isLearner = (m: Message) => m.role === 'user' && m.origin === 'learner';
@@ -110,7 +112,7 @@ export function routerSnapshot(snapshot?: Json): Json {
 }
 export function conversationSnapshot(kind?: OpeningKind): Json {
   return { ...structuredClone(runtime.conversation), system_prompt: runtime.conversationPrompt,
-    prompt_id: 'stomylos_conversation_prompt_v5', prompt_sha256: hash(runtime.conversationPrompt), app_version: appVersion, memory_version: flatMemoryVersion,
+    prompt_id: 'stomylos_conversation_prompt_v5', prompt_sha256: hash(runtime.conversationPrompt), app_version: appVersion, memory_version: coldContextVersion,
     time_version: timeVersion, component_hashes: conversationComponents(), router_prompt_version: eightRouterVersion,
     ...(kind ? { opening: { version: openingVersion, kind } } : {}) };
 }
@@ -155,13 +157,13 @@ function runtimeForVersion(version: string) {
 function validateConversationSnapshot(snapshot: Json) {
   openingKind(snapshot);
   if (snapshot.memory_control !== undefined && snapshot.memory_control !== memoryControlVersion) throw new AppFailure('unsupported_memory_settings');
-  if (snapshot.memory_control === memoryControlVersion && snapshot.memory_context !== undefined) throw new AppFailure('unsupported_memory_settings');
+  if (snapshot.memory_control === memoryControlVersion && (snapshot.memory_context !== undefined || snapshot.cold_recollections !== undefined)) throw new AppFailure('unsupported_memory_settings');
   if (snapshot.version === runtime.conversation.version && snapshot.router_prompt_version !== eightRouterVersion) throw new AppFailure('unsupported_router_settings');
   if (snapshot.router_prompt_version !== undefined && !((snapshot.router_prompt_version === compactRouterVersion && snapshot.version === conversationV7.conversation.version) || (snapshot.router_prompt_version === eightRouterVersion && snapshot.version === runtime.conversation.version))) throw new AppFailure('unsupported_router_settings');
   if (snapshot.cache_version !== undefined && snapshot.cache_version !== conversationCacheVersion) throw new AppFailure('unsupported_conversation_settings');
   const modern = [runtime.conversation.version, conversationV7.conversation.version, conversationV6.conversation.version, conversationV5.conversation.version].includes(snapshot.version);
   if (modern) {
-    if (!(snapshot.memory_version === memoryVersion || ([runtime.conversation.version, conversationV7.conversation.version, conversationV6.conversation.version].includes(snapshot.version) && [sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(snapshot.memory_version))) || snapshot.time_version !== timeVersion ||
+    if (!(snapshot.memory_version === memoryVersion || ([runtime.conversation.version, conversationV7.conversation.version, conversationV6.conversation.version].includes(snapshot.version) && [sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion, coldContextVersion].includes(snapshot.memory_version))) || snapshot.time_version !== timeVersion ||
         !isDeepStrictEqual(snapshot.component_hashes, conversationComponents(snapshot.version, snapshot.memory_version))) throw new AppFailure('unsupported_temporal_settings');
     const promptId = snapshot.version === conversationV5.conversation.version ? 'stomylos_conversation_prompt_v4' : 'stomylos_conversation_prompt_v5';
     if (snapshot.prompt_id !== promptId) throw new AppFailure('unsupported_conversation_prompt');
@@ -201,7 +203,7 @@ export function conversationBody(snapshot: Json, partnerId: string, question: st
   if (!partner) throw new AppFailure('invalid_character');
   const memoryOwner = snapshot.request_partner?.memory_owner_character ?? partnerId;
   if (snapshot.request_partner && requestPartner(snapshot, memoryOwner) !== partnerId) throw new AppFailure('request_partner_changed');
-  if (snapshot.memory_control !== memoryControlVersion && memorySupported(snapshot.memory_version) && snapshot.memory_context?.character_id !== ([sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(snapshot.memory_version) ? sharedMemoryId : memoryOwner)) throw new AppFailure('memory_snapshot_missing');
+  if (snapshot.memory_control !== memoryControlVersion && memorySupported(snapshot.memory_version) && snapshot.memory_context?.character_id !== ([sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion, coldContextVersion].includes(snapshot.memory_version) ? sharedMemoryId : memoryOwner)) throw new AppFailure('memory_snapshot_missing');
   const system = conversationSystem(snapshot, messages);
   if (snapshot.time_version && snapshot.system_sha256 !== hash(system)) throw new AppFailure('system_snapshot_changed');
   return { model: partner.model, stream: true, max_tokens: snapshot.max_tokens, provider: snapshot.provider,
@@ -219,6 +221,11 @@ export function conversationSystem(snapshot: Json, messages: Message[]): string 
   if (snapshot.memory_control !== memoryControlVersion && memorySupported(snapshot.memory_version)) {
     if (!snapshot.memory_context) throw new AppFailure('memory_snapshot_missing');
     system += memoryContext(snapshot.memory_context, snapshot.memory_version);
+    if (snapshot.memory_version === coldContextVersion) {
+      if (!snapshot.cold_recollections) throw new AppFailure('cold_snapshot_missing');
+      validateRecall(snapshot.cold_recollections);
+      system += snapshot.cold_recollections.block;
+    } else if (snapshot.cold_recollections !== undefined) throw new AppFailure('unsupported_memory_settings');
   }
   if (snapshot.time_version) {
     if (!snapshot.time_context || snapshot.temporal_source_hash !== temporalHash(snapshot.time_context.sources)) throw new AppFailure('temporal_source_changed');

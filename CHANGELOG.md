@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve FIFO memory evictions as original Older notes, group them with local embeddings and recall up to three notes per new eligible chat, with schema 30 migration, explicit deletion and resumable indexing.
+- Fetch the memory model from a pinned upstream revision with verified checksums while keeping downloaded model files out of Git.
 - Fix End and start new to open a new chat automatically after blocking end processing resolves.
 - Consolidate conversation memory details into the fixed snapshot and per-input changes with exact-input recovery.
 - Fix startup for existing schema-28 databases by removing the previous-memory archive through a backed-up schema-29 migration.

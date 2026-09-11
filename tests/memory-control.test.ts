@@ -14,7 +14,8 @@ function fixture() {
  const dir=mkdtempSync('/tmp/stomylos-memory-control-'),store=new Store(dir,resolve('native/advisory-lock.node'));
  const db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);
  const document=memoryJson({character_id:'shared',revision:3,database_records:[{id:'a',text:'MEMORY_SENTINEL likes tea.'}]});
- db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(document,memoryHash(document));return f;
+ db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(document,memoryHash(document));
+ db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,origin) VALUES('a',0,0,'legacy')").run();return f;
 }
 function toggle(store:Store, enabled:boolean) {return store.setMemoryPreference(enabled,store.memoryPreference().revision);}
 function send(store:Store,id:string,text='I enjoy museums.') {store.searchMode(id,'off');store.selectManual(id,'model_04');store.submit(id,text);store.commitRoute(id,null,'fixture',null);}

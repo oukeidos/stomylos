@@ -6,7 +6,7 @@ import source28 from '../src/main/migrations/schema-v28.sql?raw';
 import source from '../src/main/migrations/schema-v27.sql?raw';
 import current from '../src/main/schema.sql?raw';
 import {StarterStore} from '../src/main/starter-store';
-import {migrateDatabase,validateSchema} from '../src/main/database-migrations';
+import {migrateDatabase,validateSchema,currentSchema} from '../src/main/database-migrations';
 import {memoryHash,memoryJson} from '../src/main/memory-updater';
 import {memoryCharacters} from '../src/main/memory-render';
 const fixtures:{dir:string;db:Database.Database}[]=[];
@@ -20,7 +20,7 @@ it('preserves old memory in the migration backup only, retires pending work and 
  db.prepare("INSERT INTO memory_attempts(id,job_id,input_json,input_hash,status,created_at,response_content,metadata) VALUES('old',1,'old input','ih','dispatched','2026-09-01','old response','{\"usage\":{\"cost\":0.02}}')").run();
  db.prepare("INSERT INTO end_processing(session_id,created_at) VALUES('s','2026-09-01')").run();db.prepare("INSERT INTO end_stage_state(session_id,stage,response_id,response_content,response_metadata) VALUES('s','update','old','old response','{}')").run();
  const jobs=db.prepare('SELECT * FROM memory_jobs').all(),attempts=db.prepare('SELECT * FROM memory_attempts').all(),snapshots=db.prepare('SELECT * FROM session_memories').all();
- migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(29);
+ migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
  expect(db.prepare("SELECT name FROM sqlite_master WHERE name='memory_cutover_archive'").get()).toBeUndefined();
  const recovery=new Database(join(dir,'stomylos.pre-migration-v27.sqlite3'),{readonly:true});
  try {expect(recovery.prepare('SELECT document FROM shared_memory').pluck().get()).toBe(document);} finally {recovery.close();}
@@ -34,22 +34,22 @@ it('preserves old memory in the migration backup only, retires pending work and 
 it('rolls back step 28 and retries with the original verified backup',()=>{
  const {dir,db,document}=fixture(),exec=db.exec.bind(db);const fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=exec(sql);if(sql.includes('CREATE TABLE memory_add_jobs'))throw new Error('cutover failure');return result;});
  expect(()=>migrateDatabase(db,dir)).toThrow('cutover failure');fault.mockRestore();expect(db.pragma('user_version',{simple:true})).toBe(27);validateSchema(db,source);expect(db.prepare('SELECT document FROM shared_memory').pluck().get()).toBe(document);
- const bytes=readFileSync(join(dir,'stomylos.pre-migration-v27.sqlite3'));migrateDatabase(db,dir);expect(readFileSync(join(dir,'stomylos.pre-migration-v27.sqlite3'))).toEqual(bytes);expect(db.pragma('user_version',{simple:true})).toBe(29);
+ const bytes=readFileSync(join(dir,'stomylos.pre-migration-v27.sqlite3'));migrateDatabase(db,dir);expect(readFileSync(join(dir,'stomylos.pre-migration-v27.sqlite3'))).toEqual(bytes);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
 });
 
-it('opens the installed archive-bearing schema 28, rolls back interrupted removal and preserves every remaining table in schema 29',()=>{
+it('opens the installed archive-bearing schema 28, rolls back interrupted removal and preserves existing fields through current schema',()=>{
  const {dir,db,document}=fixture(source28,28);
  const active=memoryJson({character_id:'shared',revision:8,database_records:[{id:'active',text:'Keep this active note.'}]});
  db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(active,memoryHash(active));
  db.prepare("INSERT INTO memory_item_metadata VALUES('active',0,0,NULL,NULL,NULL,'legacy')").run();
  db.prepare("INSERT INTO memory_cutover_archive VALUES(1,?,?,?,0)").run(document,memoryHash(document),'2026-09-11');
  const tables=(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='memory_cutover_archive' ORDER BY name").all() as {name:string}[]).map(r=>r.name);
- const state=()=>Object.fromEntries(tables.map(t=>[t,db.prepare(`SELECT * FROM "${t}"`).all()]));const before=state();
+ const state=()=>Object.fromEntries(tables.map(t=>[t,db.prepare(t==='memory_item_metadata'?'SELECT id,source_order,item_index,source_message_id,source_session_id,observed_at,origin FROM memory_item_metadata':`SELECT * FROM "${t}"`).all()]));const before=state();
  const exec=db.exec.bind(db),fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=exec(sql);if(sql.includes('DROP TABLE memory_cutover_archive'))throw new Error('removal interrupted');return result;});
  expect(()=>migrateDatabase(db,dir)).toThrow('removal interrupted');fault.mockRestore();
  expect(db.pragma('user_version',{simple:true})).toBe(28);validateSchema(db,source28);expect(state()).toEqual(before);
  const backup=readFileSync(join(dir,'stomylos.pre-migration-v28.sqlite3'));
- migrateDatabase(db,dir);expect(db.pragma('user_version',{simple:true})).toBe(29);validateSchema(db,current);expect(state()).toEqual(before);
+ migrateDatabase(db,dir);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);validateSchema(db,current);expect(state()).toEqual(before);
  expect(db.prepare("SELECT name FROM sqlite_master WHERE name IN ('memory_cutover_archive','immutable_memory_cutover')").all()).toEqual([]);
  expect(readFileSync(join(dir,'stomylos.pre-migration-v28.sqlite3'))).toEqual(backup);
  migrateDatabase(db,dir);expect(state()).toEqual(before);

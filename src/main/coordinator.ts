@@ -1,3 +1,4 @@
+import type { MemoryEmbeddingController } from './memory-embedding-controller';
 import { providerComplete, type PrepareProvider } from './provider-dispatch';
 import { recoverRouter, routerRecoveryVersion } from './router-recovery';
 import { endRetryDelay, waitEndRetry } from './end-retry';
@@ -27,6 +28,7 @@ export class Coordinator {
   readonly explain: ExplainController;
   readonly patterns: PatternReportController;
   patternViewer: { open(id: string, html: string, createdAt: string): Promise<void>; close(id?: string): void } | null = null;
+  cold?: MemoryEmbeddingController;
   speech?: SpeechController;
   dictation?: DictationController;
   private exiting = false;
@@ -93,7 +95,7 @@ export class Coordinator {
     this.memoryAdmission = pending.catch(() => undefined); return pending;
   }
   private cachedEndBlockers: { sessionId: string; title: string }[] = [];
-  async initialize() { await this.db.ready; if (!(await this.db.call('endBlocker'))) await this.db.call('createSession'); this.pumpMemory(); }
+  async initialize() { await this.db.ready; if (!(await this.db.call('endBlocker'))) await this.db.call('createSession'); this.pumpMemory(); await this.cold?.initialize(); }
   async snapshot(): Promise<AppSnapshot> {
     const revision = this.revision; const activity = { ...this.activity }; const settings = { ...this.settings };
     let page = this.cachedPage; let unfinished = this.cachedUnfinished;
@@ -148,6 +150,7 @@ export class Coordinator {
         if (!active) return;
         this.assertBackupIdle(); await this.saveTail;
         if (!active) return;
+        await this.cold?.suspend();
         await this.speech?.pauseOpening(); await this.speech?.settleBackup();
         this.assertBackupIdle();
       })()]);
@@ -156,6 +159,7 @@ export class Coordinator {
       return await operation();
     } finally {
       active = false; this.backupReject = undefined;
+      this.cold?.resume();
       this.speech?.resumeOpening(); this.backupLocked = false;
       if (this.grammarQueue.length) this.pump();
       if (this.renewalQueue.length) this.pumpRenewal();
@@ -174,6 +178,8 @@ export class Coordinator {
     if (name === 'genieDraft') { const a = args as CommandArgs['genieDraft']; this.genie.updateDraft(a.episodeId, a.text, a.revision); return undefined as CommandResults[K]; }
     if (name === 'genieClose' || name === 'genieCancel') { await this.genie.cancel((args as CommandArgs['genieClose']).episodeId, name === 'genieClose'); return undefined as CommandResults[K]; }
     if (['patternRelated', 'patternPreview', 'patternState', 'patternList', 'patternDetail', 'patternRetrySave', 'patternClose'].includes(name)) return this.patterns.command(name as keyof PatternCommandArgs, args as never) as Promise<CommandResults[K]>;
+    if (name === 'coldStatus') return this.db.call('coldStatus') as Promise<CommandResults[K]>;
+    if (name === 'coldPage') { const value = args as CommandArgs['coldPage']; return this.db.call('coldPage', value.query, value.offset) as Promise<CommandResults[K]>; }
     if (name === 'memoryManagement') return this.db.call('memoryManagement') as Promise<CommandResults[K]>;
     if (name === 'currentMemory') return this.db.call('currentMemory') as Promise<CommandResults[K]>;
     if (name === 'snapshot') return this.snapshot() as Promise<CommandResults[K]>;
@@ -262,7 +268,19 @@ export class Coordinator {
       case 'setMemoryPreference': {
         const value = await this.admitMemory(() => this.write('setMemoryPreference', args.enabled, args.revision));
         if (!value.enabled) this.memory?.abort.abort();
+        await this.cold?.preferenceChanged(value.enabled);
         this.settings.memory = value; await this.publish(); return value;
+      }
+      case 'coldRetry': {
+        if (this.cold) await this.cold.retry(); else await this.write('coldRetry');
+        return;
+      }
+      case 'coldDelete': {
+        if (this.interactive) throw new AppFailure('memory_in_use');
+        const result = await this.admitMemory(() => this.write('coldDelete', args.id, args.hash, args.revision));
+        this.cold?.wake();
+        this.emit({type:'memory-changed', characterId:'shared', revision:++this.revision});
+        await this.publish(); return result;
       }
       case 'editMemory': {
         if (this.interactive) throw new AppFailure('memory_in_use');
@@ -702,6 +720,7 @@ export class Coordinator {
             await this.write('receiveMemoryAdd',attempt.id,content,metadata);
           }
           await this.write('acceptMemoryAdd',attempt.id);
+          this.cold?.wake();
         } catch(error) {
           if(error instanceof CompletionFailure){content=error.content;metadata={...metadata,...error.metadata};}
           if(attempt.status!=='received')metadata.elapsed_seconds=(performance.now()-started)/1000;
@@ -788,7 +807,7 @@ export class Coordinator {
     // Start independent cleanup together; none is a prerequisite for the main deadline.
     return Promise.allSettled([
       this.genie.dispose(), this.explain.dispose(), this.patterns.close(),
-      this.speech?.close(), this.dictation?.close(), this.db.close()
+      this.speech?.close(), this.dictation?.close(), this.cold?.close(), this.db.close()
     ]).then(() => undefined);
   }
   private async close(current?: () => boolean): Promise<boolean> {
@@ -810,6 +829,7 @@ export class Coordinator {
     if (current) return current();
     await this.speech?.close();
     await this.dictation?.close();
+    await this.cold?.close();
     await this.db.close(); return true;
   }
 }

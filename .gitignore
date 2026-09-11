@@ -57,6 +57,8 @@ secrets.json
 /chromium/
 /profile/
 /cache/
+# Verified upstream memory model resources are fetched locally, never committed.
+/assets/memory-model/
 *.sqlite
 *.sqlite-*
 *.sqlite.*

@@ -107,6 +107,10 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   speechClear: undefined;
   retryMemoryAdd: {sessionId:string;jobId:number};
   skipMemoryAdd: {sessionId:string;jobId:number};
+  coldPage: { query: string; offset: number };
+  coldStatus: undefined;
+  coldDelete: { id: string; hash: string; revision: number };
+  coldRetry: undefined;
   memoryManagement: undefined;
   editMemory: import('./memory-management').MemoryEdit;
   currentMemory: undefined;
@@ -157,6 +161,10 @@ export interface CommandResults extends ExplainCommandResults, GenieCommandResul
   speechSnapshot: SpeechSnapshot; speechVoice: void; speechPreview: void; speechPreviewStop: void; speechRecover: void; speechMode: void; speechContext: void; speechListen: void; speechRetrySave: void; speechStop: void; speechClear: void;
   retryMemoryAdd: void;
   skipMemoryAdd: void;
+  coldPage: import('./cold-memory').ColdPage;
+  coldStatus: import('./cold-memory').ColdStatus;
+  coldDelete: import('./cold-memory').ColdStatus;
+  coldRetry: void;
   memoryManagement: import('./memory-management').MemoryManagement;
   editMemory: import('./memory-management').MemoryManagement;
   currentMemory: import('./memory').StoredMemoryDocument;

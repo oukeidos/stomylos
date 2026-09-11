@@ -4675,3 +4675,49 @@ a legal notice, here is a blessing:
    May you share freely, never taking more than you give.
 
 ```
+
+## Local memory embeddings (source update, 2026-09-11)
+
+The local text embedding path uses the following additional components, pinned
+by `package-lock.json`; their upstream licenses and package notices remain in
+force, including dependencies not exercised by text-only inference.
+
+| Component | Locked version | License |
+| --- | --- | --- |
+| @huggingface/transformers | 4.2.0 | Apache-2.0 |
+| @huggingface/tokenizers | 0.1.3 | Apache-2.0 |
+| @huggingface/jinja | 0.5.10 | MIT |
+| onnxruntime-node / onnxruntime-common | 1.24.3 | MIT |
+| onnxruntime-web | 1.26.0-dev.20260416-b7804b056c | MIT |
+| onnxruntime-web's onnxruntime-common | 1.24.0-dev.20251116-b39e144322 | MIT |
+| sharp and platform sharp modules | 0.34.5 | Apache-2.0 (platform bundles may also include LGPL-3.0-or-later and MIT components) |
+| sharp-libvips platform modules | 1.2.4 | LGPL-3.0-or-later |
+| @img/colour | 1.1.0 | MIT |
+| @emnapi/runtime | 1.11.3 | MIT |
+| protobufjs / @protobufjs helpers | 7.6.6 / versions in lockfile | BSD-3-Clause |
+| flatbuffers | 25.9.23 | Apache-2.0 |
+| long | 5.3.2 | Apache-2.0 |
+| adm-zip | 0.5.18 | MIT |
+| detect-libc | 2.1.2 | Apache-2.0 |
+| guid-typescript | 1.0.9 | ISC |
+| platform | 1.3.6 | MIT |
+| sharp's semver | 7.8.5 | ISC |
+
+Retain the package license files and notices when redistributing dependencies.
+Relevant upstream license/source locations are
+[Transformers.js Apache-2.0](https://github.com/huggingface/transformers.js/blob/4.2.0/LICENSE),
+[ONNX Runtime MIT](https://github.com/microsoft/onnxruntime/blob/v1.24.3/LICENSE),
+[sharp Apache-2.0](https://github.com/lovell/sharp/blob/v0.34.5/LICENSE),
+and [sharp-libvips source and build recipes](https://github.com/lovell/sharp-libvips/tree/v1.2.4).
+Native shared libraries remain outside asar in portable packaging; preserve their
+applicable license texts, notices and source/relinking provisions as well.
+
+The embedding model is **BAAI/bge-small-en-v1.5**, provided under the MIT license
+by the [upstream model card](https://huggingface.co/BAAI/bge-small-en-v1.5), using
+[Xenova's ONNX conversion at the pinned revision](https://huggingface.co/Xenova/bge-small-en-v1.5/tree/ea104dacec62c0de699686887e3f920caeb4f3e3).
+The [FlagEmbedding upstream license](https://github.com/FlagOpen/FlagEmbedding/blob/master/LICENSE)
+identifies copyright (c) 2022 staoxiao and supplies the MIT permission and warranty
+terms. The model manifest records the exact checkpoint, file sizes and SHA-256
+hashes; the repository contains the manifest and acquisition script, not weights.
+`npm run model:fetch` acquires the local resources explicitly. A portable package
+may include those separately acquired, verified resources with these notices.

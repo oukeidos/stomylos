@@ -1,3 +1,4 @@
+import { MemoryEmbeddingController } from './memory-embedding-controller';
 import { showExitDialog } from './exit-dialog';
 import { ExitController } from './exit-controller';
 import { UsageStore } from './usage-store';
@@ -120,6 +121,9 @@ if (launch) {
       keyPresent, credentials: credentials.snapshot(), keyPath, dataPath: directory, appVersion, development: !normalData, simulation: !!endpoint
     }, emit, () => credentials.refresh(), credentials);
     coordinator.patternViewer = new PatternReportViewer();
+    coordinator.cold = new MemoryEmbeddingController(db, join(__dirname, 'memory-embedding-worker.js'),
+      app.isPackaged ? join(process.resourcesPath, 'memory-model') : join(__dirname, '../../assets/memory-model'),
+      () => emit({type:'memory-changed', characterId:'shared', revision:Date.now()}));
     await coordinator.initialize();
     coordinator.speech = new SpeechController(new SpeechStore(directory),
       new SpeechTransport(providerKey, endpoint ? new URL('/audio/speech', endpoint).href : undefined, undefined, undefined, undefined, usage),

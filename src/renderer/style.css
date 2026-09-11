@@ -447,6 +447,7 @@ footer.help-open { max-height: calc(100dvh - 150px); overflow-y: auto; }
 .memory-read-row:hover .icon-button, .memory-read-row:focus-within .icon-button { color:var(--text,#243c35); }
 .memory-row-actions .icon-button[aria-label=Delete]:hover { color:#964d3d; }
 .memory-row-actions .ui-icon { width:18px; height:18px; }
+.memory-actions button[aria-pressed=true] { background:#e1ebe3; color:var(--accent); }
 .memory-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
 .memory-actions button { min-height:34px; font-size:13px; padding:6px 12px; }
 .memory-manager textarea { width:100%; min-height:108px; max-height:300px; resize:vertical; box-sizing:border-box; padding:12px; border:1px solid #b9cbbf; border-radius:8px; font:inherit; line-height:1.6; }

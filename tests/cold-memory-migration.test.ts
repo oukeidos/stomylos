@@ -1,0 +1,27 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import Database from 'better-sqlite3';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { StarterStore } from '../src/main/starter-store';
+import old from '../src/main/migrations/schema-v29.sql?raw';
+import current from '../src/main/schema.sql?raw';
+import { migrateDatabase, validateSchema, currentSchema } from '../src/main/database-migrations';
+import { memoryHash } from '../src/main/memory-updater';
+const fixtures:{dir:string,db:Database.Database}[]=[];
+afterEach(()=>{for(const {dir,db} of fixtures.splice(0)){db.close();rmSync(dir,{recursive:true,force:true});}});
+it('migrates schema 29 atomically without changing HOT, frozen requests or old provenance, preserving the backup after interruption',()=>{
+  const dir=mkdtempSync('/tmp/stomylos-cold-migration-'),db=new Database(join(dir,'stomylos.sqlite3'));fixtures.push({dir,db});db.exec(old);db.pragma('user_version=29');db.transaction(()=>new StarterStore(db).initialize())();
+  const document=JSON.stringify({character_id:'shared',revision:7,database_records:[{id:'a',text:'Exact prior memory 😃'}]});
+  db.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run(document,memoryHash(document));
+  db.prepare("INSERT INTO memory_item_metadata VALUES('a',9,2,NULL,NULL,NULL,'manual')").run();
+  const before=db.prepare('SELECT * FROM shared_memory').all();const exec=db.exec.bind(db);
+  const fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=exec(sql);if(sql.includes('CREATE TABLE cold_memories'))throw new Error('simulated interruption');return result;});
+  expect(()=>migrateDatabase(db,dir)).toThrow('simulated interruption');fault.mockRestore();
+  expect(db.pragma('user_version',{simple:true})).toBe(29);validateSchema(db,old);expect(db.prepare('SELECT * FROM shared_memory').all()).toEqual(before);
+  const backup=join(dir,'stomylos.pre-migration-v29.sqlite3'),bytes=readFileSync(backup);
+  migrateDatabase(db,dir);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);validateSchema(db,current);
+  expect(db.prepare('SELECT * FROM shared_memory').all()).toEqual(before);
+  expect(db.prepare('SELECT * FROM memory_item_metadata').get()).toEqual({id:'a',source_order:9,item_index:2,source_message_id:null,source_session_id:null,observed_at:null,origin:'manual',edited_at:null});
+  for(const table of ['cold_memories','cold_embeddings','cluster_generations','session_cold_recollections'])expect(db.prepare(`SELECT COUNT(*) FROM ${table}`).pluck().get()).toBe(0);
+  expect(db.pragma('foreign_key_check')).toEqual([]);migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
+});

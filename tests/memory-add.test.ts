@@ -53,7 +53,7 @@ it('persists response before atomic apply, recovers save-only after restart, pre
  const doc=f.store.memoryManagement().document;expect(doc.database_records.map(r=>r.text[0])).toEqual(['y','z']);
  f.store.end(s.id);const row=doc.database_records[0],before=f.db.prepare('SELECT * FROM memory_item_metadata WHERE id=?').get(row.id) as Json;
  const view=f.store.memoryManagement();const edit={id:row.id,text:'Edited detail',revision:doc.revision,hash:view.hash};f.store.commitMemoryEdit(f.store.prepareMemoryEdit(edit));
- expect(f.db.prepare('SELECT * FROM memory_item_metadata WHERE id=?').get(row.id)).toEqual({...before,origin:'manual'});
+ expect(f.db.prepare('SELECT * FROM memory_item_metadata WHERE id=?').get(row.id)).toEqual({...before,origin:'manual',edited_at:expect.any(String)});
  const current=f.store.memoryManagement();expect(()=>f.store.prepareMemoryEdit({...edit,text:'x'.repeat(4000),revision:current.document.revision,hash:current.hash})).toThrow('memory_edit_capacity');
  f.store.commitMemoryEdit(f.store.prepareMemoryEdit({...edit,text:null,revision:current.document.revision,hash:current.hash}));expect(f.db.prepare('SELECT 1 FROM memory_item_metadata WHERE id=?').get(row.id)).toBeUndefined();
  f.store.deleteSession(s.id);expect(f.store.memoryManagement().document.database_records).toHaveLength(1);expect(f.db.pragma('foreign_key_check')).toEqual([]);
@@ -77,7 +77,7 @@ it('Off cancels waiting and in-flight inputs, On never backfills, and malformed 
 });
 it('validates exact-job IPC and detects metadata membership corruption',()=>{
  for(const name of ['retryMemoryAdd','skipMemoryAdd']){expect(()=>validateCommand(name,{sessionId:'s',jobId:1})).not.toThrow();expect(()=>validateCommand(name,{sessionId:'s',jobId:0})).toThrow();}
- const {store,db}=fixture();db.prepare("INSERT INTO memory_item_metadata VALUES('orphan',0,0,NULL,NULL,NULL,'legacy')").run();expect(()=>store.currentMemory()).toThrow('memory_metadata_mismatch');
+ const {store,db}=fixture();db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,source_message_id,source_session_id,observed_at,origin) VALUES('orphan',0,0,NULL,NULL,NULL,'legacy')").run();expect(()=>store.currentMemory()).toThrow('memory_metadata_mismatch');
 });
 it('runs ADD in parallel with a held reply, sends one request per input, and drains End without Gemini or cleanup',async()=>{
  const f=fixture(),s=session(f.store);let release!:()=>void;const held=new Promise<void>(r=>release=r);const calls:Json[]=[];

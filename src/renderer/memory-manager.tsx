@@ -1,3 +1,4 @@
+import { ColdMemories } from './cold-memory';
 import { MemoryInputRecovery } from './memory-input-recovery';
 import { MemoryControl } from './memory-control';
 import type { MemoryPreference } from '../shared/memory-control';
@@ -15,6 +16,7 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
 }>(function MemoryManager({active, preference, errorText, openChat}, ref) {
   const [data, setData] = useState<MemoryManagement | null>(null);
   const [query, setQuery] = useState('');
+  const [older, setOlder] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -120,6 +122,11 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
       {error && !editor && <p role="alert">{error}</p>}
       {data.blocker && <div className="memory-lock"><p className="note">{data.blocker.reason === 'chat' ? 'Memory is in use by your current chat. Finish the chat to edit it.' : 'Finish memory processing to edit saved memories.'}</p>
         <button disabled={busy} onClick={async () => { const id = data.blocker!.sessionId; if (await beforeLeave()) openChat(id); }}>{data.blocker.reason === 'chat' ? 'Back to chat' : 'View memory processing'}</button></div>}
+      <div className="memory-actions" role="group" aria-label="Memory age">
+        <button aria-pressed={!older} disabled={busy} onClick={async () => { if (await beforeLeave()) setOlder(false); }}>Recent</button>
+        <button aria-pressed={older} disabled={busy} onClick={async () => { if (await beforeLeave()) setOlder(true); }}>Older</button>
+      </div>
+      {older ? <ColdMemories enabled={preference?.enabled ?? true} locked={locked} errorText={errorText} onBusy={value => { busyRef.current = value; setBusy(value); }} /> : <>
       <div className="memory-toolbar"><div className="memory-search"><input ref={search} type="search" aria-label="Search memories" placeholder="Search memories" value={query} onChange={event => { setQuery(event.target.value); setNotice(''); }} />
         {query && <IconButton label="Clear search" icon="close" onClick={() => { setQuery(''); search.current?.focus(); }} />}</div>
         <span className="memory-count" role="status" aria-live="polite" aria-label={`${visible.length} of ${data.document.database_records.length} memories`}>{visible.length} / {data.document.database_records.length}</span>
@@ -133,13 +140,14 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
               onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void save(); } }} />
             {!editor.text.trim() && <p className="note">Enter a detail to save, or use Delete to remove this memory.</p>}
             {excess > 0 && <p className="note" role="alert">Memory is over capacity. Remove {excess.toLocaleString()} characters to save.</p>}
-          </> : <><strong>Delete this memory?</strong><p className="memory-text">{editor.original}</p><p className="note">This removes the saved detail. Existing chats and backups are unchanged.</p></>}
+          </> : <><strong>Delete this memory?</strong><p className="memory-text">{editor.original}</p><p className="note">This removes the saved detail from future memory context. Past chats, transmitted requests and backups remain unchanged.</p></>}
           {stale && <div role="alert"><p>Saved memory changed. Review the latest version before saving. Your edit is preserved.</p>
             {data.document.database_records.some(record => record.id === editor.id) ? <><p className="memory-text">{item.text}</p><button disabled={busy} onClick={() => { setEditor({...editor,base:data,original:item.text}); setError(''); }}>Use latest version</button></> : <p>This memory has been deleted. Cancel this edit to continue.</p>}</div>}
           {error && <p role="alert">{error}</p>}
           <div className="memory-actions"><button className={editor.mode === 'delete' ? 'danger' : 'primary'} disabled={locked || stale || (editor.mode === 'edit' && (!dirty || !editor.text.trim() || excess > 0))} onClick={() => void save()}>{busy ? 'Saving…' : editor.mode === 'edit' ? 'Save' : 'Delete memory'}</button><button disabled={busy} onClick={() => void cancel()}>Cancel</button></div>
         </> : <div className="memory-read-row"><p className="memory-text">{item.text}</p><div className="memory-row-actions"><IconButton label="Edit" icon="edit" disabled={locked} onClick={() => void begin(item.id,'edit')} /><IconButton label="Delete" icon="trash" disabled={locked} onClick={() => void begin(item.id,'delete')} /></div></div>}
       </li>)}</ul>
+      </>}
     </>}
     <Dialog.Root open={discard} onOpenChange={open => { if (!open) finishDiscard(false); }}><Dialog.Portal><Dialog.Overlay className="modal-overlay" />
       <Dialog.Content className="dialog" aria-describedby="memory-discard-description"><Dialog.Title>Discard memory changes?</Dialog.Title><Dialog.Description id="memory-discard-description">Your unsaved edit will be lost.</Dialog.Description>

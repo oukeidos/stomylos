@@ -2,6 +2,12 @@ import { MemoryAddStore } from './memory-add-store';
 import { prepareProviderRequest, validateProviderRequest, type ProviderOwner, type ProviderRequest } from './provider-policy';
 import { memoryControlVersion } from '../shared/memory-control';
 import { memoryPreference, memoryPolicy, memoryReadAllowed } from './memory-control';
+import { ColdMemoryStore } from './cold-memory-store';
+import { MemoryClusters, type EmbeddingJob } from './memory-clusters';
+import { MemoryRecallStore } from './memory-recall-store';
+import { coldContextVersion, coldRecallPolicy, coldSingleItemCap } from './memory-recall';
+import { embeddingManifest, embeddingManifestJson, embeddingSpaceId } from './memory-embedding';
+import type { ColdStatus } from '../shared/cold-memory';
 import type { MemoryEdit, MemoryManagement } from '../shared/memory-management';
 import { memoryCharacters, activeMemoryCharacterCap } from './memory-render';
 import { validateFlatMemory } from './memory-flat';
@@ -50,6 +56,10 @@ export class Store {
   private starter!: StarterStore;
   private memory!: MemoryStore;
   private additions!: MemoryAddStore;
+  private cold!: ColdMemoryStore;
+  private clusters!: MemoryClusters;
+  private recollections!: MemoryRecallStore;
+  private coldFailure: string | null = null;
   private intentions!: IntentionQuestionStore;
   private patterns!: PatternReportStore;
   private search!: SearchStore;
@@ -100,6 +110,9 @@ export class Store {
       this.db.pragma('foreign_keys = ON'); this.db.pragma('synchronous = FULL');
       if (this.db.pragma('journal_mode = DELETE', { simple: true }) !== 'delete') throw new AppFailure('unexpected_journal_mode');
       this.memory.load();
+      this.cold = new ColdMemoryStore(this.db);
+      this.clusters = new MemoryClusters(this.db);
+      this.recollections = new MemoryRecallStore(this.db);
       this.recover();
       this.starter.verify();
     } catch (e) { this.db?.close(); this.unlock(); throw e; }
@@ -115,6 +128,7 @@ export class Store {
       this.run("UPDATE sessions SET analysis_state=CASE WHEN (SELECT failure FROM model_requests WHERE session_id=sessions.id AND role='grammar' ORDER BY created_at DESC,rowid DESC LIMIT 1)='queued_not_dispatched' THEN 'pending' ELSE 'failed' END WHERE analysis_state='running'");
       this.starter.recover();
       this.memory.recover(); this.additions.recover();
+      this.clusters.recover();
       // Dedicated Intention jobs are historical only. Release any legacy preparation locally.
       for (const row of this.all<{session_id: string}>("SELECT session_id FROM starter_preparations WHERE state='waiting'")) this.starter.release(this.session(row.session_id), this.messages(row.session_id), 'feature_removed');
       this.patterns.recover();
@@ -459,9 +473,9 @@ export class Store {
       let session = this.session(id);
       if(!this.all('SELECT 1 FROM session_memories WHERE session_id=?',id).length && memoryPolicy(this.db,id).firstEnabled===null) {
         const saved=JSON.parse(session.chat_config);
-        if(saved.memory_version!==flatMemoryVersion) {
+        if(saved.memory_version!==coldContextVersion) {
           const modern=['stomylos_conversation_v6','stomylos_conversation_v7',config.conversation.version].includes(saved.version);
-          const next=modern?{...saved,memory_version:flatMemoryVersion,component_hashes:conversationComponents(saved.version,flatMemoryVersion)}:conversationSnapshot(session.opening_kind);
+          const next=modern?{...saved,memory_version:coldContextVersion,component_hashes:conversationComponents(saved.version,coldContextVersion)}:conversationSnapshot(session.opening_kind);
           if(session.character)character(session.character,next);
           this.run('UPDATE sessions SET chat_config=? WHERE id=?',JSON.stringify(next),id);
           this.run('DELETE FROM memory_legacy_seeds WHERE session_id=?',id);
@@ -480,11 +494,14 @@ export class Store {
       const pending = kind === 'retry' ? null : this.partners.bind(session, messages);
       if (kind === 'different_model' && !pending) throw new AppFailure('partner_selection_missing');
       if (pending && pending.state !== 'ready') throw new AppFailure('partner_selection_pending');
+      if (parent) this.assertMemoryNotRevoked(JSON.parse(parent.config));
       if (parent && JSON.parse(parent.config).memory_context && !memoryReadAllowed(this.db,id)) throw new AppFailure('memory_retry_disabled');
       const memory = this.memory.snapshot(session);
       let snapshot = conversationRequestSnapshot(JSON.parse(session.chat_config));
-      if (memory) snapshot.memory_context = memory;
-      else snapshot.memory_control = memoryControlVersion;
+      if (memory) {
+        snapshot.memory_context = memory;
+        if (snapshot.memory_version === coldContextVersion) snapshot.cold_recollections = this.recollections.snapshot(id, flattenMemory(memory));
+      } else snapshot.memory_control = memoryControlVersion;
       let target = pending?.selected_character ?? this.partners.state(session).current_character ?? session.character;
       if (parent) {
         if (parent.source_hash !== hash(transcriptJson(source)) || hash(parent.config) !== parent.config_hash) throw new AppFailure('retry_source_changed');
@@ -540,6 +557,61 @@ export class Store {
     });
   }
   memoryPreference() { return memoryPreference(this.db); }
+  private memoryHasRevoked(snapshot: Json): boolean {
+    const hot = snapshot.memory_context ? flattenMemory(snapshot.memory_context).database_records : [];
+    return hot.some(item => this.cold.revoked(item.id)) || (snapshot.cold_recollections?.items ?? []).some((item: { id: string }) => this.cold.revoked(item.id));
+  }
+  private assertMemoryNotRevoked(snapshot: Json) {
+    if (snapshot.cold_recollections) this.recollections.assertNotRevoked(snapshot.cold_recollections);
+    if (this.memoryHasRevoked(snapshot)) throw new AppFailure('memory_retry_revoked');
+  }
+  coldInitialize() {
+    return this.transaction(() => {
+      const space = this.clusters.register(embeddingManifestJson, embeddingManifest.dimensions);
+      const generation = this.clusters.begin(space);
+      return { space, generation };
+    });
+  }
+  coldTick() {
+    if (!this.memoryPreference().enabled) return 0;
+    let changed = this.clusters.reconcile(32);
+    changed += this.recollections.cacheMetadata(32);
+    for (const { id } of this.all<{ id: string }>("SELECT id FROM cluster_generations WHERE state='building' ORDER BY created_at,id")) {
+      try { if (this.clusters.activate(id)) changed++; }
+      catch { this.run("UPDATE cluster_generations SET state='failed',failure='cold_generation_integrity' WHERE id=?", id); }
+    }
+    return changed;
+  }
+  coldClaim() { return this.clusters.claim(embeddingSpaceId); }
+  coldComplete(job: EmbeddingJob, result: { vector: number[]; inputHash: string; chunkCount: number }) { return this.clusters.complete(job, result); }
+  coldRelease(job: EmbeddingJob) { return this.clusters.release(job); }
+  coldFail(job: EmbeddingJob, failure: string, retry = false) { return this.clusters.fail(job, failure, retry); }
+  coldIndexFailure(failure: string | null) { this.coldFailure = failure; }
+  coldPage(query = '', offset = 0) { return this.cold.page(query, offset); }
+  coldDelete(id: string, hash: string, revision: number) {
+    if (this.memoryManagement().blocker) throw new AppFailure('memory_in_use');
+    this.clusters.deleteOriginal(id, hash, revision);
+    return this.coldStatus();
+  }
+  coldRetry() {
+    return this.transaction(() => {
+      if (!this.memoryPreference().enabled) throw new AppFailure('memory_disabled');
+      this.clusters.retryFailed(embeddingSpaceId);
+      this.clusters.begin(embeddingSpaceId);
+      this.coldFailure = null;
+    });
+  }
+  coldStatus(): ColdStatus {
+    const states = Object.fromEntries(this.all<{ state: string; count: number }>('SELECT state,COUNT(*) count FROM cold_embeddings WHERE space_id=? GROUP BY state', embeddingSpaceId).map(r => [r.state, r.count]));
+    const originals = this.all<{ count: number }>('SELECT COUNT(*) count FROM cold_memories')[0].count;
+    const active = this.all<{ id: string }>("SELECT id FROM cluster_generations WHERE state='active'")[0]?.id;
+    const groups = active ? this.all<{ count: number }>("SELECT COUNT(*) count FROM cold_clusters WHERE generation_id=? AND state='ready'", active)[0].count : 0;
+    const excluded = active ? this.all<{ count: number }>("SELECT COUNT(*) count FROM cold_memberships WHERE generation_id=? AND state='excluded'", active)[0].count : 0;
+    const oversized = this.all<{ count: number }>('SELECT COUNT(*) count FROM cold_render_metadata WHERE policy_version=? AND rendered_length>?', coldRecallPolicy, coldSingleItemCap)[0].count;
+    const size = Number(this.db.pragma('page_count', { simple: true })) * Number(this.db.pragma('page_size', { simple: true }));
+    return { originals, pending: (states.pending ?? 0) + (states.running ?? 0) + Math.max(0, originals - Object.values(states).reduce((a, b) => a + b, 0)),
+      ready: states.ready ?? 0, failed: states.failed ?? 0, groups, excluded, oversized, storageWarning: originals >= 100000 || size >= 1024 ** 3, indexingFailure: this.coldFailure ?? (!active ? this.all<{ failure: string | null }>("SELECT failure FROM cluster_generations WHERE state='failed' ORDER BY created_at DESC LIMIT 1")[0]?.failure ?? null : null) };
+  }
   setMemoryPreference(enabled: boolean, revision: number) {
     return this.transaction(() => {
       if (this.endBlocker() || this.all("SELECT 1 FROM memory_jobs WHERE state NOT IN ('completed','skipped') LIMIT 1").length) throw new AppFailure('end_processing_pending');
@@ -560,12 +632,16 @@ export class Store {
       const policy = memoryPolicy(this.db, request.session_id), snapshot = JSON.parse(request.config);
       const allowed = memoryReadAllowed(this.db, request.session_id) && memorySupported(snapshot.memory_version);
       const exactRetry = request.parent_id !== null && policy.firstEnabled !== null;
+      if (exactRetry) this.assertMemoryNotRevoked(snapshot);
+      const revoked = this.memoryHasRevoked(snapshot);
       if (exactRetry && snapshot.memory_context && !allowed) throw new AppFailure('memory_retry_disabled');
-      if (!exactRetry && !!snapshot.memory_context !== allowed) {
+      if (!exactRetry && (!!snapshot.memory_context !== allowed || revoked)) {
         const session = this.session(request.session_id);
-        delete snapshot.memory_context; delete snapshot.memory_control;
-        if (allowed) snapshot.memory_context = this.memory.snapshot(session);
-        else snapshot.memory_control = memoryControlVersion;
+        delete snapshot.memory_context; delete snapshot.memory_control; delete snapshot.cold_recollections;
+        if (allowed) {
+          snapshot.memory_context = this.memory.snapshot(session);
+          if (snapshot.memory_version === coldContextVersion) snapshot.cold_recollections = this.recollections.snapshot(session.id, flattenMemory(snapshot.memory_context));
+        } else snapshot.memory_control = memoryControlVersion;
         const source = this.messages(session.id).filter(m => m.sequence <= request.source_sequence);
         if (snapshot.time_version) snapshot.system_sha256 = hash(conversationSystem(snapshot, source));
         this.failRequest(request.id, 'memory_setting_changed');
@@ -694,9 +770,9 @@ export class Store {
       // preserving the existing roster/settings wherever it already supports flat memory.
       for (const session of this.all<Session>("SELECT * FROM sessions WHERE state!='ended'")) {
         const saved = JSON.parse(session.chat_config);
-        if (saved.memory_version === flatMemoryVersion) continue;
+        if (saved.memory_version === coldContextVersion) continue;
         const modern = ['stomylos_conversation_v6','stomylos_conversation_v7',config.conversation.version].includes(saved.version);
-        const next = modern ? {...saved, memory_version:flatMemoryVersion, component_hashes:conversationComponents(saved.version, flatMemoryVersion)} : conversationSnapshot(session.opening_kind);
+        const next = modern ? {...saved, memory_version:coldContextVersion, component_hashes:conversationComponents(saved.version, coldContextVersion)} : conversationSnapshot(session.opening_kind);
         if (session.manual_character) character(session.manual_character, next);
         sessionRuntime(next);
         this.run('UPDATE sessions SET chat_config=? WHERE id=?', JSON.stringify(next), session.id);

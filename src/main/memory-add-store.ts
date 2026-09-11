@@ -1,4 +1,5 @@
 import { validateMemoryMetadata } from './memory-metadata';
+import { ColdMemoryStore } from './cold-memory-store';
 import type Database from 'better-sqlite3';
 import type { Json, Message } from '../shared/types';
 import type { RecordedTime } from '../shared/time';
@@ -88,8 +89,9 @@ export class MemoryAddStore {
       validateMemoryMetadata(this.db,JSON.parse(saved.document));
       const {document,changes}=addAndFifo(JSON.parse(saved.document),a.response_content,a.message_id);
       const encoded=memoryJson(document);
+      changes.added.forEach((r,index)=>this.run("INSERT INTO memory_item_metadata(id,source_order,item_index,source_message_id,source_session_id,observed_at,origin) VALUES(?,?,?,?,?,?, 'add')",r.id,a.job_id,index,a.message_id,a.session_id,a.observed_at));
+      new ColdMemoryStore(this.db).archive(changes.evicted);
       this.run('UPDATE shared_memory SET document=?,document_hash=? WHERE id=1',encoded,memoryHash(encoded));
-      changes.added.forEach((r,index)=>this.run("INSERT INTO memory_item_metadata VALUES(?,?,?,?,?,?, 'add')",r.id,a.job_id,index,a.message_id,a.session_id,a.observed_at));
       changes.evicted.forEach(r=>this.run('DELETE FROM memory_item_metadata WHERE id=?',r.id));
       validateMemoryMetadata(this.db,document);
       this.run("UPDATE memory_add_attempts SET status='succeeded' WHERE id=?",id);
@@ -117,5 +119,10 @@ export class MemoryAddStore {
     if(!job)throw new AppFailure('memory_add_not_retryable');
     this.run("UPDATE memory_add_jobs SET state='skipped',failure='user_skipped' WHERE ordinal=?",job.ordinal);
   }
-  manual(id:string,deleted:boolean) {this.run(deleted?'DELETE FROM memory_item_metadata WHERE id=?':"UPDATE memory_item_metadata SET origin='manual' WHERE id=?",id);}
+  manual(id:string,deleted:boolean) {
+    if (deleted) {
+      new ColdMemoryStore(this.db).revoke(id);
+      this.run('DELETE FROM memory_item_metadata WHERE id=?',id);
+    } else this.run("UPDATE memory_item_metadata SET origin='manual',edited_at=? WHERE id=?",now(),id);
+  }
 }

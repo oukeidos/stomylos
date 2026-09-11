@@ -12,8 +12,16 @@ Download or clone this repository, open a terminal in its folder, and run:
 
 ```sh
 npm ci
+npm run model:fetch
 npm run build
 ```
+
+The model setup command downloads the local memory embedding model from the
+fixed upstream revision and verifies every file against the committed manifest.
+Downloaded resources stay in the Git-ignored `assets/memory-model/` directory;
+model weights are not part of this repository. Run `npm run model:verify` to
+check them offline. The app does not download models during inference. Missing
+files pause new local indexing while existing valid memories remain available.
 
 ## Running the app
 
@@ -40,6 +48,7 @@ After updating the source, close the app and run:
 
 ```sh
 npm ci
+npm run model:fetch
 npm run build
 npm start
 ```

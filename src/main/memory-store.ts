@@ -1,3 +1,5 @@
+import { coldContextVersion } from './memory-recall';
+import { ColdMemoryStore } from './cold-memory-store';
 import { validateMemoryMetadata } from './memory-metadata';
 import { flattenMemory, validateFlatMemory, isFlatMemory } from './memory-flat';
 import { cleanupConfig, parseCleanupResponse, flatCleanupVersion, legacyCleanupVersion } from './memory-cleanup';
@@ -65,18 +67,23 @@ export class MemoryStore {
     if (saved) {
       if (memoryHash(saved.document) !== saved.document_hash || saved.character_id !== session.character) fail('snapshot_changed');
       const doc = JSON.parse(saved.document); validateStored(doc);
-      if (doc.character_id !== ([sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(JSON.parse(session.chat_config).memory_version) ? sharedMemoryId : session.character)) fail('character_mismatch');
+      if (doc.character_id !== ([sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion, coldContextVersion].includes(JSON.parse(session.chat_config).memory_version) ? sharedMemoryId : session.character)) fail('character_mismatch');
+      if (Number(this.db.pragma('user_version',{simple:true})) >= 30) {
+        const originals = new ColdMemoryStore(this.db);
+        if (isFlatMemory(doc)) doc.database_records = doc.database_records.filter((item: {id:string}) => !originals.revoked(item.id));
+        else for (const key of ['traits','relationships','experiences','intentions']) doc[key] = doc[key].filter((item: {id:string}) => !originals.revoked(item.id));
+      }
       return doc;
     }
     if (session.state === 'ended') return null;
     let doc = this.load();
-    if (JSON.parse(session.chat_config).memory_version !== flatMemoryVersion && isFlatMemory(doc)) {
+    if (![flatMemoryVersion,coldContextVersion].includes(JSON.parse(session.chat_config).memory_version) && isFlatMemory(doc)) {
       const seed = this.row<{document:string;document_hash:string}>('SELECT * FROM memory_legacy_seeds WHERE session_id=?', session.id);
       if (!seed || memoryHash(seed.document) !== seed.document_hash) fail('legacy_snapshot_missing');
       doc = JSON.parse(seed.document); validateStored(doc);
     }
     // Historical conversation contracts retain their original wrapper and ownership field.
-    if (![sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(JSON.parse(session.chat_config).memory_version)) doc.character_id = session.character;
+    if (![sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion, coldContextVersion].includes(JSON.parse(session.chat_config).memory_version)) doc.character_id = session.character;
     const encoded = memoryJson(doc);
     this.run('INSERT INTO session_memories VALUES(?,?,?,?)', session.id, session.character, encoded, memoryHash(encoded));
     this.run('DELETE FROM memory_legacy_seeds WHERE session_id=?', session.id);
