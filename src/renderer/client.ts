@@ -13,7 +13,8 @@ const invalidation = new Map<string, number>();
 const viewListeners = new Set<(id: string) => void>();
 const deleted = new Set<string>();
 const deletionListeners = new Set<(id: string) => void>();
-const closeListeners = new Set<() => void>();
+const closeListeners = new Set<(id: number, retry: boolean, current: () => boolean) => void>();
+let closeId = 0;
 function event(value: AppEvent) {
   if (value.type === 'session-deleted') {
     deleted.add(value.sessionId); cached.delete(value.sessionId);
@@ -41,7 +42,11 @@ function event(value: AppEvent) {
     if (value.revision <= (invalidation.get(value.sessionId) ?? -1)) return;
     cached.delete(value.sessionId); invalidation.set(value.sessionId, value.revision);
     for (const listener of viewListeners) listener(value.sessionId);
-  } else if (value.type === 'close-requested') for (const listener of closeListeners) listener();
+  } else if (value.type === 'close-cancelled') closeId = 0;
+  else if (value.type === 'close-requested') {
+    closeId = value.revision;
+    for (const listener of closeListeners) listener(value.revision, !!value.retry, () => closeId === value.revision);
+  }
 }
 function updateStream(id: string, text: string, revision: number) {
   if (revision < (streamRevisions.get(id) ?? -1)) return;
@@ -85,4 +90,4 @@ export async function loadView(id: string): Promise<SessionView> {
   inflight.set(id, promise); return promise;
 }
 export const onViewChanged = (listener: (id: string) => void) => { viewListeners.add(listener); return () => { viewListeners.delete(listener); }; };
-export const onClose = (listener: () => void) => { closeListeners.add(listener); return () => { closeListeners.delete(listener); }; };
+export const onClose = (listener: (id: number, retry: boolean, current: () => boolean) => void) => { closeListeners.add(listener); return () => { closeListeners.delete(listener); }; };

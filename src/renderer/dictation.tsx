@@ -357,3 +357,5 @@ export function DictationPanel({ sessionId, disabled = false }: { sessionId: str
     {!recording && !busy && records.length > 0 && <p className="note">Review your draft before sending.</p>}
   </section>;
 }
+
+export function recoveryDictationText() { return snapshot.records.filter(record => record.text && !record.submitted && !record.discarded).map(record => `Recognized text (${record.id})\n${record.text}`).join('\n\n'); }

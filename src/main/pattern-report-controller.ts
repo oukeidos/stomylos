@@ -107,6 +107,7 @@ export class PatternReportController {
   resumeAfterCloseFailure() { this.closed = false; }
   async close() {
     this.closed = true;
+    this.flight?.abort.abort();
     await this.control;
     if (this.flight) { this.flight.abort.abort(); await this.flight.promise; }
     this.hooks.closeViewer();

@@ -31,6 +31,7 @@ export class Coordinator {
   patternViewer: { open(id: string, html: string, createdAt: string): Promise<void>; close(id?: string): void } | null = null;
   speech?: SpeechController;
   dictation?: DictationController;
+  private exiting = false;
   private revision = 0;
   private control: Promise<unknown> = Promise.resolve();
   private saveTail: Promise<unknown> = Promise.resolve();
@@ -106,14 +107,16 @@ export class Coordinator {
     } catch (error) { if (!this.activity.storageError) throw error; }
     return { endBlocker: this.cachedEndBlockers[0]?.sessionId ?? null, endBlockers: this.cachedEndBlockers, revision, sessions: page.sessions, historyHasMore: page.hasMore, unfinished, activity, settings, characters };
   }
-  databaseFailed() { this.patterns.databaseFailed(); this.speech?.stop(); this.emit({ type: 'dictation-interrupt' }); this.activity.storageError = 'database_worker_stopped'; this.backupReject?.(new AppFailure('save_required')); void this.publish().catch(() => undefined); }
+  databaseFailed() { if (this.exiting) return; this.patterns.databaseFailed(); this.speech?.stop(); this.emit({ type: 'dictation-interrupt' }); this.activity.storageError = 'database_worker_stopped'; this.backupReject?.(new AppFailure('save_required')); void this.publish().catch(() => undefined); }
   private async publish(id?: string) {
+    if (this.exiting) return;
     this.revision++;
     if (id) this.emit({ type: 'session-changed', sessionId: id, revision: this.revision });
     this.emit({ type: 'snapshot', snapshot: await this.snapshot() });
   }
   private write<K extends StoreMethod>(method: K, ...args: Parameters<Store[K]>): Promise<ReturnType<Store[K]>> {
     const operation = async () => {
+      if (this.exiting) throw new AppFailure('closing');
       const attempt = () => this.db.call(method, ...args);
       try { return await attempt(); }
       catch (error) {
@@ -164,6 +167,7 @@ export class Coordinator {
   }
   async closeForRestore() { return this.close(); }
   async command<K extends keyof CommandArgs>(name: K, args: CommandArgs[K]): Promise<CommandResults[K]> {
+    if (this.exiting) throw new AppFailure('closing');
     if (this.backupLocked) throw new AppFailure('backup_busy');
     const pending = this.runCommand(name, args); this.commandsInFlight.add(pending);
     try { return await pending; } finally { this.commandsInFlight.delete(pending); }
@@ -801,18 +805,49 @@ export class Coordinator {
       this.pump(); this.pumpRenewal(); this.pumpMemory();
     }
   }
-  private async close(): Promise<boolean> {
+  exitFailed() { return !!this.activity.storageError; }
+  exitRetryable() { return !this.activity.storageError?.startsWith('database_worker_'); }
+  cancelExitPreparation() {
+    if (this.exiting) return;
+    this.activity.closing = false; this.patterns.resumeAfterCloseFailure();
+    void this.publish().catch(() => undefined);
+  }
+  async prepareExit(current: () => boolean) {
+    if (this.backupLocked) throw new AppFailure('backup_busy');
+    await this.control;
+    if (!current()) return false;
+    if (this.activity.storageError || this.dictation?.needsSave) return false;
+    return this.close(current);
+  }
+  emergencyTeardown(): Promise<void> {
+    this.exiting = true; this.activity.closing = true;
+    this.memoryAuthorized.clear(); this.grammarQueue = []; this.renewalQueue = [];
+    for (const job of [this.interactive, this.grammar, this.renewal, this.memory]) job?.abort.abort();
+    this.speech?.stop(); this.emit({ type: 'dictation-interrupt' });
+    // Start independent cleanup together; none is a prerequisite for the main deadline.
+    return Promise.allSettled([
+      this.genie.dispose(), this.explain.dispose(), this.patterns.close(),
+      this.speech?.close(), this.dictation?.close(), this.db.close()
+    ]).then(() => undefined);
+  }
+  private async close(current?: () => boolean): Promise<boolean> {
     this.activity.closing = true; await this.publish();
+    if (current && !current()) return false;
     await this.genie.dispose();
+    if (current && !current()) return false;
     await this.explain.dispose();
+    if (current && !current()) return false;
     await this.patterns.close();
+    if (current && !current()) { this.patterns.resumeAfterCloseFailure(); return false; }
     this.interactive?.abort.abort(); this.grammar?.abort.abort(); this.renewal?.abort.abort(); this.memory?.abort.abort();
     await Promise.all([this.interactive?.promise, this.grammar?.promise, this.renewal?.promise, this.memory?.promise]);
+    if (current && !current()) return false;
     this.memoryAuthorized.clear();
     for (const request of this.grammarQueue.splice(0)) await this.write('failRequest', request.id, 'queued_not_dispatched', null, {}, true);
     for (const { attempt } of this.renewalQueue.splice(0)) await this.write('failStarter', attempt.id, 'queued_not_dispatched', null, {}, true);
     await this.saveTail;
     if (this.activity.storageError) { this.activity.closing = false; this.patterns.resumeAfterCloseFailure(); await this.publish(); return false; }
+    if (current) return current();
     await this.speech?.close();
     await this.dictation?.close();
     await this.db.close(); return true;

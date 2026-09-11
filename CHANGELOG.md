@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add in-app exit recovery with text copying and explicit unsaved-exit confirmation when saving or shutdown is blocked.
 - Unify text routing with no provider pin, fallback enabled and data collection denied, preserving history and voice caches through schema 27 and documenting audio policy limitations.
 - Fix Auto partner selection getting stuck with a save error when recording routing results or preparing its fallback attempt.
 

@@ -80,7 +80,7 @@ export type AppEvent = { type: 'usage-changed' } | { type: 'explain'; record: im
   { type: 'stream'; revision: number; sessionId: string; requestId: string; messageId: string; text: string } |
   { type: 'session-changed'; revision: number; sessionId: string } |
   { type: 'session-deleted'; revision: number; sessionId: string } |
-  { type: 'close-requested'; revision: number };
+  { type: 'close-requested'; revision: number; retry?: boolean } | { type: 'exit-copy-requested'; id: number } | { type: 'close-cancelled' };
 export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, PatternCommandArgs {
   setMemoryPreference: { enabled: boolean; revision: number };
   usageSnapshot: undefined;
@@ -139,10 +139,14 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   backupRestore: undefined;
   refreshKey: undefined;
   manageKey: import('./credentials').KeyAction;
+  exitOptions: undefined;
+  exitPrepared: { id: number; outcome: 'ready' | 'cancelled' | 'blocked' };
+  exitCopyText: { id: number; text: string };
   close: undefined;
 }
 export interface CommandResults extends ExplainCommandResults, GenieCommandResults, PatternCommandResults {
   setMemoryPreference: import('./memory-control').MemoryPreference;
+  exitOptions: void; exitPrepared: void; exitCopyText: void;
   usageSnapshot: import('./usage').UsageSnapshot;
   usageBudget: import('./usage').UsageSnapshot;
   asrSnapshot: import('./asr').DictationSnapshot; asrContext: void; asrBegin: void;

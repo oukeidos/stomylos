@@ -1,3 +1,5 @@
+import { showExitDialog } from './exit-dialog';
+import { ExitController } from './exit-controller';
 import { UsageStore } from './usage-store';
 import { PatternReportViewer } from './pattern-report-viewer';
 import { verifyPatternRuntime } from './pattern-report';
@@ -7,7 +9,7 @@ import { DictationController } from './asr';
 import { DictationStore } from './asr-store';
 import { AsrTransport } from './asr-transport';
 import { CaptureWorker } from './asr-worker-client';
-import { app, BrowserWindow, dialog, ipcMain, protocol, session, powerMonitor, shell, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, powerMonitor, shell, safeStorage, clipboard } from 'electron';
 import { markdownWebUrl } from '../shared/markdown-link';
 import { readFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
@@ -37,7 +39,8 @@ if (launch) {
   const { directory, normalData } = launch;
   let unlockData: (() => void) | undefined;
   let startupDatabase: DatabaseClient | undefined;
-  const restart = () => { allowExit = true; app.relaunch(); setTimeout(() => app.quit(), 100); };
+  let exitingAdmission = false;
+  const restart = () => { if (exitingAdmission) return; allowExit = true; app.relaunch(); setTimeout(() => app.quit(), 100); };
   const backups = new BackupController(directory, appVersion, restart);
   app.on('will-quit', () => unlockData?.());
   app.setPath('userData', join(directory, 'chromium'));
@@ -112,13 +115,14 @@ if (launch) {
     const usage = new UsageStore(directory, () => emit({ type: 'usage-changed' }));
     app.on('will-quit', () => usage.close());
     const keyPresent = credentials.refresh();
-    coordinator = new Coordinator(db, new OpenRouter(credentials.currentKey, endpoint, usage), {
+    const providerKey = () => { if (exitingAdmission) throw new AppFailure('closing'); return credentials.currentKey(); };
+    coordinator = new Coordinator(db, new OpenRouter(providerKey, endpoint, usage), {
       keyPresent, credentials: credentials.snapshot(), keyPath, dataPath: directory, appVersion, development: !normalData, simulation: !!endpoint
     }, emit, () => credentials.refresh(), credentials);
     coordinator.patternViewer = new PatternReportViewer();
     await coordinator.initialize();
     coordinator.speech = new SpeechController(new SpeechStore(directory),
-      new SpeechTransport(credentials.currentKey, endpoint ? new URL('/audio/speech', endpoint).href : undefined, undefined, undefined, undefined, usage),
+      new SpeechTransport(providerKey, endpoint ? new URL('/audio/speech', endpoint).href : undefined, undefined, undefined, undefined, usage),
       async (sessionId, messageId) => {
         const messages = await db.call('messages', sessionId);
         const message = messages.find(m => m.id === messageId);
@@ -127,7 +131,7 @@ if (launch) {
       }, emit);
     await coordinator.speech.initialize();
     coordinator.dictation = new DictationController(new DictationStore(directory),
-      new AsrTransport(credentials.currentKey, endpoint ? new URL('/audio/transcriptions', endpoint).href : undefined, undefined, undefined, usage),
+      new AsrTransport(providerKey, endpoint ? new URL('/audio/transcriptions', endpoint).href : undefined, undefined, undefined, usage),
       () => CaptureWorker.create(join(__dirname, 'asr-worker.js')),
       snapshot => emit({ type: 'dictation', snapshot }), locked => coordinator!.speech!.captureLock(locked));
     await coordinator.dictation.initialize();
@@ -154,16 +158,54 @@ if (launch) {
     });
     window.webContents.on('will-navigate', event => event.preventDefault());
     window.webContents.on('will-attach-webview', event => event.preventDefault());
+    let copySequence = 0;
+    let copyPending: { id: number; resolve(text: string): void } | undefined;
+    const exits = new ExitController({
+      prepare: (id, retry) => emit({ type: 'close-requested', revision: id, retry }),
+      cancel: () => { emit({ type: 'close-cancelled' }); coordinator!.cancelExitPreparation(); },
+      finishPreparation: current => coordinator!.prepareExit(current),
+      failed: () => coordinator!.exitFailed(),
+      choose: copy => showExitDialog(window!, copy),
+      copy: async () => {
+        const id = ++copySequence;
+        let timer: ReturnType<typeof setTimeout>;
+        try {
+          const text = await new Promise<string>((resolve, reject) => {
+            copyPending = { id, resolve };
+            timer = setTimeout(() => reject(new Error('renderer_unavailable')), 1500);
+            emit({ type: 'exit-copy-requested', id });
+          });
+          if (!text) return 'No text available';
+          await clipboard.writeText(text);
+          if (await clipboard.readText() !== text) throw new Error('clipboard_failed');
+          return text.includes('[Copy truncated:') ? 'Copied (partial)' : 'Copied';
+        } finally { clearTimeout(timer!); copyPending = undefined; }
+      },
+      teardown: () => { exitingAdmission = true; return coordinator!.emergencyTeardown(); },
+      // Immediate exit retains the OS-owned data lock until process death and cannot
+      // re-enter before-quit or wait for a stuck worker/renderer.
+      exit: () => { allowExit = true; app.exit(0); }
+    });
     ipcMain.handle('stomylos:command', async (event, name: unknown, args: unknown) => {
       try {
         if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame) throw new AppFailure('invalid_sender');
         validateCommand(name, args);
+        if (exits.exiting) throw new AppFailure('closing');
+        if (name === 'exitOptions' || name === 'close') { exits.request(true); return { ok: true, value: name === 'close' ? false : undefined }; }
+        if (name === 'exitPrepared') {
+          const value = args as { id: number; outcome: 'ready' | 'cancelled' | 'blocked' };
+          void exits.prepared(value.id, value.outcome); return { ok: true };
+        }
+        if (name === 'exitCopyText') {
+          const value = args as { id: number; text: string };
+          if (copyPending?.id === value.id) copyPending.resolve(value.text);
+          return { ok: true };
+        }
         const value = name === 'usageSnapshot' ? usage.snapshot() : name === 'usageBudget' ? usage.setBudget((args as { amount: string | null }).amount) : name === 'backupExport' || name === 'backupRestore' ? await backups.run(name, coordinator) : await coordinator!.command(name, args as never);
-        if (name === 'close' && value === true) { allowExit = true; setTimeout(() => app.quit(), 20); }
         return { ok: true, value };
       } catch (error) { return { ok: false, error: failureCode(error) }; }
     });
-    window.on('close', event => { if (!allowExit) { event.preventDefault(); emit({ type: 'close-requested', revision: Date.now() }); } });
+    window.on('close', event => { if (!allowExit) { event.preventDefault(); exits.request(); } });
     window.once('ready-to-show', () => window!.show());
     if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL);
     else await window.loadURL('stomylos://app/');

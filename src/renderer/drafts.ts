@@ -38,3 +38,5 @@ export function submittedDraft(id: string, submitted: number) {
   if (current.revision === submitted) drafts.set(id, { text: '', revision: ++revision, saved: revision, error: false });
   publish();
 }
+
+export function unsavedDraftText() { return [...drafts].filter(([, d]) => d.revision !== d.saved).map(([id, d]) => `Draft (${id})\n${d.text}`).join('\n\n'); }

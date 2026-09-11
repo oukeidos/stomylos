@@ -62,6 +62,7 @@ export class ExplainController {
   }
   async dispose(sessionId?: string) {
     this.visible = false;
+    for (const flight of this.flights.values()) if (!sessionId || flight.record.session_id === sessionId) { flight.active = false; flight.abort.abort(); }
     for (const [id, flight] of this.flights) {
       if (sessionId && flight.record.session_id !== sessionId) continue;
       flight.active = false; flight.abort.abort(); this.flights.delete(id);

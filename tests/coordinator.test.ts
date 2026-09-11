@@ -896,3 +896,34 @@ it.each(['edit-first','send-first'])('manual memory serializes %s against the fi
     expect(store.currentMemory().revision).toBe(0);
   }
 });
+
+it('exit recovery bypasses a pending save without acknowledging it or replaying inference', async () => {
+  const id = (await controller.command('snapshot', undefined)).unfinished!.id;
+  await controller.command('saveDraft', { sessionId: id, text: 'Saved baseline', revision: 10 });
+  failMethod = 'saveDraft'; let saved = false;
+  void controller.command('saveDraft', { sessionId: id, text: 'Unsaved text', revision: 11 }).then(() => { saved = true; });
+  await waitFor(() => !!snapshots.at(-1)?.activity.storageError);
+  expect(controller.exitFailed()).toBe(true);
+  const teardown = controller.emergencyTeardown();
+  await expect(controller.command('retrySaving', undefined)).rejects.toThrow('closing');
+  await teardown;
+  expect(saved).toBe(false); expect(calls).toHaveLength(0);
+  const check = new Database(join(directory, 'stomylos.sqlite3'), { readonly: true });
+  expect(check.prepare('SELECT draft FROM sessions WHERE id=?').get(id)).toEqual({ draft: 'Saved baseline' });
+  expect(check.pragma('integrity_check', { simple: true })).toBe('ok'); check.close();
+});
+
+it('cancelled exit preparation cannot close storage after a delayed save recovers', async () => {
+  const id = (await controller.command('snapshot', undefined)).unfinished!.id;
+  failMethod = 'saveDraft';
+  const saving = controller.command('saveDraft', { sessionId: id, text: 'Recovered text', revision: 20 });
+  await waitFor(() => !!snapshots.at(-1)?.activity.storageError);
+  let current = true; const preparing = controller.prepareExit(() => current);
+  current = false; controller.cancelExitPreparation();
+  failMethod = null; await controller.command('retrySaving', undefined); await saving;
+  expect(await preparing).toBe(false);
+  expect((await controller.command('snapshot', undefined)).activity.closing).toBe(false);
+  await controller.command('saveDraft', { sessionId: id, text: 'Still usable', revision: 21 });
+  expect(calls).toHaveLength(0);
+  await controller.command('close', undefined);
+});

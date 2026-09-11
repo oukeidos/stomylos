@@ -8,6 +8,6 @@ export default defineConfig({
     plugins: [catalogCompatibility(), externalizeDepsPlugin()],
     build: { rollupOptions: { input: { index: resolve('src/main/index.ts'), 'backup-worker': resolve('src/main/backup-worker.ts'), 'db-worker': resolve('src/main/db-worker.ts'), 'asr-worker': resolve('src/main/asr-worker.ts') } } }
   },
-  preload: { plugins: [externalizeDepsPlugin()] },
+  preload: { plugins: [externalizeDepsPlugin()], build: { rollupOptions: { input: { index: resolve('src/preload/index.ts'), 'exit-dialog': resolve('src/preload/exit-dialog.ts') } } } },
   renderer: { plugins: [react()] }
 });

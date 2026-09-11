@@ -6,7 +6,7 @@ import { SearchSources, SearchCost, SearchAttempts } from './search';
 import type { PatternCard } from '../shared/pattern-report';
 import { Learning, usePatternState } from './learning';
 import { GenieDock, UndoGenie, useGenie, genieBusy, openGenie, captureGenieRange, closeGenieForApp, genieError } from './genie';
-import { DictationPanel, RecordButton, DictationNavigationDialog, useDictation, dictationBusy, beforeDictationNavigation, selectDictationSession, prepareDictationSend, dictationSent } from './dictation';
+import { recoveryDictationText, DictationPanel, RecordButton, DictationNavigationDialog, useDictation, dictationBusy, beforeDictationNavigation, selectDictationSession, prepareDictationSend, dictationSent } from './dictation';
 import { SpeechControl, selectSpeechSession } from './speech';
 import { createRoot } from 'react-dom/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -15,7 +15,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import type { AppSnapshot, Character, Message, SessionView, SessionSummary } from '../shared/types';
 import { MemoryChangeHistory } from './memory-changes';
 import { loadView, onDeleted, isDeleted, onClose, onViewChanged, useApp, useStream, useStartupError, reloadSnapshot } from './client';
-import { currentDraft, forgetDraft, editDraft, flushAllDrafts, flushDraft, initializeDraft, submittedDraft, useDraft } from './drafts';
+import { unsavedDraftText, currentDraft, forgetDraft, editDraft, flushAllDrafts, flushDraft, initializeDraft, submittedDraft, useDraft } from './drafts';
 import { Icon } from './icons';
 import { IconButton } from './icon-button';
 import { SettingsDialog, type SettingsTab, type SettingsHandle } from './settings';
@@ -419,7 +419,33 @@ function App() {
     setView(null); refresh(); const unsubscribe = onViewChanged(id => { if (id === selected) refresh(); });
     return () => { alive = false; unsubscribe(); };
   }, [selected]);
-  useEffect(() => onClose(() => act(async () => { if (settingsGuard.current && !await settingsGuard.current.beforeLeave()) return; await closeGenieForApp(); if (!await beforeDictationNavigation()) return; await flushAllDrafts(); await window.stomylos.command('close', undefined); })), [act]);
+  useEffect(() => onClose((id, retry, current) => {
+    void (async () => {
+      let outcome: 'ready' | 'cancelled' | 'blocked' = 'blocked';
+      try {
+        if (retry) await window.stomylos.command('retrySaving', undefined);
+        if (!current()) return;
+        if (settingsGuard.current && !await settingsGuard.current.beforeLeave()) outcome = 'cancelled';
+        else {
+          if (!current()) return;
+          await closeGenieForApp();
+          if (!current()) return;
+          if (!await beforeDictationNavigation()) outcome = 'cancelled';
+          else { if (!current()) return; await flushAllDrafts(); outcome = 'ready'; }
+        }
+      } catch { outcome = 'blocked'; }
+      await window.stomylos.command('exitPrepared', { id, outcome }).catch(() => undefined);
+    })();
+  }), []);
+  useEffect(() => window.stomylos.subscribe(event => {
+    if (event.type !== 'exit-copy-requested') return;
+    // Explicit allowlist: never enumerate inputs (Connection contains API secrets).
+    const fields = [...document.querySelectorAll<HTMLTextAreaElement>('#memory-edit-text, #genie-followup')]
+      .filter(field => !!field.value).map(field => `${field.getAttribute('aria-label') ?? field.id}\n${field.value}`);
+    const text = [unsavedDraftText(), recoveryDictationText(), app?.activity.streamingText ? `Received reply (may be unsaved)\n${app.activity.streamingText}` : '', ...fields].filter(Boolean).join('\n\n');
+    const bounded = text.length > 3_999_900 ? text.slice(0, 3_999_900) + '\n[Copy truncated: more text was available.]' : text;
+    void window.stomylos.command('exitCopyText', { id: event.id, text: bounded }).catch(() => undefined);
+  }), [app?.activity.streamingText]);
   useLayoutEffect(() => {
     if (app?.endBlocker) { setDetails(false); setNewDialog(false); setDeleteTarget(null); }
   }, [app?.endBlocker]);
@@ -495,7 +521,7 @@ function App() {
     <span className="bookmark-announcement" role="status" aria-live="polite">{bookmarks.announcement}</span>
     {bookmarks.undo && <BookmarkUndo key={bookmarks.undo.serial} undo={bookmarks.undo} disabled={bookmarkDisabled(bookmarks.undo.sessionId)} restore={() => act(() => bookmarks.set(bookmarks.undo!.sessionId, true))} dismiss={bookmarks.dismiss} />}
     {error && <div className="notice" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError(null)} aria-label="Dismiss message" title="Dismiss"><Icon name="close" /></button></div>}
-    {app.activity.storageError && <div className="notice danger" role="alert"><span>{app.activity.storageError.startsWith('database_worker_') ? 'Storage stopped. Copy any unsaved text before restarting the app. Saved history will recover on restart.' : 'Your latest changes could not be saved. Keep this window open.'}</span>{!app.activity.storageError.startsWith('database_worker_') && <button onClick={() => act(() => window.stomylos.command('retrySaving', undefined))}>Retry saving</button>}</div>}
+    {app.activity.storageError && <div className="notice danger" role="alert"><span>{app.activity.storageError.startsWith('database_worker_') ? 'Storage stopped. Copy any unsaved text before restarting the app. Saved history will recover on restart.' : 'Your latest changes could not be saved. Use Exit options to copy available text or close without saving.'}</span>{!app.activity.storageError.startsWith('database_worker_') && <button onClick={() => act(() => window.stomylos.command('retrySaving', undefined))}>Retry saving</button>}<button onClick={() => act(() => window.stomylos.command('exitOptions', undefined))}>Exit options</button></div>}
     {app.activity.deletionCleanupPending && <div className="notice danger" role="alert"><span>The chat was deleted, but some voice files still need cleanup.</span><button onClick={() => act(() => window.stomylos.command('retryDeletionCleanup', undefined))}>Retry cleanup</button></div>}
     {view && !view.endProcessing && maintenanceNotices(view).length > 0 && <div className="maintenance-summary" role="status">
       <span>{maintenanceNotices(view).map(notice => notice.text).join(' · ')}</span>
