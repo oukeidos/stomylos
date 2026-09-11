@@ -1,3 +1,4 @@
+import { providerComplete, type PrepareProvider } from './provider-dispatch';
 import { recoverRouter, routerRecoveryVersion } from './router-recovery';
 import { endRetryDelay, waitEndRetry } from './end-retry';
 import { cleanupBody } from './memory-cleanup';
@@ -451,8 +452,10 @@ export class Coordinator {
     });
     this.interactive = { abort, promise };
   }
+  private prepareProvider: PrepareProvider = (owner, id, body, identity) => this.write('prepareProvider', owner, id, body, identity);
   private async recoverRoute(request: RequestRecord, saved: Json, body: Json, signal: AbortSignal) {
     return recoverRouter(request, saved, body, {
+      prepare: (id, input, identity) => this.prepareProvider('model', id, input, identity),
       dispatch: async requestId => {
         await this.write('dispatch', requestId);
         this.activity.phase = 'routing'; this.activity.requestId = requestId; await this.publish(request.session_id);
@@ -489,7 +492,7 @@ export class Coordinator {
             await this.write('dispatch', request.id);
             this.activity.phase = 'routing'; this.activity.requestId = request.id; await this.publish(id);
             const source = view.messages.find(isLearner)!; const snapshot = JSON.parse(request.config);
-            const result = await this.gateway.complete(routerBody(view.session.starter_text, source.content, JSON.parse(view.session.chat_config)), snapshot.response_identity, signal, 10_000);
+            const result = await providerComplete(this.prepareProvider, this.gateway, 'model', request.id, routerBody(view.session.starter_text, source.content, JSON.parse(view.session.chat_config)), snapshot.response_identity, signal, 10_000);
             scores = routerScores(result.content, JSON.parse(view.session.chat_config)); await this.write('finishRequest', request.id, result.content, result.metadata);
           } catch (error) {
             fallback = failureCode(error); await this.write('failRequest', request.id, fallback, null, {}, signal.aborted);
@@ -511,7 +514,7 @@ export class Coordinator {
           await this.write('dispatch', route.id);
           this.activity.phase = 'routing'; this.activity.requestId = route.id; await this.publish(id);
           const snapshot = JSON.parse(route.config);
-          const result = await this.gateway.complete(partnerRouterBody(snapshot), snapshot.response_identity, signal, snapshot.timeout_seconds * 1000);
+          const result = await providerComplete(this.prepareProvider, this.gateway, 'model', route.id, partnerRouterBody(snapshot), snapshot.response_identity, signal, snapshot.timeout_seconds * 1000);
           if (signal.aborted) throw new AppFailure('request_cancelled');
           await this.write('finishPartnerRoute', route.id, result.content, result.metadata);
         } catch (error) {
@@ -525,6 +528,7 @@ export class Coordinator {
       this.activity.phase = 'preparing'; this.activity.requestId = null; await this.publish(id);
     }
     await routeSearch({
+      prepareProvider: (id, input) => this.prepareProvider('search', id, input, null),
       view: () => this.db.call('searchView', id),
       prepare: () => this.write('searchPrepare', id),
       dispatch: attemptId => this.write('searchDispatch', attemptId),
@@ -543,7 +547,9 @@ export class Coordinator {
         const {body,bubble} = begun;
         if (signal.aborted) throw new AppFailure('request_cancelled');
         this.activity.phase = 'reply'; this.activity.requestId = request.id; this.activity.streamingMessageId = bubble.id;
-        const response = this.gateway.stream(body, signal, content => {
+        const routed = await this.prepareProvider('model', request.id, body, null);
+        if (signal.aborted) throw new AppFailure('request_cancelled');
+        const response = this.gateway.stream(routed.body, signal, content => {
           if (content && firstAnswerAt === null) firstAnswerAt = Date.now();
           text = content; this.activity.streamingText = content;
           this.emit({ type: 'stream', revision: ++this.revision, sessionId: id, requestId: request.id, messageId: bubble.id, text });
@@ -606,7 +612,7 @@ export class Coordinator {
       const body = grammarBody(snapshot, source);
       if (signal.aborted) throw new AppFailure('queued_not_dispatched');
       await this.write('dispatch', request.id); await this.publish(request.session_id);
-      const result = await this.gateway.complete(body, snapshot.response_identity, signal, 120_000);
+      const result = await providerComplete(this.prepareProvider, this.gateway, 'model', request.id, body, snapshot.response_identity, signal, 120_000);
       if (signal.aborted) throw new AppFailure('request_cancelled');
       await this.write('receiveEndResponse', request.session_id, 'grammar', request.id, result.content, result.metadata);
       validateGrammar(result.content, source, snapshot); await this.write('saveAnalysis', request.id, result.content, result.metadata);
@@ -681,7 +687,7 @@ export class Coordinator {
       if (attempt.status !== 'received') {
         const config = JSON.parse(candidate.config), body = cleanupBody(config, JSON.parse(candidate.document));
         await this.write('dispatchCleanup', attempt.id); await this.publish(sessionId);
-        const result = await this.gateway.complete(body, config.response_identity, signal, config.timeout_seconds * 1000);
+        const result = await providerComplete(this.prepareProvider, this.gateway, 'cleanup', attempt.id, body, config.response_identity, signal, config.timeout_seconds * 1000);
         if (signal.aborted) throw new AppFailure('request_cancelled');
         await this.write('receiveCleanup', attempt.id, result.content, { ...result.metadata, elapsed_seconds: (performance.now() - started) / 1000 });
       }
@@ -716,7 +722,7 @@ export class Coordinator {
           const body = memoryBody(snapshot, packet);
           if (abort.signal.aborted) throw new AppFailure('queued_not_dispatched');
           await this.write('dispatchMemory', attempt.id); await this.publish(sessionId);
-          const result = await this.gateway.complete(body, snapshot.response_identity, abort.signal, snapshot.timeout_seconds * 1000);
+          const result = await providerComplete(this.prepareProvider, this.gateway, 'memory', attempt.id, body, snapshot.response_identity, abort.signal, snapshot.timeout_seconds * 1000);
           content = result.content; metadata = { ...result.metadata, elapsed_seconds: (performance.now() - started) / 1000,
             input_hash: attempt.input_hash, base_revision: packet.current_memory.revision, character_id: job.character_id };
           if (abort.signal.aborted) throw new AppFailure('request_cancelled');

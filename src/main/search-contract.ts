@@ -67,5 +67,6 @@ export function withSearch(body: Json, permitted: boolean): Json {
 export function recoverableSearchFailure(code: string): boolean {
   return !['request_cancelled', 'api_key_missing', 'http_401', 'http_402', 'http_403',
     'search_contract_changed', 'search_input_invalid', 'search_source_changed',
+    'provider_policy_invalid', 'provider_source_changed', 'provider_attempt_inactive',
     'operation_failed', 'database_worker_failed', 'database_worker_stopped'].includes(code);
 }

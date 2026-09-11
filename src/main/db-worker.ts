@@ -1,8 +1,8 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { Store, type StoreMethod } from './database';
-import { failureCode } from './errors';
-const methods: StoreMethod[] = ['resumeEndResponse', 'endStatus', 'endBlocker', 'endBlockers', 'assertEndActive', 'takeAutomaticRetry', 'suppressAutomaticRetry', 'receiveEndResponse', 'endResponse', 'clearEndResponse', 'cancelEnd', 'memoryCandidate', 'cleanupAttempts', 'prepareCleanup', 'dispatchCleanup', 'receiveCleanup', 'acceptCleanup', 'failCleanup', 'explainPrepare', 'explainList', 'explainGet', 'explainStart', 'explainFinish', 'patternRelated', 'patternPreview', 'patternCreate', 'patternAttempt', 'patternDispatch', 'patternRetry', 'patternSave', 'patternFinish', 'patternList', 'patternDetail', 'patternHtml', 'patternAffected', 'patternDelete', 'sessions', 'sessionPage', 'unfinished', 'session', 'messages', 'requests', 'request', 'units', 'view',
-  'createSession', 'searchMode', 'searchView', 'searchPrepare', 'searchDispatch', 'searchFinish', 'setOpening', 'setSessionBookmark', 'deleteSession', 'pendingDeletions', 'deletionAssets', 'finishDeletion', 'replaceQuestion', 'saveDraft', 'selectManual', 'changePartner', 'preparePartner', 'finishPartnerRoute', 'submit', 'commitRoute', 'createRequest', 'prepareChat', 'chatBody',
+import { AppFailure, failureCode } from './errors';
+const methods: StoreMethod[] = ['prepareProvider', 'resumeEndResponse', 'endStatus', 'endBlocker', 'endBlockers', 'assertEndActive', 'takeAutomaticRetry', 'suppressAutomaticRetry', 'receiveEndResponse', 'endResponse', 'clearEndResponse', 'cancelEnd', 'memoryCandidate', 'cleanupAttempts', 'prepareCleanup', 'dispatchCleanup', 'receiveCleanup', 'acceptCleanup', 'failCleanup', 'explainPrepare', 'explainList', 'explainGet', 'explainStart', 'explainFinish', 'patternRelated', 'patternPreview', 'patternCreate', 'patternAttempt', 'patternDispatch', 'patternRetry', 'patternSave', 'patternFinish', 'patternList', 'patternDetail', 'patternHtml', 'patternAffected', 'patternDelete', 'sessions', 'sessionPage', 'unfinished', 'session', 'messages', 'requests', 'request', 'units', 'view',
+  'createSession', 'searchMode', 'searchView', 'searchPrepare', 'searchDispatch', 'searchFinish', 'setOpening', 'setSessionBookmark', 'deleteSession', 'pendingDeletions', 'deletionAssets', 'finishDeletion', 'replaceQuestion', 'saveDraft', 'selectManual', 'changePartner', 'preparePartner', 'finishPartnerRoute', 'prepareRouterRecovery', 'finishRecoveryRoute', 'submit', 'commitRoute', 'createRequest', 'prepareChat', 'chatBody',
   'dispatch', 'prepareReply', 'checkpoint', 'finishRequest', 'finishReply', 'failRequest', 'end', 'saveAnalysis', 'integrity', 'starterInventory', 'starterJob', 'starterAttempt', 'starterAttempts', 'retryStarter', 'dispatchStarter', 'saveStarter', 'failStarter',
   'startChat', 'memoryPreference', 'setMemoryPreference', 'memoryManagement', 'prepareMemoryEdit', 'commitMemoryEdit', 'currentMemory', 'freezeMemory', 'memoryJob', 'memoryReady', 'retryMemory', 'skipMemory', 'prepareMemory', 'dispatchMemory', 'saveMemory', 'failMemory', 'close'];
 try {
@@ -10,7 +10,7 @@ try {
   parentPort!.postMessage({ type: 'ready' });
   parentPort!.on('message', ({ id, method, args }: { id: number; method: StoreMethod; args: any[] }) => {
     try {
-      if (!methods.includes(method)) throw new Error('Invalid database operation');
+      if (!methods.includes(method)) throw new AppFailure('database_operation_unsupported');
       const value = (store[method] as (...args: any[]) => any).apply(store, args);
       parentPort!.postMessage({ id, value });
       if (method === 'close') parentPort!.close();

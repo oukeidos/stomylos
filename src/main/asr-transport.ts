@@ -1,3 +1,4 @@
+import { assertProviderBody } from './provider-policy';
 import type { UsageRecorder } from './usage-store';
 import { ASR } from '../shared/asr';
 import { AppFailure } from './errors';
@@ -15,7 +16,9 @@ export function validateFlac(bytes: Uint8Array) {
 }
 export function asrBody(bytes: Uint8Array) {
   validateFlac(bytes);
-  const body = JSON.stringify({ model: ASR.model, input_audio: { format: 'flac', data: Buffer.from(bytes).toString('base64') } });
+  const request = { model: ASR.model, input_audio: { format: 'flac', data: Buffer.from(bytes).toString('base64') } };
+  assertProviderBody(request, 'transcription');
+  const body = JSON.stringify(request);
   if (Buffer.byteLength(body) > ASR.bodyBytes) throw new AppFailure('asr_request_size');
   return body;
 }

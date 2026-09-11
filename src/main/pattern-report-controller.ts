@@ -72,7 +72,8 @@ export class PatternReportController {
     try {
       const attempt = await this.hooks.write('patternDispatch', id);
       if (abort.signal.aborted) throw new AppFailure('request_cancelled');
-      const result = await this.gateway.complete(JSON.parse(attempt.request), attempt.contract.identity, abort.signal, attempt.contract.timeout_ms, patternResponsePolicy(attempt.contract));
+      const routed = await this.hooks.write('prepareProvider', 'pattern', id, JSON.parse(attempt.request), attempt.contract.identity);
+      const result = await this.gateway.complete(routed.body, routed.identity!, abort.signal, attempt.contract.timeout_ms, patternResponsePolicy(attempt.contract));
       metadata = { ...result.metadata, elapsed_seconds: (performance.now() - start) / 1000 };
       html = result.content;
       if (abort.signal.aborted) throw new AppFailure('request_cancelled');

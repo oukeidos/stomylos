@@ -1,3 +1,4 @@
+import type { ProviderRequest } from './provider-policy';
 import { mkdir, readFile, writeFile, rename, open, readdir, stat, unlink, chmod, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
@@ -6,6 +7,7 @@ import { isVoice, previewSource, type VoiceId, type PreviewSource } from '../sha
 import type { Message } from '../shared/types';
 
 export const speechHash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
+// Frozen generation/cache identity. Effective outbound routing is stored per attempt.
 export const speechConfig = { contract: 'stomylos_tts_v1', model: 'x-ai/grok-voice-tts-1.0', voice: 'ara', speed: 1.0,
   response_format: 'mp3', provider: { only: ['xai'], order: ['xai'], allow_fallbacks: false, data_collection: 'deny' }, prefix: '[long-pause]' };
 export type SpeechConfig = typeof speechConfig;
@@ -21,6 +23,7 @@ export type SpeechMode = 'manual' | 'automatic';
 export interface SpeechAttempt {
   id: string; parentId: string | null; state: 'generating' | 'ready' | 'failed' | 'cancelled' | 'interrupted' | 'save_pending' | 'evicted';
   trigger: SpeechMode; createdAt: string; dispatchedAt?: string; finishedAt?: string; error?: string;
+  providerRequest?: ProviderRequest;
   generationId?: string; bytes?: number; audioHash?: string; elapsedMs?: number;
 }
 export interface SpeechManifest {

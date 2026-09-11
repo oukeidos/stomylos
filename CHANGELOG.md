@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Unify text routing with no provider pin, fallback enabled and data collection denied, preserving history and voice caches through schema 27 and documenting audio policy limitations.
+- Fix Auto partner selection getting stuck with a save error when recording routing results or preparing its fallback attempt.
+
 ## 0.4.0 — 2026-09-11
 
 - Add a global Memory On/Off switch in Settings with schema 26 upgrades.

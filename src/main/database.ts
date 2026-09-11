@@ -1,3 +1,4 @@
+import { prepareProviderRequest, validateProviderRequest, type ProviderOwner, type ProviderRequest } from './provider-policy';
 import { memoryControlVersion } from '../shared/memory-control';
 import { memoryPreference, memoryPolicy, memoryReadAllowed } from './memory-control';
 import type { MemoryEdit, MemoryManagement } from '../shared/memory-management';
@@ -212,6 +213,20 @@ export class Store {
   searchMode(id: string, mode: SearchMode) { this.transaction(() => this.search.setMode(this.session(id), this.messages(id), mode)); }
   searchView(id: string) { this.session(id); return this.search.view(id); }
   searchPrepare(id: string) { return this.search.prepare(id); }
+  prepareProvider(owner: ProviderOwner, id: string, body: Json, identity: Json | null): ProviderRequest {
+    const tables = { model: 'model_requests', search: 'search_router_attempts', pattern: 'pattern_report_attempts',
+      memory: 'memory_attempts', cleanup: 'memory_cleanup_attempts', explain: 'explanation_attempts' } as const;
+    if (!Object.hasOwn(tables, owner)) throw new AppFailure('provider_owner_invalid');
+    const table = tables[owner], state = owner === 'explain' ? 'state' : 'status';
+    return this.transaction(() => {
+      const row = this.db.prepare(`SELECT provider_request, ${state} AS state FROM ${table} WHERE id=?`).get(id) as { provider_request: string | null; state: string } | undefined;
+      if (!row || !['queued', 'dispatched', 'pending'].includes(row.state)) throw new AppFailure('provider_attempt_inactive');
+      if (row.provider_request) return validateProviderRequest(JSON.parse(row.provider_request), { body, identity });
+      const request = prepareProviderRequest(body, identity);
+      this.db.prepare(`UPDATE ${table} SET provider_request=? WHERE id=?`).run(JSON.stringify(request), id);
+      return request;
+    });
+  }
   searchDispatch(id: string) { return this.search.dispatch(id); }
   searchFinish(id: string, content: string | null, metadata: Json, failure: string | null, interrupted = false) { return this.search.finish(id, content, metadata, failure, interrupted); }
   private event(id: string, kind: string, question: Starter) {

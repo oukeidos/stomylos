@@ -1,3 +1,4 @@
+import { prepareProviderRequest, type ProviderRequest } from './provider-policy';
 import { isDeepStrictEqual } from 'node:util';
 import { eightRouterPrompts } from './compact-router';
 import type { Json, RequestRecord } from '../shared/types';
@@ -27,6 +28,7 @@ export function validateRecovery(snapshot: Json) {
     !isDeepStrictEqual(snapshot.response_identity, { allowed_models: [routerRecoveryPolicy.models[index as 0 | 1]], provider: 'OpenAI' })) throw new AppFailure('router_recovery_changed');
 }
 interface IO {
+  prepare?(id: string, body: Json, identity: Json): Promise<ProviderRequest>;
   dispatch(id: string): Promise<unknown>;
   finish(id: string, content: string | null, metadata: Json, failure: string | null, terminal: boolean, interrupted: boolean): Promise<unknown>;
   secondary(id: string): Promise<RequestRecord>;
@@ -44,10 +46,12 @@ export async function recoverRouter(first: RequestRecord, saved: Json, body: Jso
     await io.dispatch(request.id);
     const timeout = Math.max(1, Math.min(snapshot.timeout_seconds * 1000, routerRecoveryPolicy.totalMs - networkMs));
     let content: string | null = null, metadata: Json = {}, failure: string | null = null, scores: Record<string, number> | null = null;
+    const input = { ...body, ...snapshot.parameters };
+    const routed = io.prepare ? await io.prepare(request.id, input, snapshot.response_identity) : prepareProviderRequest(input, snapshot.response_identity);
     const start = performance.now();
     try {
       if (signal.aborted) throw new AppFailure('request_cancelled');
-      const result = await gateway.complete({ ...body, ...snapshot.parameters }, snapshot.response_identity, signal, timeout);
+      const result = await gateway.complete(routed.body, routed.identity!, signal, timeout);
       content = result.content; metadata = result.metadata;
       if (signal.aborted) throw new AppFailure('request_cancelled');
       scores = routerScores(content, saved);
@@ -57,7 +61,7 @@ export async function recoverRouter(first: RequestRecord, saved: Json, body: Jso
     }
     const elapsed = Math.max(0, performance.now() - start); networkMs += elapsed;
     metadata = { ...metadata, routing_network_ms: elapsed, routing_chain_network_ms: networkMs };
-    const stopped = signal.aborted || ['request_cancelled', 'budget_exceeded', 'monthly_budget_exceeded', 'save_required', 'api_key_missing', 'usage_budget_reached', 'usage_unavailable'].includes(failure ?? '');
+    const stopped = signal.aborted || ['request_cancelled', 'budget_exceeded', 'monthly_budget_exceeded', 'save_required', 'api_key_missing', 'usage_budget_reached', 'usage_unavailable', 'provider_policy_invalid', 'provider_source_changed', 'provider_attempt_inactive'].includes(failure ?? '');
     const terminal = !failure || stopped || snapshot.recovery_attempt === 1 || networkMs >= routerRecoveryPolicy.totalMs;
     await io.finish(request.id, content, metadata, failure, terminal, stopped);
     if (stopped && !signal.aborted) throw new AppFailure(failure!);

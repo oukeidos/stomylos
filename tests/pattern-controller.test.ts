@@ -35,7 +35,8 @@ it('dispatches exactly once after double click and preserves the assembled reque
   const [one,two]=await Promise.all([controller.command('patternCreate',args),controller.command('patternCreate',args)]);
   expect(one.id).toBe(two.id); await vi.waitFor(()=>expect(r.complete).toHaveBeenCalledTimes(1));
   const attempt=store.patternAttempt(store.patternDetail(one.id).last_attempt_id);
-  expect(r.complete.mock.calls[0][0]).toEqual(JSON.parse(attempt.request));
+  expect(r.complete.mock.calls[0][0]).toEqual(JSON.parse((attempt as any).provider_request).body);
+  expect(JSON.parse(attempt.request).provider.only).toEqual(['openai']);
   r.remote.resolve({content:html,metadata:{usage:{cost:0.25}}}); await r.done();
   expect(store.patternHtml(one.id).html).toBe(html);
   await controller.command('patternCreate',args); expect(r.complete).toHaveBeenCalledTimes(1);

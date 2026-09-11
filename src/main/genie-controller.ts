@@ -1,3 +1,4 @@
+import { prepareProviderRequest } from './provider-policy';
 import { randomUUID } from 'node:crypto';
 import type { GenieSource, GenieRange, GenieSnapshot, GenieEpisode, GenieDraftResult } from '../shared/genie';
 import type { Json } from '../shared/types';
@@ -98,7 +99,8 @@ export class GenieController {
     e.attempts.push(attempt); e.phase = 'waiting'; e.candidateId = null; turn.status = 'waiting'; turn.error = null;
     const promise = (async () => {
       try {
-        const result = await this.gateway.complete(body, genieIdentity, abort.signal, genieTimeout);
+        const routed = prepareProviderRequest(body, genieIdentity);
+        const result = await this.gateway.complete(routed.body, routed.identity!, abort.signal, genieTimeout);
         if (abort.signal.aborted || this.state.episode !== e) return;
         attempt.cost = typeof result.metadata.usage?.cost === 'number' && Number.isFinite(result.metadata.usage.cost) ? result.metadata.usage.cost : null;
         const reply = parseGenie(result.content), replacement = genieReplacement(e.source, e.range, reply);

@@ -1,3 +1,4 @@
+import { prepareProviderRequest } from '../src/main/provider-policy';
 import sevenRuntime from '../src/main/conversation-v7-config.json';
 import { flat, splitDelta } from './flat-memory-fixtures';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -619,6 +620,7 @@ it('routes direct entry once and retains only real turns across failed reply, re
   expect(calls.filter(body => body.stream).at(-1)!.messages.map((m: Json) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
   expect(store.view(id).memory.snapshot).toEqual(snapshot);
   await controller.command('endSession', { sessionId: id });
+  await controller.command('retryAnalysis', { sessionId: id });
   await waitFor(() => store.starterJob(id) === null && store.session(id).analysis_state === 'completed');
   expect(renewalCalls).toHaveLength(0);
   expect(store.units(id).map(unit => unit.text)).toEqual(['Explain gravity.', 'What changes on the moon?']);
@@ -653,8 +655,9 @@ it('dispatches a historical retry with its frozen request and policy through the
   expect(patternCalls).toHaveLength(0);
   await controller.command('patternRetry', { id: r.id, operationId: randomUUID() });
   await waitFor(() => controller.patterns.snapshot().phase === 'idle');
-  expect(patternCalls).toEqual([JSON.parse(old.request)]);
-  expect(patternPolicies).toEqual([{ identity: historicalPatternContract.identity, timeout: historicalPatternContract.timeout_ms }]);
+  expect(patternCalls).toEqual([prepareProviderRequest(JSON.parse(old.request)).body]);
+  expect(store.patternAttempt(r.attemptId!).request).toBe(old.request);
+  expect(patternPolicies).toEqual([{ identity: { ...historicalPatternContract.identity, provider: null }, timeout: historicalPatternContract.timeout_ms }]);
   expect(store.patternDetail(r.id).attempts).toHaveLength(2);
   expect(store.patternHtml(r.id).html).toBe(patternHtml);
   await controller.command('close', undefined);

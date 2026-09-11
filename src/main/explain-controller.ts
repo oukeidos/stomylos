@@ -42,7 +42,8 @@ export class ExplainController {
     void (async () => {
       let content: string | null = null, metadata: Json = {}, failure: string | null = null;
       try {
-        const result = await this.gateway.complete(started.body, explainIdentity, flight.abort.signal, 90_000);
+        const routed = await this.db.call('prepareProvider', 'explain', started.attempt, started.body, explainIdentity);
+        const result = await this.gateway.complete(routed.body, routed.identity!, flight.abort.signal, 90_000);
         if (!result.content.trim()) throw new AppFailure('explain_empty');
         content = result.content; metadata = result.metadata;
       } catch (error) { failure = failureCode(error); }

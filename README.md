@@ -43,3 +43,11 @@ npm ci
 npm run build
 npm start
 ```
+
+## Provider data policy
+
+Text requests ask OpenRouter to exclude providers that collect data by setting
+`data_collection: "deny"`.
+
+The same request-level policy cannot be guaranteed for voice: transcription does
+not support these controls, and speech synthesis policy enforcement is unverified.

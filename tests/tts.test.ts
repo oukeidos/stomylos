@@ -18,7 +18,7 @@ async function fixture(generate = vi.fn(async () => ({ bytes: audio, elapsedMs: 
 describe('selected speech contract', () => {
   it('preserves source characters and prefixes exactly once without changing settings', () => {
     expect(speechBody(message)).toEqual({ model: 'x-ai/grok-voice-tts-1.0', voice: 'ara', speed: 1, response_format: 'mp3',
-      provider: { only: ['xai'], order: ['xai'], allow_fallbacks: false, data_collection: 'deny' }, input: '[long-pause]' + message.content });
+      provider: { allow_fallbacks: true, data_collection: 'deny' }, input: '[long-pause]' + message.content });
     expect(speechBody({ ...message, content: '[long-pause]Original' }).input).toBe('[long-pause][long-pause]Original');
     expect(speechBody({ ...message, content: '🌍'.repeat(14988) }).input).toHaveLength(29988);
     expect(() => speechBody({ ...message, content: '🌍'.repeat(14989) })).toThrow('speech_text_too_long');

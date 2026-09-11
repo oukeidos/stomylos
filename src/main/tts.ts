@@ -1,3 +1,4 @@
+import { prepareProviderRequest, validateProviderRequest, assertProviderBody, type ProviderRequest } from './provider-policy';
 import { decimal } from '../shared/usage';
 import type { UsageRecorder } from './usage-store';
 import { previewSource, type VoiceId } from '../shared/voice';
@@ -10,18 +11,22 @@ export function speechBody(message: SpeechSource, config = speechConfig) {
   const input = config.prefix + message.content;
   if ([...input].length > 15_000) throw new AppFailure('speech_text_too_long');
   const { contract: _contract, prefix: _prefix, ...settings } = config;
-  return { ...settings, input };
+  return prepareProviderRequest({ ...settings, input }, null, 'speech').body;
 }
 export class SpeechFailure extends AppFailure {
   constructor(code: string, public readonly generationId: string | undefined, public readonly elapsedMs: number) { super(code); }
 }
 export interface SpeechResult { bytes: Uint8Array; generationId?: string; elapsedMs: number }
-export interface SpeechGateway { generate(message: SpeechSource, signal: AbortSignal, config?: SpeechConfig): Promise<SpeechResult> }
+export interface SpeechGateway { generate(message: SpeechSource, signal: AbortSignal, config?: SpeechConfig, routing?: ProviderRequest): Promise<SpeechResult> }
 export class SpeechTransport implements SpeechGateway {
   constructor(private key: () => string | null, private endpoint = 'https://openrouter.ai/api/v1/audio/speech',
     private totalMs = 180_000, private idleMs = 90_000, private maxBytes = 16 * 1024 * 1024, private accounting?: UsageRecorder) {}
-  async generate(message: SpeechSource, signal: AbortSignal, config?: SpeechConfig): Promise<SpeechResult> {
-    const body = speechBody(message, config); const key = this.key(); if (!key) throw new AppFailure('api_key_missing');
+  async generate(message: SpeechSource, signal: AbortSignal, config?: SpeechConfig, routing?: ProviderRequest): Promise<SpeechResult> {
+    const input = speechBody(message, config);
+    const body = routing ? validateProviderRequest(routing, { body: input, identity: null }).body : input;
+    if (routing && routing.endpoint !== 'speech') throw new AppFailure('provider_policy_invalid');
+    assertProviderBody(body, 'speech');
+    const key = this.key(); if (!key) throw new AppFailure('api_key_missing');
     if (signal.aborted) throw new AppFailure('speech_cancelled');
     const abort = new AbortController(); let reason = 'speech_cancelled';
     const cancel = () => abort.abort(); if (signal.aborted) cancel(); else signal.addEventListener('abort', cancel, { once: true });
@@ -199,8 +204,9 @@ export class SpeechController {
       ({ m, a } = await this.store.begin(source, job.trigger, job.config));
       if (job.selection === this.selection) { this.item(key, source, state, a); await this.publish(); }
       if (job.abort.signal.aborted) throw new AppFailure('speech_cancelled');
+      a.providerRequest = prepareProviderRequest(speechBody(source, job.config), null, 'speech');
       a.dispatchedAt = new Date().toISOString(); await this.store.save(m);
-      const result = await this.gateway.generate(source, job.abort.signal, job.config);
+      const result = await this.gateway.generate(source, job.abort.signal, job.config, a.providerRequest);
       a.generationId = result.generationId; a.elapsedMs = result.elapsedMs;
       this.pending.set(key, { m, a, result });
       await this.store.complete(m, a, result.bytes); this.pending.delete(key); state = 'ready';

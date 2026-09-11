@@ -1,3 +1,4 @@
+import { prepareProviderRequest, type ProviderRequest } from './provider-policy';
 import type { SearchAttempt, SearchView } from '../shared/search';
 import type { Json } from '../shared/types';
 import type { Gateway } from './transport';
@@ -6,6 +7,7 @@ import { AppFailure, failureCode } from './errors';
 import { recoverableSearchFailure, searchBoolean, searchHash, validateSearchSnapshot } from './search-contract';
 
 export interface SearchRoutingStore {
+  prepareProvider?(id: string, body: Json): Promise<ProviderRequest>;
   view(): Promise<SearchView | null>;
   prepare(): Promise<SearchAttempt | null>;
   dispatch(id: string): Promise<void>;
@@ -29,10 +31,13 @@ export async function routeSearch(store: SearchRoutingStore, gateway: Gateway, s
     if (!timeoutMs) { await store.finish(attempt.id, null, {}, 'routing_deadline', false); continue; }
     await store.dispatch(attempt.id);
     if (signal.aborted) { await store.finish(attempt.id, null, {}, 'request_cancelled', true); throw new AppFailure('request_cancelled'); }
-    let content: string | null = null; let metadata: Json = {}; const started = performance.now();
+    let content: string | null = null; let metadata: Json = {};
     let failure: string | null = null;
+    const input = JSON.parse(attempt.config);
+    const routed = store.prepareProvider ? await store.prepareProvider(attempt.id, input) : prepareProviderRequest(input);
+    const started = performance.now();
     try {
-      const result = await gateway.stream(JSON.parse(attempt.config), signal, () => undefined, { gate: true, timeoutMs });
+      const result = await gateway.stream(routed.body, signal, () => undefined, { gate: true, timeoutMs });
       content = result.content; metadata = result.metadata;
       if (signal.aborted) throw new AppFailure('request_cancelled');
       searchBoolean(content);

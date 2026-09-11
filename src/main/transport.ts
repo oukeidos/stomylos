@@ -1,3 +1,4 @@
+import { assertProviderBody } from './provider-policy';
 import type { UsageRecorder } from './usage-store';
 import type { Json } from '../shared/types';
 import { AppFailure, HttpFailure } from './errors';
@@ -22,6 +23,7 @@ export class OpenRouter implements Gateway {
   constructor(private key: () => string | null, private endpoint = 'https://openrouter.ai/api/v1/chat/completions', private usage?: UsageRecorder) {}
   private async request<T>(body: Json, signal: AbortSignal, timeout: number, streaming: boolean,
     consume: (text: string, final: boolean) => T | undefined, options: SearchStreamOptions & CompletionOptions = {}, metadata: () => Json = () => ({})): Promise<T> {
+    assertProviderBody(body);
     const key = this.key(); if (!key) throw new AppFailure('api_key_missing');
     if (signal.aborted) throw new AppFailure('request_cancelled');
     const payload = JSON.stringify(body);
@@ -65,6 +67,7 @@ export class OpenRouter implements Gateway {
     }
   }
   complete(body: Json, identity: Json, signal: AbortSignal, timeoutMs: number, options: CompletionOptions = {}): Promise<Completion> {
+    if (identity.provider !== null) throw new AppFailure('provider_policy_invalid');
     let text = ''; let metadata: Json = {};
     return this.request(body, signal, timeoutMs, false, (part, final) => {
       text += part;
