@@ -1,3 +1,8 @@
+import type { MemoryEdit, MemoryManagement } from '../shared/memory-management';
+import { memoryCharacters, memoryCharacterCap } from './memory-render';
+import { validateFlatMemory } from './memory-flat';
+import { flatMemoryVersion, candidateLimits } from './memory-updater';
+import { conversationComponents } from './contracts';
 import { recoverySnapshot, validateRecovery } from './router-recovery';
 import { flattenMemory } from './memory-flat';
 import { currentSchema, inspectMigration, migrateDatabase } from './database-migrations';
@@ -571,6 +576,51 @@ export class Store {
     });
   }
   integrity() { return { integrity: this.db.pragma('integrity_check'), foreignKeys: this.db.pragma('foreign_key_check') }; }
+  memoryManagement(): MemoryManagement {
+    const document = flattenMemory(this.memory.load());
+    const processing = this.endBlocker() ?? this.all<{session_id: string}>("SELECT session_id FROM memory_jobs WHERE state NOT IN ('completed','skipped') ORDER BY ordinal LIMIT 1")[0]?.session_id;
+    const chat = this.all<{id: string}>(`SELECT s.id FROM sessions s WHERE s.state!='ended' AND (
+      EXISTS (SELECT 1 FROM messages m WHERE m.session_id=s.id AND m.origin='learner') OR
+      EXISTS (SELECT 1 FROM session_memories m WHERE m.session_id=s.id) OR
+      EXISTS (SELECT 1 FROM model_requests r WHERE r.session_id=s.id)) LIMIT 1`)[0];
+    return { document, hash: memoryHash(memoryJson(document)), blocker: processing ? {reason:'processing',sessionId:processing} : chat ? {reason:'chat',sessionId:chat.id} : null };
+  }
+  prepareMemoryEdit(edit: MemoryEdit) {
+    const current = this.memoryManagement();
+    if (current.blocker) throw new AppFailure('memory_in_use');
+    if (edit.revision !== current.document.revision || edit.hash !== current.hash) throw new AppFailure('memory_edit_conflict');
+    if (!current.document.database_records.some(item => item.id === edit.id)) throw new AppFailure('memory_edit_conflict');
+    const document = structuredClone(current.document);
+    document.database_records = edit.text === null ? document.database_records.filter(item => item.id !== edit.id)
+      : document.database_records.map(item => item.id === edit.id ? {...item, text: edit.text!} : item);
+    validateFlatMemory(document, candidateLimits);
+    if (memoryCharacters(document) > memoryCharacterCap) throw new AppFailure('memory_edit_capacity');
+    if (memoryJson(document) !== memoryJson(current.document)) document.revision++;
+    return { edit, document, afterHash: memoryHash(memoryJson(document)) };
+  }
+  commitMemoryEdit(prepared: ReturnType<Store['prepareMemoryEdit']>): MemoryManagement {
+    return this.transaction(() => {
+      const current = this.memoryManagement();
+      // A lost acknowledgement may be retried by the coordinator's save recovery.
+      if (current.hash === prepared.afterHash && current.document.revision === prepared.document.revision) return current;
+      const checked = this.prepareMemoryEdit(prepared.edit);
+      if (checked.afterHash !== prepared.afterHash) throw new AppFailure('memory_edit_conflict');
+      // Only untouched sessions can reach this write. Upgrade their memory wrapper,
+      // preserving the existing roster/settings wherever it already supports flat memory.
+      for (const session of this.all<Session>("SELECT * FROM sessions WHERE state!='ended'")) {
+        const saved = JSON.parse(session.chat_config);
+        if (saved.memory_version === flatMemoryVersion) continue;
+        const modern = ['stomylos_conversation_v6','stomylos_conversation_v7',config.conversation.version].includes(saved.version);
+        const next = modern ? {...saved, memory_version:flatMemoryVersion, component_hashes:conversationComponents(saved.version, flatMemoryVersion)} : conversationSnapshot(session.opening_kind);
+        if (session.manual_character) character(session.manual_character, next);
+        sessionRuntime(next);
+        this.run('UPDATE sessions SET chat_config=? WHERE id=?', JSON.stringify(next), session.id);
+        this.run('DELETE FROM memory_legacy_seeds WHERE session_id=?', session.id);
+      }
+      this.memory.commitManual(checked.document);
+      return this.memoryManagement();
+    });
+  }
   currentMemory() { return this.memory.load(); }
   freezeMemory(sessionId: string) { return this.transaction(() => this.memory.snapshot(this.session(sessionId))); }
   memoryJob(sessionId: string) { return this.memory.job(sessionId); }

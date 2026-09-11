@@ -166,6 +166,7 @@ export class Coordinator {
     if (name === 'genieDraft') { const a = args as CommandArgs['genieDraft']; this.genie.updateDraft(a.episodeId, a.text, a.revision); return undefined as CommandResults[K]; }
     if (name === 'genieClose' || name === 'genieCancel') { await this.genie.cancel((args as CommandArgs['genieClose']).episodeId, name === 'genieClose'); return undefined as CommandResults[K]; }
     if (['patternRelated', 'patternPreview', 'patternState', 'patternList', 'patternDetail', 'patternRetrySave', 'patternClose'].includes(name)) return this.patterns.command(name as keyof PatternCommandArgs, args as never) as Promise<CommandResults[K]>;
+    if (name === 'memoryManagement') return this.db.call('memoryManagement') as Promise<CommandResults[K]>;
     if (name === 'currentMemory') return this.db.call('currentMemory') as Promise<CommandResults[K]>;
     if (name === 'snapshot') return this.snapshot() as Promise<CommandResults[K]>;
     if (name === 'listSessions') return this.db.call('sessionPage', (args as CommandArgs['listSessions']).offset, (args as CommandArgs['listSessions']).filter) as Promise<CommandResults[K]>;
@@ -250,6 +251,13 @@ export class Coordinator {
     if (this.dictation?.locked && ['saveDraft', 'sendMessage', 'endSession', 'newSession', 'replaceStarter', 'setOpening', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) throw new AppFailure('asr_busy');
     if (['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) this.speech?.stop();
     switch (name) {
+      case 'editMemory': {
+        if (this.interactive) throw new AppFailure('memory_in_use');
+        const prepared = await this.db.call('prepareMemoryEdit', args);
+        const result = await this.write('commitMemoryEdit', prepared);
+        this.emit({type:'memory-changed', characterId:'shared', revision:++this.revision});
+        await this.publish(); return result;
+      }
       case 'genieOpen': this.speech?.stop(); return this.genie.open(args);
       case 'genieSubmit': return this.genie.submit(args);
       case 'genieRetry': return this.genie.retry(args.episodeId, args.operationId);

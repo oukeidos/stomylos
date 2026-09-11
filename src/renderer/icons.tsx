@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 const paths = {
   explain: <><path d="M21 11a8 8 0 0 1-8 8H7l-4 3V11a9 9 0 0 1 18 0Z" /><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4" /><path d="M12 15h.01" /></>,
   bookmark: <path d="M6 3h12v18l-6-4-6 4Z" />,
+  edit: <><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" /></>,
   trash: <><path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14M10 10v7M14 10v7" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   close: <path d="m6 6 12 12M18 6 6 18" />,

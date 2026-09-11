@@ -46,6 +46,11 @@ export class MemoryStore {
     const encoded = memoryJson(flattenMemory(doc));
     this.run('UPDATE shared_memory SET document=?,document_hash=? WHERE id=1', encoded, memoryHash(encoded));
   }
+  commitManual(doc: import('../shared/memory').FlatMemoryDocument) {
+    validateFlatMemory(doc, candidateLimits);
+    if (doc.character_id !== sharedMemoryId || memoryCharacters(doc) > memoryCharacterCap) fail('document');
+    this.commitMemory(doc);
+  }
   retireBridge() {
     if (!this.row("SELECT 1 FROM memory_jobs WHERE state NOT IN ('completed','skipped') AND json_extract(config,'$.version')!=? LIMIT 1", flatUpdaterVersion)) this.run('DELETE FROM memory_legacy_bridge');
   }

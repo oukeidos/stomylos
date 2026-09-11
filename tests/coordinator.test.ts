@@ -861,3 +861,35 @@ it.each([false, true])('does not dispatch starter generation (skip-only: %s)', a
   expect(store.starterJob(id)).toBeNull(); expect(renewalCalls).toHaveLength(0);
   await controller.command('close', undefined);
 });
+
+it('manual memory edit recovers a lost commit acknowledgement once without a provider call', async () => {
+  const inspect = new Database(join(directory,'stomylos.sqlite3'));
+  const doc = memoryJson({character_id:'shared',revision:0,database_records:[{id:'manual',text:'Before.'}]});
+  inspect.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(doc,memoryHash(doc));inspect.close();
+  const current = await controller.command('memoryManagement',undefined);
+  loseAck = 'commitMemoryEdit';
+  const pending = controller.command('editMemory',{id:'manual',text:'After.',revision:current.document.revision,hash:current.hash});
+  await waitFor(() => !!snapshots.at(-1)?.activity.storageError);
+  expect(store.currentMemory()).toMatchObject({revision:1,database_records:[{id:'manual',text:'After.'}]});
+  await controller.command('retrySaving',undefined);await pending;
+  expect(store.currentMemory().revision).toBe(1);expect(calls).toEqual([]);expect(memoryCalls).toEqual([]);
+});
+
+it.each(['edit-first','send-first'])('manual memory serializes %s against the first Send', async order => {
+  const inspect = new Database(join(directory,'stomylos.sqlite3'));
+  const doc = memoryJson({character_id:'shared',revision:0,database_records:[{id:'manual',text:'Before.'}]});
+  inspect.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(doc,memoryHash(doc));inspect.close();
+  const session = store.createSession();store.searchMode(session.id,'off');store.selectManual(session.id,'model_04');holdStream=true;
+  const current=await controller.command('memoryManagement',undefined);
+  const edit=()=>controller.command('editMemory',{id:'manual',text:'After.',revision:current.document.revision,hash:current.hash});
+  const send=()=>controller.command('sendMessage',{sessionId:session.id,text:'A new conversation.',revision:1});
+  if(order==='edit-first') {
+    const editing=edit(),sending=send();await editing;await sending;
+    await waitFor(()=>store.requests(session.id).some(r=>r.role==='chat'));
+    const request=store.requests(session.id).find(r=>r.role==='chat')!;
+    expect(JSON.parse(request.config).memory_context.database_records[0].text).toBe('After.');
+  } else {
+    const sending=send(),editing=edit();const rejected=expect(editing).rejects.toThrow('memory_in_use');await sending;await rejected;
+    expect(store.currentMemory().revision).toBe(0);
+  }
+});

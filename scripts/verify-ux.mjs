@@ -94,10 +94,10 @@ try {
         return result;
       }
       if (state.maintenance && args[1] === 'retryMemory') { state.retryTarget = args[2].sessionId; return { ok: true }; }
-      if (args[1] !== 'currentMemory' || state.mode === 'actual') return original(...args);
+      if (args[1] !== 'memoryManagement' || state.mode === 'actual') return original(...args);
       state.calls++;
       if (state.mode === 'failure') return { ok: false, error: 'memory_document_hash' };
-      const value = { character_id: 'shared', revision: state.serial, traits: Array.from({ length: state.count }, (_, i) => ({ id: `fixture-${i}`, text: state.count === 1 ? `Public memory revision ${state.serial}` : `Public memory ${i + 1}: Enjoys quiet walks, reading, and practicing English in everyday conversations.` })), relationships: [], experiences: [], intentions: [] };
+      const value = { hash: '0'.repeat(64), blocker: null, document: { character_id: 'shared', revision: state.serial, database_records: Array.from({ length: state.count }, (_, i) => ({ id: `fixture-${i}`, text: state.count === 1 ? `Public memory revision ${state.serial}` : `Public memory ${i + 1}: Enjoys quiet walks, reading, and practicing English in everyday conversations.` })) } };
       if (state.mode === 'hold') return new Promise(resolve => state.held.push(() => resolve({ ok: true, value })));
       return { ok: true, value };
     });

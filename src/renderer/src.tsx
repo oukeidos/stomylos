@@ -18,7 +18,7 @@ import { loadView, onDeleted, isDeleted, onClose, onViewChanged, useApp, useStre
 import { currentDraft, forgetDraft, editDraft, flushAllDrafts, flushDraft, initializeDraft, submittedDraft, useDraft } from './drafts';
 import { Icon } from './icons';
 import { IconButton } from './icon-button';
-import { SettingsDialog, type SettingsTab } from './settings';
+import { SettingsDialog, type SettingsTab, type SettingsHandle } from './settings';
 import { maintenanceNotices } from './maintenance';
 import { AssistantMarkdown } from './markdown';
 import { useConversationScroll } from './conversation-scroll';
@@ -82,6 +82,9 @@ function errorText(error: unknown): string {
     starter_catalog_corrupt: 'The question catalog could not be verified. Restart with a valid application build or restore a verified backup.',
     starter_not_retryable: 'Starter renewal is already running or has been saved.',
     memory_waiting_for_earlier_session: 'Resolve the earlier memory update first. Your conversation can continue.',
+    memory_in_use: 'Finish the current chat and its memory processing before editing. Your edit is preserved.',
+    memory_edit_conflict: 'Saved memory changed. Review the latest version before saving.',
+    memory_edit_capacity: 'Memory is over capacity. Shorten the edit before saving.',
     memory_not_retryable: 'This memory update is already running or has been resolved.',
     memory_not_skippable: 'Wait for the current memory update to finish before skipping it.',
     opening_changed: 'The opening has changed. Your draft is preserved; try the action again.',
@@ -358,6 +361,7 @@ function App() {
   const dictation = useDictation();
   const [openingBusy, setOpeningBusy] = useState(false);
   const [composing, setComposing] = useState(false);
+  const settingsGuard = useRef<SettingsHandle>(null);
   const app = useApp(); const [selected, setSelected] = useState<string | null>(null); const [view, setView] = useState<SessionView | null>(null);
   const [error, setError] = useState<string | null>(null); const [settings, setSettings] = useState(false); const [newDialog, setNewDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null);
@@ -408,9 +412,9 @@ function App() {
     setView(null); refresh(); const unsubscribe = onViewChanged(id => { if (id === selected) refresh(); });
     return () => { alive = false; unsubscribe(); };
   }, [selected]);
-  useEffect(() => onClose(() => act(async () => { await closeGenieForApp(); if (!await beforeDictationNavigation()) return; await flushAllDrafts(); await window.stomylos.command('close', undefined); })), [act]);
+  useEffect(() => onClose(() => act(async () => { if (settingsGuard.current && !await settingsGuard.current.beforeLeave()) return; await closeGenieForApp(); if (!await beforeDictationNavigation()) return; await flushAllDrafts(); await window.stomylos.command('close', undefined); })), [act]);
   useLayoutEffect(() => {
-    if (app?.endBlocker) { setDetails(false); setSettings(false); setNewDialog(false); setDeleteTarget(null); }
+    if (app?.endBlocker) { setDetails(false); setNewDialog(false); setDeleteTarget(null); }
   }, [app?.endBlocker]);
   if (!app) return <div className="startup"><strong>Stomylos</strong><p>{startupError ? 'Your conversations could not be loaded.' : 'Opening your conversations…'}</p>{startupError && <button onClick={reloadSnapshot}>Try loading again</button>}</div>;
   const unfinished = app.unfinished; const partner = (view ? JSON.parse(view.session.chat_config).characters as Character[] : app.characters).find(c => c.id === view?.session.character)?.label ?? 'Partner';
@@ -538,7 +542,7 @@ function App() {
     {view.session.state === 'ended' && view.session.draft && <Disclosure title="Unsent draft"><p className="retained-text">{view.session.draft}</p></Disclosure>}
     {view.session.state === 'ended' && <DictationPanel sessionId={view.session.id} disabled />}
   </>}</Modal>
-  <SettingsDialog beforeBackup={async () => { if (app.activity.storageError) throw new Error('save_required'); if (composing || dictationBusy()) throw new Error('backup_busy'); await flushAllDrafts(); }} open={settings} onOpenChange={setSettings} tab={settingsTab} onTabChange={setSettingsTab} settings={app.settings} errorText={errorText} returnFocus={() => settingsTrigger.current?.focus({ preventScroll: true })} />
+  <SettingsDialog ref={settingsGuard} openChat={id => act(() => show(id))} beforeBackup={async () => { if (app.activity.storageError) throw new Error('save_required'); if (composing || dictationBusy()) throw new Error('backup_busy'); await flushAllDrafts(); }} open={settings} onOpenChange={setSettings} tab={settingsTab} onTabChange={setSettingsTab} settings={app.settings} errorText={errorText} returnFocus={() => settingsTrigger.current?.focus({ preventScroll: true })} />
   <Modal open={newDialog} onOpenChange={setNewDialog} title="Start a new chat?"><p className="note">Your current chat is still open. End it to save the conversation and start a fresh one. Any unsent draft will be kept separately.</p>
     <div className="dialog-actions"><button onClick={() => { setNewDialog(false); if (unfinished) act(() => show(unfinished.id)); }}>Keep current chat</button><button className="primary" onClick={() => act(startNew)}>End and start new</button></div>
   </Modal></div>;
