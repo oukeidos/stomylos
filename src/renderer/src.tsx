@@ -33,6 +33,10 @@ function errorText(error: unknown): string {
   const messages: Record<string, string> = {
     end_processing_pending: 'Finish or force cancel the previous chat’s processing before starting another chat.',
     end_processing_cancelled: 'This chat’s remaining work was cancelled and cannot be resumed.',
+    memory_add_format: 'Memory extraction returned an unusable result. Retry this input or skip it.',
+    memory_add_item_capacity: 'An extracted note exceeds 4,000 characters. Retry this input or skip it.',
+    memory_metadata_mismatch: 'Memory storage needs recovery. Your saved data has not been changed.',
+    memory_add_not_retryable: 'This memory input has already changed. Refresh its status.',
     memory_cleanup_over_cap: 'The cleaned memory still exceeds 30,000 characters. Retry cleanup or force cancel.',
     memory_cleanup_format: 'The cleanup response did not use the format required by this saved cleanup task. Retry cleanup or force cancel.',
     bookmark_requires_message: 'Send a message before bookmarking.',

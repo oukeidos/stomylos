@@ -1,4 +1,5 @@
 import { flattenMemory } from '../src/main/memory-flat';
+import source23 from '../src/main/migrations/schema-v23.sql?raw';
 import source21 from '../src/main/migrations/schema-v21.sql?raw';
 import { emptyMemory, memoryJson, memoryHash } from '../src/main/memory-updater';
 import { Store } from '../src/main/database';
@@ -225,7 +226,7 @@ it('upgrades schema 19 report source linkage while preserving immutable report b
   expect(db.prepare('SELECT * FROM pattern_report_attempts').get()).toEqual(before);
   inject=false;migrateDatabase(db,dir);validateSchema(db,current);
   expect(db.prepare('SELECT snapshot FROM pattern_reports').pluck().get()).toBe(snapshot);
-  expect(db.prepare('SELECT * FROM pattern_report_attempts').get()).toEqual(before);
+  expect(db.prepare('SELECT * FROM pattern_report_attempts').get()).toEqual({...before as object,provider_request:null});
   expect(db.prepare('SELECT analysis_id,evidence_kind FROM pattern_report_sources').get()).toEqual({analysis_id:'analysis',evidence_kind:'grammar'});
   expect(db.pragma('foreign_key_check')).toEqual([]);
 });
@@ -241,12 +242,13 @@ it('admits v6 at schema 21 without rewriting saved requests and recovers a faile
   const backup=join(dir,'stomylos.pre-migration-v20.sqlite3'),bytes=readFileSync(backup);
   db.close();const reopened=new Database(join(dir,'stomylos.sqlite3'));databases.push(reopened);
   migrateDatabase(reopened,dir);expect(reopened.pragma('user_version',{simple:true})).toBe(currentSchema);
-  expect(reopened.prepare('SELECT * FROM memory_jobs').all()).toEqual(before);
+  expect(reopened.prepare('SELECT * FROM memory_jobs').all()).toEqual(before.map((j:any)=>({...j,state:'skipped'})));
+  expect(JSON.parse(reopened.prepare('SELECT evidence FROM memory_retired_jobs').pluck().get() as string).job).toEqual(before[0]);
   migrateDatabase(reopened,dir);expect(readFileSync(backup)).toEqual(bytes);
 });
 
 it('admits eight-partner contracts from schema 22 without rewriting history and rolls back the new step', () => {
-  const {db,dir}=fixture(current,22); db.transaction(()=>installCatalog19(db))();
+  const {db,dir}=fixture(source23,22); db.transaction(()=>installCatalog19(db))();
   db.prepare('UPDATE shared_memory SET document=?,document_hash=? WHERE id=1').run(flatDocument,memoryHash(flatDocument));
   db.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind) VALUES('saved','ended','2026-09-10','{\"version\":\"stomylos_conversation_v7\"}','user')").run();
   const before=db.prepare('SELECT * FROM sessions').all();

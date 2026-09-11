@@ -1,3 +1,4 @@
+import { memoryAddBody } from '../src/main/memory-add';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -83,6 +84,7 @@ it('checks the actual wire for every active text request shape and keeps search 
     add('report', patternBody([]), patternContract.identity);
     const doc = flattenMemory(emptyMemory('shared')), memory = memoryConfig(flatUpdaterVersion);
     add('memory', memoryBody(memory, { current_memory: doc, limits: candidateLimits, session: { id: 's', character_id: 'p', ended_at: '', timezone: 'UTC', messages: [] } }), memory.response_identity);
+    add('memory_add',memoryAddBody({timezone:'UTC',previous_assistant:null,current_user:{content:'I like tea.',sent_at:null}}),{allowed_models:['openai/gpt-5.6-luna'],provider:null});
     const cleanup = cleanupConfig(flatCleanupVersion); add('cleanup', cleanupBody(cleanup, doc), cleanup.response_identity);
     const wire = vi.fn(async (_url: unknown, init: RequestInit) => {
       const b = JSON.parse(init.body as string); assertProviderBody(b);
@@ -97,7 +99,7 @@ it('checks the actual wire for every active text request shape and keeps search 
       const sent = JSON.parse(wire.mock.calls.at(-1)![1].body as string);
       expect(sent, c.name).toEqual(routed.body); expect(JSON.stringify(c.body)).toBe(before);
     }
-    expect(cases).toHaveLength(39); expect(wire).toHaveBeenCalledTimes(cases.length);
+    expect(cases).toHaveLength(40); expect(wire).toHaveBeenCalledTimes(cases.length);
     expect(searchOverlay.max_tool_calls).toBe(4); expect(searchOverlay.tools[0].parameters.max_uses).toBe(2);
     expect(searchOverlay.stop_server_tools_when[0]).toEqual({ type: 'step_count_is', step_count: 4 });
     const cache = hashConfig(speechConfig);

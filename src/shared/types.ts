@@ -105,6 +105,8 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   speechRetrySave: { sessionId: string; messageId: string };
   speechStop: undefined;
   speechClear: undefined;
+  retryMemoryAdd: {sessionId:string;jobId:number};
+  skipMemoryAdd: {sessionId:string;jobId:number};
   memoryManagement: undefined;
   editMemory: import('./memory-management').MemoryEdit;
   currentMemory: undefined;
@@ -153,6 +155,8 @@ export interface CommandResults extends ExplainCommandResults, GenieCommandResul
   asrChunk: import('./asr').DictationProgress; asrFinish: void; asrTranscribe: void;
   asrCancel: void; asrRetrySave: void; asrInserted: void;
   speechSnapshot: SpeechSnapshot; speechVoice: void; speechPreview: void; speechPreviewStop: void; speechRecover: void; speechMode: void; speechContext: void; speechListen: void; speechRetrySave: void; speechStop: void; speechClear: void;
+  retryMemoryAdd: void;
+  skipMemoryAdd: void;
   memoryManagement: import('./memory-management').MemoryManagement;
   editMemory: import('./memory-management').MemoryManagement;
   currentMemory: import('./memory').StoredMemoryDocument;

@@ -1,6 +1,7 @@
+import { validateMemoryMetadata } from './memory-metadata';
 import { flattenMemory, validateFlatMemory, isFlatMemory } from './memory-flat';
 import { cleanupConfig, parseCleanupResponse, flatCleanupVersion, legacyCleanupVersion } from './memory-cleanup';
-import { memoryCharacters, memoryCharacterCap } from './memory-render';
+import { activeMemoryCharacterCap, memoryCharacters, memoryCharacterCap } from './memory-render';
 import { memoryReadAllowed, memoryWriteAllowed } from './memory-control';
 import type Database from 'better-sqlite3';
 import type { Json, Message, Session } from '../shared/types';
@@ -24,8 +25,9 @@ export class MemoryStore {
     if (memoryHash(saved.document) !== saved.document_hash) fail('document_hash');
     const doc = JSON.parse(saved.document); validateStored(doc);
     if (doc.character_id !== sharedMemoryId) fail('character_mismatch');
-    if (memoryCharacters(doc) > memoryCharacterCap) fail('recovery_required');
+    if (memoryCharacters(doc) > (Number(this.db.pragma('user_version', {simple:true}))>=28?activeMemoryCharacterCap:memoryCharacterCap)) fail('recovery_required');
     if (Number(this.db.pragma('user_version', { simple: true })) >= 22 && !isFlatMemory(doc)) fail('document');
+    if (Number(this.db.pragma('user_version',{simple:true}))>=28) validateMemoryMetadata(this.db,doc);
     return doc;
   }
   private inputMemory(version: string): MemoryDocument {
@@ -81,6 +83,7 @@ export class MemoryStore {
     return doc;
   }
   freeze(session: Session, messages: Message[]) {
+    if (Number(this.db.pragma('user_version', {simple:true}))>=28) return;
     if (!memoryWriteAllowed(this.db, session.id)) return;
     if (!memorySupported(JSON.parse(session.chat_config).memory_version) || !session.character || !messages.some(m => m.role === 'user' && m.origin === 'learner' && m.delivery === 'complete')) return;
     const temporal = [memoryVersion, sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion].includes(JSON.parse(session.chat_config).memory_version);

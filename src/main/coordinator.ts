@@ -1,7 +1,6 @@
 import { providerComplete, type PrepareProvider } from './provider-dispatch';
 import { recoverRouter, routerRecoveryVersion } from './router-recovery';
 import { endRetryDelay, waitEndRetry } from './end-retry';
-import { cleanupBody } from './memory-cleanup';
 import { ExplainController } from './explain-controller';
 import { partnerRouterBody } from './partner-router';
 import { PatternReportController } from './pattern-report-controller';
@@ -18,7 +17,6 @@ import type { Gateway } from './transport';
 import { CompletionFailure } from './transport';
 import { routeSearch } from './search-router';
 import { parseStarterQuestions, starterBody } from './starter-renewal';
-import { applyMemoryResponse, memoryBody } from './memory-updater';
 import { AppFailure, failureCode } from './errors';
 import type { Credentials } from './credentials';
 import { characters, conversationBody, conversationRequestSnapshot, grammarBody, grammarSnapshot, isLearner, routerBody, routerScores, routerSnapshot, validateGrammar, hash } from './contracts';
@@ -46,7 +44,6 @@ export class Coordinator {
   private renewalQueue: { attempt: RenewalAttempt; sessionId: string }[] = [];
   private renewal: { id: string; sessionId: string; abort: AbortController; promise: Promise<void> } | null = null;
   private scheduledRenewals = new Set<string>();
-  private memoryAuthorized = new Set<string>();
   private memoryWake = 0;
   private deleting = new Set<string>();
   private memory: { sessionId: string | null; abort: AbortController; promise: Promise<void> } | null = null;
@@ -96,7 +93,7 @@ export class Coordinator {
     this.memoryAdmission = pending.catch(() => undefined); return pending;
   }
   private cachedEndBlockers: { sessionId: string; title: string }[] = [];
-  async initialize() { await this.db.ready; if (!(await this.db.call('endBlocker'))) await this.db.call('createSession'); }
+  async initialize() { await this.db.ready; if (!(await this.db.call('endBlocker'))) await this.db.call('createSession'); this.pumpMemory(); }
   async snapshot(): Promise<AppSnapshot> {
     const revision = this.revision; const activity = { ...this.activity }; const settings = { ...this.settings };
     let page = this.cachedPage; let unfinished = this.cachedUnfinished;
@@ -162,7 +159,7 @@ export class Coordinator {
       this.speech?.resumeOpening(); this.backupLocked = false;
       if (this.grammarQueue.length) this.pump();
       if (this.renewalQueue.length) this.pumpRenewal();
-      if (this.memoryAuthorized.size) this.pumpMemory();
+      this.pumpMemory();
     }
   }
   async closeForRestore() { return this.close(); }
@@ -264,6 +261,7 @@ export class Coordinator {
     switch (name) {
       case 'setMemoryPreference': {
         const value = await this.admitMemory(() => this.write('setMemoryPreference', args.enabled, args.revision));
+        if (!value.enabled) this.memory?.abort.abort();
         this.settings.memory = value; await this.publish(); return value;
       }
       case 'editMemory': {
@@ -394,25 +392,15 @@ export class Coordinator {
       }
       case 'retryIntentionQuestions': throw new AppFailure('feature_removed');
       case 'retryStarterRenewal': throw new AppFailure('feature_removed');
+      case 'retryMemoryAdd':
+      case 'skipMemoryAdd':
+        await this.write(name,id,args.jobId); this.enqueueMemory(id); await this.publish(id); return;
       case 'retryMemory': {
-        await this.write('suppressAutomaticRetry', id, (await this.db.call('memoryCandidate', id)) ? 'cleanup' : 'update');
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
         await this.write('retryMemory', id); this.enqueueMemory(id); await this.publish(id); return;
       }
       case 'continueEnd': {
         await this.db.call('assertEndActive', id);
-        for (const stage of ['update']) {
-          try { await this.write('resumeEndResponse', id, stage); }
-          catch (error) { this.activity.error = failureCode(error); }
-        }
-        const candidate = await this.db.call('memoryCandidate', id);
-        if (candidate?.state === 'received') {
-          const received = (await this.db.call('cleanupAttempts', id)).findLast(a => a.status === 'received');
-          if (received) {
-            try { await this.write('acceptCleanup', received.id); }
-            catch (error) { await this.write('failCleanup', received.id, failureCode(error)); this.activity.error = failureCode(error); }
-          }
-        }
         const view = await this.db.call('view', id);
         if (!this.settings.keyPresent) {
           await this.publish(id);
@@ -423,15 +411,14 @@ export class Coordinator {
           await this.write('suppressAutomaticRetry', id, 'starter'); await this.enqueueRenewal(id, true);
         }
         if (view.memory.job && ['pending','failed','interrupted'].includes(view.memory.job.state)) {
-          await this.write('suppressAutomaticRetry', id, (await this.db.call('memoryCandidate', id)) ? 'cleanup' : 'update');
-          await this.write('retryMemory', id); this.enqueueMemory(id);
+            if (view.memory.job.state !== 'pending') await this.write('retryMemory', id); this.enqueueMemory(id);
         }
         await this.publish(id); return;
       }
-      case 'skipMemory':
+      case 'skipMemory': await this.write('skipMemory',id); this.enqueueMemory(id); await this.publish(id); return;
       case 'cancelEnd': {
         await this.write('cancelEnd', id);
-        this.memoryAuthorized.delete(id); this.memoryWake++;
+        this.memoryWake++;
         for (const job of [this.renewal, this.memory]) if (job?.sessionId === id) job.abort.abort();
         await this.publish(id); return;
       }
@@ -562,6 +549,7 @@ export class Coordinator {
           }
         }, body.tools ? { search: true, evidence: metadata => { searchEvidence = metadata; } } : undefined);
         void this.publish(id).catch(() => undefined);
+        this.enqueueMemory(id);
         return {bubble,response};
       });
       const {bubble,response} = await launch;
@@ -669,7 +657,7 @@ export class Coordinator {
     }
   }
   private enqueueMemory(sessionId: string) {
-    this.memoryAuthorized.add(sessionId); this.memoryWake++; this.pumpMemory();
+    this.memoryWake++; this.pumpMemory();
   }
   private async memoryChanged(sessionId: string) {
     const session = await this.db.call('session', sessionId);
@@ -684,74 +672,43 @@ export class Coordinator {
     await waitEndRetry(delay, signal);
     return !signal.aborted && !this.activity.closing;
   }
-  private async cleanMemory(sessionId: string, candidate: Json, signal: AbortSignal) {
-    const attempt = await this.write('prepareCleanup', sessionId, randomUUID());
-    const started = performance.now();
-    try {
-      if (attempt.status !== 'received') {
-        const config = JSON.parse(candidate.config), body = cleanupBody(config, JSON.parse(candidate.document));
-        await this.write('dispatchCleanup', attempt.id); await this.publish(sessionId);
-        const result = await providerComplete(this.prepareProvider, this.gateway, 'cleanup', attempt.id, body, config.response_identity, signal, config.timeout_seconds * 1000);
-        if (signal.aborted) throw new AppFailure('request_cancelled');
-        await this.write('receiveCleanup', attempt.id, result.content, { ...result.metadata, elapsed_seconds: (performance.now() - started) / 1000 });
-      }
-      await this.write('acceptCleanup', attempt.id);
-    } catch (error) {
-      await this.write('failCleanup', attempt.id, failureCode(error), signal.aborted, { content: error instanceof CompletionFailure ? error.content : null, metadata: { ...(error instanceof CompletionFailure ? error.metadata : {}), elapsed_seconds: (performance.now() - started) / 1000 } });
-      if (await this.automaticRetry(sessionId, 'cleanup', error, signal)) {
-        await this.write('retryMemory', sessionId); this.memoryAuthorized.add(sessionId);
-      }
-    }
-  }
   private pumpMemory() {
-    if (this.backupLocked || this.deleting.size || this.memory || this.activity.closing || !this.settings.keyPresent) return;
-    const abort = new AbortController(), wake = this.memoryWake;
-    const promise = Promise.resolve().then(async () => {
-      while (!this.deleting.size && !abort.signal.aborted && !this.activity.closing && this.settings.keyPresent) {
-        const sessionId = await this.db.call('memoryReady', [...this.memoryAuthorized]);
-        if (!sessionId || this.deleting.size) break;
-        this.memory!.sessionId = sessionId;
-        this.memoryAuthorized.delete(sessionId);
-        const candidate = await this.db.call('memoryCandidate', sessionId);
-        if (candidate && candidate.state !== 'completed') {
-          await this.cleanMemory(sessionId, candidate, abort.signal);
-          await this.memoryChanged(sessionId); this.memory!.sessionId = null; continue;
-        }
-        const attempt = await this.write('prepareMemory', sessionId, randomUUID());
-        let content: string | null = null; let metadata: Json = {}; const started = performance.now();
+    if (this.backupLocked || this.deleting.size || this.memory || this.activity.closing) return;
+    const abort = new AbortController(), wake=this.memoryWake;
+    const promise=Promise.resolve().then(async()=>{
+      while(!abort.signal.aborted&&!this.activity.closing&&!this.deleting.size) {
+        const job=await this.write('memoryAddReady');
+        if(!job || (job.state!=='received'&&!this.settings.keyPresent))break;
+        const sessionId=job.session_id; this.memory!.sessionId=sessionId;
+        const attempt=await this.write('prepareMemoryAdd',job.ordinal,randomUUID());
+        const started=performance.now(); let content:string|null=null; let metadata:Json={};
         try {
-          const job = await this.db.call('memoryJob', sessionId);
-          if (!job || hash(job.config) !== job.config_hash || hash(attempt.input_json) !== attempt.input_hash) throw new AppFailure('memory_source_changed');
-          const packet = JSON.parse(attempt.input_json), snapshot = JSON.parse(job.config);
-          const body = memoryBody(snapshot, packet);
-          if (abort.signal.aborted) throw new AppFailure('queued_not_dispatched');
-          await this.write('dispatchMemory', attempt.id); await this.publish(sessionId);
-          const result = await providerComplete(this.prepareProvider, this.gateway, 'memory', attempt.id, body, snapshot.response_identity, abort.signal, snapshot.timeout_seconds * 1000);
-          content = result.content; metadata = { ...result.metadata, elapsed_seconds: (performance.now() - started) / 1000,
-            input_hash: attempt.input_hash, base_revision: packet.current_memory.revision, character_id: job.character_id };
-          if (abort.signal.aborted) throw new AppFailure('request_cancelled');
-          await this.write('receiveEndResponse', sessionId, 'update', attempt.id, content, metadata);
-          applyMemoryResponse(snapshot, packet, content);
-          await this.write('saveMemory', attempt.id, content, metadata);
-          await this.write('clearEndResponse', sessionId, 'update');
-        } catch (error) {
-          if (error instanceof CompletionFailure) { content = error.content; metadata = { ...metadata, ...error.metadata }; }
-          metadata.elapsed_seconds = (performance.now() - started) / 1000;
-          await this.write('clearEndResponse', sessionId, 'update');
-          await this.write('failMemory', attempt.id, failureCode(error), content, metadata, abort.signal.aborted);
-          if (await this.automaticRetry(sessionId, 'update', error, abort.signal)) {
-            await this.write('retryMemory', sessionId); this.memoryAuthorized.add(sessionId);
+          if(attempt.status!=='received') {
+            // Share the short dispatch gate with Memory Off; never hold it over inference.
+            const launch=await this.admitMemory(async()=>{
+              if(abort.signal.aborted)throw new AppFailure('request_cancelled');
+              const routed=await this.prepareProvider('memory_add',attempt.id,JSON.parse(attempt.body),JSON.parse(job.config).identity);
+              await this.write('dispatchMemoryAdd',attempt.id);
+              if(abort.signal.aborted)throw new AppFailure('request_cancelled');
+              return {response:this.gateway.complete(routed.body,routed.identity!,abort.signal,JSON.parse(job.config).timeout_ms)};
+            });
+            const result=await launch.response;
+            if(abort.signal.aborted)throw new AppFailure('request_cancelled');
+            content=result.content; metadata={...result.metadata,elapsed_seconds:(performance.now()-started)/1000};
+            await this.write('receiveMemoryAdd',attempt.id,content,metadata);
           }
+          await this.write('acceptMemoryAdd',attempt.id);
+        } catch(error) {
+          if(error instanceof CompletionFailure){content=error.content;metadata={...metadata,...error.metadata};}
+          await this.write('failMemoryAdd',attempt.id,failureCode(error),abort.signal.aborted,content,metadata);
         }
-        if ((await this.db.call('memoryJob', sessionId))?.state === 'pending') this.memoryAuthorized.add(sessionId);
-        await this.memoryChanged(sessionId);
-        this.memory!.sessionId = null;
+        await this.memoryChanged(sessionId); this.memory!.sessionId=null;
       }
-    }).catch(error => { this.activity.error = failureCode(error); }).finally(async () => {
-      this.memory = null; await this.publish().catch(() => undefined);
-      if (wake !== this.memoryWake) this.pumpMemory();
+    }).catch(error=>{this.activity.error=failureCode(error);}).finally(async()=>{
+      this.memory=null;await this.publish().catch(()=>undefined);
+      if(wake!==this.memoryWake)this.pumpMemory();
     });
-    this.memory = { sessionId: null, abort, promise };
+    this.memory={sessionId:null,abort,promise};
   }
   async cleanupDeletions() {
     const pending = await this.db.call('pendingDeletions');
@@ -782,7 +739,6 @@ export class Coordinator {
         if (job.sessionId !== id) return true;
         this.scheduledRenewals.delete(job.attempt.id); return false;
       });
-      this.memoryAuthorized.delete(id);
       const jobs = [this.grammar, this.renewal, this.memory].filter(job => job?.sessionId === id);
       for (const job of jobs) job!.abort.abort();
       await Promise.all(jobs.map(job => job!.promise));
@@ -821,7 +777,7 @@ export class Coordinator {
   }
   emergencyTeardown(): Promise<void> {
     this.exiting = true; this.activity.closing = true;
-    this.memoryAuthorized.clear(); this.grammarQueue = []; this.renewalQueue = [];
+    this.grammarQueue = []; this.renewalQueue = [];
     for (const job of [this.interactive, this.grammar, this.renewal, this.memory]) job?.abort.abort();
     this.speech?.stop(); this.emit({ type: 'dictation-interrupt' });
     // Start independent cleanup together; none is a prerequisite for the main deadline.
@@ -842,7 +798,6 @@ export class Coordinator {
     this.interactive?.abort.abort(); this.grammar?.abort.abort(); this.renewal?.abort.abort(); this.memory?.abort.abort();
     await Promise.all([this.interactive?.promise, this.grammar?.promise, this.renewal?.promise, this.memory?.promise]);
     if (current && !current()) return false;
-    this.memoryAuthorized.clear();
     for (const request of this.grammarQueue.splice(0)) await this.write('failRequest', request.id, 'queued_not_dispatched', null, {}, true);
     for (const { attempt } of this.renewalQueue.splice(0)) await this.write('failStarter', attempt.id, 'queued_not_dispatched', null, {}, true);
     await this.saveTail;

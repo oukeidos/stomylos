@@ -51,8 +51,9 @@ export function EndProcessingDialog({ sessionId, storageError, errorText }: {
       <div className="end-processing-symbol" aria-hidden="true">{failed || loadError || storageError ? <Icon name="info" /> : <span className="end-spinner" />}</div>
       <Dialog.Title ref={heading} tabIndex={-1}>{failed ? 'Almost done' : 'Finishing your chat'}</Dialog.Title>
       <Dialog.Description>{failed ? 'Retry or cancel remaining.' : 'Chat saved.'}</Dialog.Description>
+      {view?.memory.addJobs?.some(job=>job.state==='interrupted') && <p className="note">An interrupted memory request may already have been billed. Trying again makes a new request.</p>}
       <ul className="end-processing-stages" aria-label="Processing stages" aria-live="polite">
-        {Object.entries(stages).map(([stage, label]) => {
+        {Object.entries(view?.memory.addJobs ? {update:'Memory'} : stages).map(([stage, label]) => {
           const raw = String(processing?.stages?.[stage] ?? 'pending');
           // Cleanup is conditional; it is still waiting until memory has settled.
           const state = stage === 'cleanup' && raw === 'skipped' && !processing?.complete &&

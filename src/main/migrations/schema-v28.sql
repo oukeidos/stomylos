@@ -691,10 +691,16 @@ CREATE TABLE memory_item_metadata (
   observed_at TEXT, origin TEXT NOT NULL CHECK(origin IN ('legacy','add','manual')),
   UNIQUE(source_order,item_index)
 );
+CREATE TABLE memory_cutover_archive (
+  id INTEGER PRIMARY KEY CHECK(id=1), document TEXT NOT NULL, document_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL, dismissed INTEGER NOT NULL DEFAULT 0 CHECK(dismissed IN (0,1))
+);
 CREATE TABLE memory_retired_jobs (
   session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
   evidence TEXT NOT NULL
 );
 CREATE INDEX memory_add_pending ON memory_add_jobs(ordinal) WHERE state NOT IN ('completed','skipped');
+CREATE TRIGGER immutable_memory_cutover BEFORE UPDATE OF document,document_hash,created_at ON memory_cutover_archive
+BEGIN SELECT RAISE(ABORT,'immutable memory archive'); END;
 CREATE TRIGGER immutable_memory_add_attempt BEFORE UPDATE OF id,job_id,body,body_hash,created_at ON memory_add_attempts
 BEGIN SELECT RAISE(ABORT,'immutable memory ADD attempt'); END;

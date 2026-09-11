@@ -1,5 +1,6 @@
 import type { FlatMemoryDocument, MemoryItem } from './memory';
 export interface MemoryManagement {
+  jobs?: import('./types').Json[];
   document: FlatMemoryDocument;
   hash: string;
   blocker: { reason: 'chat' | 'processing'; sessionId: string } | null;

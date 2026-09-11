@@ -10,9 +10,9 @@ import { migrateDatabase,validateSchema,currentSchema } from '../src/main/databa
 import current from '../src/main/schema.sql?raw';
 const fixtures:{dir:string;db:Database.Database}[]=[];
 afterEach(()=>{for(const {dir,db} of fixtures.splice(0)){db.close();rmSync(dir,{recursive:true,force:true});}});
-it.each(Array.from({length:13},(_,i)=>i+13))('preserves the supported schema %i forward path into memory controls',version=>{
+it.each(Array.from({length:16},(_,i)=>i+13))('preserves the supported schema %i forward path into memory controls',version=>{
  const dir=mkdtempSync('/tmp/stomylos-memory-chain-'),db=new Database(join(dir,'stomylos.sqlite3'));fixtures.push({dir,db});
- const source=version===13?13:version<19?18:version===19?19:version<22?21:version<24?23:25;
+ const source=version===13?13:version<19?18:version===19?19:version<22?21:version<24?23:version<26?25:version;
  db.transaction(()=>{db.exec(readFileSync(`src/main/migrations/schema-v${source}.sql`,'utf8'));db.pragma(`user_version=${version}`);
  if(version>=19&&version<24)installCatalog19(db);else new StarterStore(db).initialize();
  const document=memoryJson(version>=22?flattenMemory(emptyMemory('shared')):emptyMemory('shared'));

@@ -5,7 +5,7 @@ import { IconButton } from './icon-button';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { MemoryManagement } from '../shared/memory-management';
 import { matchingMemories } from '../shared/memory-management';
-import { memoryCharacters, memoryCharacterCap } from '../main/memory-render';
+import { memoryCharacters, activeMemoryCharacterCap } from '../main/memory-render';
 
 export interface MemoryManagerHandle { beforeLeave(): Promise<boolean> }
 type Editor = { id: string; mode: 'edit' | 'delete'; original: string; text: string; base: MemoryManagement };
@@ -74,7 +74,7 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
   const excess = useMemo(() => {
     if (!editor || editor.mode !== 'edit') return 0;
     const document = {...editor.base.document, database_records:editor.base.document.database_records.map(item => item.id === editor.id ? {...item, text:editor.text} : item)};
-    return Math.max(0, memoryCharacters(document) - memoryCharacterCap);
+    return Math.max(0, memoryCharacters(document) - activeMemoryCharacterCap);
   }, [editor]);
   const stale = !!editor && !!data && editor.base.hash !== data.hash;
   const locked = busy || !!data?.blocker || loadError;
@@ -102,7 +102,7 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
   };
   return <div className="current-memory memory-manager" aria-busy={busy}>
     <div className="memory-heading"><h3 className="settings-title">Memory</h3>
-      <MemoryControl active={active} preference={preference} errorText={errorText} />
+      <MemoryControl active={active} preference={preference} characters={data ? memoryCharacters(data.document) : undefined} errorText={errorText} />
     </div>
     {!data && !loadError && <p role="status">Loading memory…</p>}
     {loadError && <div role="alert"><p>Memory could not be loaded.{editor ? ' Your edit is preserved.' : ''}</p><button onClick={() => void refresh()}>Retry loading memory</button></div>}
@@ -110,6 +110,12 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
       setRetryingSave(true); try { await window.stomylos.command('retrySaving', undefined); } catch (cause) { setError(errorText(cause)); } finally { setRetryingSave(false); }
     }}>{retryingSave ? 'Retrying…' : 'Retry saving memory'}</button></div>}
     {data && <>
+      {!!data.jobs?.length && <section aria-label="Memory queue"><p className="note">{data.jobs.length} memory inputs pending. Conversation replies can continue while memory is processed.</p>
+        {data.jobs.filter(j=>['failed','interrupted'].includes(j.state)).map(j=><div key={j.ordinal}><p>Input {j.ordinal}: {j.state}. {j.failure==='memory_add_item_capacity'?'A note exceeds 4,000 characters. Retry extraction or skip this input.':''} {j.state==='interrupted'?'The previous call may have been billed. Retrying makes a new call.':''}</p>
+          <button disabled={busy} onClick={async()=>{try{await window.stomylos.command('retryMemoryAdd',{sessionId:j.session_id,jobId:j.ordinal});await refresh();}catch(cause){setError(errorText(cause));}}}>Retry input</button>
+          <button disabled={busy} onClick={async()=>{try{await window.stomylos.command('skipMemoryAdd',{sessionId:j.session_id,jobId:j.ordinal});await refresh();}catch(cause){setError(errorText(cause));}}}>Skip input</button></div>)}
+      </section>}
+      {error && !editor && <p role="alert">{error}</p>}
       {data.blocker && <div className="memory-lock"><p className="note">{data.blocker.reason === 'chat' ? 'Memory is in use by your current chat. Finish the chat to edit it.' : 'Finish memory processing to edit saved memories.'}</p>
         <button disabled={busy} onClick={async () => { const id = data.blocker!.sessionId; if (await beforeLeave()) openChat(id); }}>{data.blocker.reason === 'chat' ? 'Back to chat' : 'View memory processing'}</button></div>}
       <div className="memory-toolbar"><div className="memory-search"><input ref={search} type="search" aria-label="Search memories" placeholder="Search memories" value={query} onChange={event => { setQuery(event.target.value); setNotice(''); }} />

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix startup for existing schema-28 databases by removing the previous-memory archive through a backed-up schema-29 migration.
+
+- Add Luna memory notes after each eligible message, retaining up to 4,000 characters by oldest-first removal; schema 29 uses the standard pre-upgrade backup and offers per-input recovery without automatic paid retries.
+
 - Add in-app exit recovery with text copying and explicit unsaved-exit confirmation when saving or shutdown is blocked.
 - Unify text routing with no provider pin, fallback enabled and data collection denied, preserving history and voice caches through schema 27 and documenting audio policy limitations.
 - Fix Auto partner selection getting stuck with a save error when recording routing results or preparing its fallback attempt.

@@ -1,8 +1,9 @@
+import { MemoryAddStore } from './memory-add-store';
 import { prepareProviderRequest, validateProviderRequest, type ProviderOwner, type ProviderRequest } from './provider-policy';
 import { memoryControlVersion } from '../shared/memory-control';
 import { memoryPreference, memoryPolicy, memoryReadAllowed } from './memory-control';
 import type { MemoryEdit, MemoryManagement } from '../shared/memory-management';
-import { memoryCharacters, memoryCharacterCap } from './memory-render';
+import { memoryCharacters, activeMemoryCharacterCap } from './memory-render';
 import { validateFlatMemory } from './memory-flat';
 import { flatMemoryVersion, candidateLimits } from './memory-updater';
 import { conversationComponents } from './contracts';
@@ -48,6 +49,7 @@ export class Store {
   private closed = false;
   private starter!: StarterStore;
   private memory!: MemoryStore;
+  private additions!: MemoryAddStore;
   private intentions!: IntentionQuestionStore;
   private patterns!: PatternReportStore;
   private search!: SearchStore;
@@ -74,6 +76,7 @@ export class Store {
       this.starter = new StarterStore(this.db, pickGenerator);
       this.intentions = new IntentionQuestionStore(this.db, this.starter);
       this.memory = new MemoryStore(this.db);
+      this.additions = new MemoryAddStore(this.db);
       this.patterns = new PatternReportStore(this.db);
       this.search = new SearchStore(this.db);
       this.partners = new PartnerStore(this.db);
@@ -111,7 +114,7 @@ export class Store {
       this.run("UPDATE messages SET delivery='interrupted' WHERE delivery='streaming'");
       this.run("UPDATE sessions SET analysis_state=CASE WHEN (SELECT failure FROM model_requests WHERE session_id=sessions.id AND role='grammar' ORDER BY created_at DESC,rowid DESC LIMIT 1)='queued_not_dispatched' THEN 'pending' ELSE 'failed' END WHERE analysis_state='running'");
       this.starter.recover();
-      this.memory.recover();
+      this.memory.recover(); this.additions.recover();
       // Dedicated Intention jobs are historical only. Release any legacy preparation locally.
       for (const row of this.all<{session_id: string}>("SELECT session_id FROM starter_preparations WHERE state='waiting'")) this.starter.release(this.session(row.session_id), this.messages(row.session_id), 'feature_removed');
       this.patterns.recover();
@@ -209,13 +212,13 @@ export class Store {
   units(id: string): GrammarUnit[] {
     return this.all('SELECT u.* FROM grammar_units u JOIN sessions s ON s.selected_analysis_id=u.analysis_attempt_id WHERE s.id=? ORDER BY u.ordinal', id);
   }
-  view(id: string): SessionView { const session = this.session(id); return { session, memoryPolicy: memoryPolicy(this.db,id), endProcessing: this.endStatus(id), partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: undefined, outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && this.starter.outdated(session.starter_id), memory: this.memory.view(session), search: this.search.view(id), searches: this.search.history(id) }; }
+  view(id: string): SessionView { const session = this.session(id); return { session, memoryPolicy: memoryPolicy(this.db,id), endProcessing: this.endStatus(id), partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: undefined, outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && this.starter.outdated(session.starter_id), memory: this.memoryView(session), search: this.search.view(id), searches: this.search.history(id) }; }
   searchMode(id: string, mode: SearchMode) { this.transaction(() => this.search.setMode(this.session(id), this.messages(id), mode)); }
   searchView(id: string) { this.session(id); return this.search.view(id); }
   searchPrepare(id: string) { return this.search.prepare(id); }
   prepareProvider(owner: ProviderOwner, id: string, body: Json, identity: Json | null): ProviderRequest {
     const tables = { model: 'model_requests', search: 'search_router_attempts', pattern: 'pattern_report_attempts',
-      memory: 'memory_attempts', cleanup: 'memory_cleanup_attempts', explain: 'explanation_attempts' } as const;
+      memory_add: 'memory_add_attempts', memory: 'memory_attempts', cleanup: 'memory_cleanup_attempts', explain: 'explanation_attempts' } as const;
     if (!Object.hasOwn(tables, owner)) throw new AppFailure('provider_owner_invalid');
     const table = tables[owner], state = owner === 'explain' ? 'state' : 'status';
     return this.transaction(() => {
@@ -342,6 +345,7 @@ export class Store {
       const sent = this.clock(); validateTime(sent);
       this.run('INSERT INTO message_times VALUES(?,?,?,?)', message.id, sent.utc, sent.timezone, sent.utc_offset_minutes);
       this.search.freeze(current, messages, message, sent.utc);
+      this.additions.freeze(message, messages.at(-1), sent);
       if (current.state === 'draft' && current.opening_kind === 'starter') {
         const consumed = this.starter.consume(current.starter_id!, 'answered');
         this.starter.event(this.event(id, 'answered', { id: current.starter_id!, version: current.starter_version!, text: current.starter_text! }), consumed);
@@ -452,7 +456,18 @@ export class Store {
         if (previous.session_id !== id || previous.role !== 'chat') throw new AppFailure('request_operation_conflict');
         this.chatBody(previous.id); return previous;
       }
-      const session = this.session(id);
+      let session = this.session(id);
+      if(!this.all('SELECT 1 FROM session_memories WHERE session_id=?',id).length && memoryPolicy(this.db,id).firstEnabled===null) {
+        const saved=JSON.parse(session.chat_config);
+        if(saved.memory_version!==flatMemoryVersion) {
+          const modern=['stomylos_conversation_v6','stomylos_conversation_v7',config.conversation.version].includes(saved.version);
+          const next=modern?{...saved,memory_version:flatMemoryVersion,component_hashes:conversationComponents(saved.version,flatMemoryVersion)}:conversationSnapshot(session.opening_kind);
+          if(session.character)character(session.character,next);
+          this.run('UPDATE sessions SET chat_config=? WHERE id=?',JSON.stringify(next),id);
+          this.run('DELETE FROM memory_legacy_seeds WHERE session_id=?',id);
+          session=this.session(id);
+        }
+      }
       if (session.state !== 'active' || !session.character) throw new AppFailure('session_ended');
       const messages = this.messages(id), user = messages.findLast(isLearner);
       if (!user || (messages.at(-1)?.role === 'assistant' && messages.at(-1)?.delivery === 'complete')) throw new AppFailure('reply_not_retryable');
@@ -532,6 +547,7 @@ export class Store {
       if (current.enabled === enabled) return current;
       if (current.revision !== revision) throw new AppFailure('memory_setting_conflict');
       this.run('UPDATE memory_preferences SET enabled=?,revision=revision+1 WHERE id=1', Number(enabled));
+      if (!enabled) this.additions.cancel();
       if (!enabled) this.run("UPDATE session_memory_policy SET updates_disabled=1 WHERE session_id IN (SELECT id FROM sessions WHERE state!='ended')");
       return this.memoryPreference();
     });
@@ -625,7 +641,7 @@ export class Store {
       this.run('INSERT INTO end_processing(session_id,created_at) VALUES(?,?)', id, now());
       for (const stage of ['grammar','starter','update','cleanup']) this.run('INSERT INTO end_stage_state(session_id,stage) VALUES(?,?)', id, stage);
       this.starter.freeze(this.session(id), source);
-      this.memory.freeze(this.session(id), source);
+      this.additions.end(id);
       if (!this.memory.job(id)) this.starter.release(this.session(id), source, 'no_memory_update');
       return analyze;
     });
@@ -647,12 +663,12 @@ export class Store {
   integrity() { return { integrity: this.db.pragma('integrity_check'), foreignKeys: this.db.pragma('foreign_key_check') }; }
   memoryManagement(): MemoryManagement {
     const document = flattenMemory(this.memory.load());
-    const processing = this.endBlocker() ?? this.all<{session_id: string}>("SELECT session_id FROM memory_jobs WHERE state NOT IN ('completed','skipped') ORDER BY ordinal LIMIT 1")[0]?.session_id;
+    const processing = this.additions.jobs().filter(j=>this.session(j.session_id).state==='ended').find(j=>!['completed','skipped'].includes(j.state))?.session_id ?? this.endBlocker() ?? this.all<{session_id: string}>("SELECT session_id FROM memory_jobs WHERE state NOT IN ('completed','skipped') ORDER BY ordinal LIMIT 1")[0]?.session_id;
     const chat = this.all<{id: string}>(`SELECT s.id FROM sessions s WHERE s.state!='ended' AND (
       EXISTS (SELECT 1 FROM messages m WHERE m.session_id=s.id AND m.origin='learner') OR
       EXISTS (SELECT 1 FROM session_memories m WHERE m.session_id=s.id) OR
       EXISTS (SELECT 1 FROM model_requests r WHERE r.session_id=s.id)) LIMIT 1`)[0];
-    return { document, hash: memoryHash(memoryJson(document)), blocker: processing ? {reason:'processing',sessionId:processing} : chat ? {reason:'chat',sessionId:chat.id} : null };
+    return { document, hash: memoryHash(memoryJson(document)), jobs:this.additions.jobs().filter(j=>!['completed','skipped'].includes(j.state)), blocker: processing ? {reason:'processing',sessionId:processing} : chat ? {reason:'chat',sessionId:chat.id} : null };
   }
   prepareMemoryEdit(edit: MemoryEdit) {
     const current = this.memoryManagement();
@@ -663,7 +679,7 @@ export class Store {
     document.database_records = edit.text === null ? document.database_records.filter(item => item.id !== edit.id)
       : document.database_records.map(item => item.id === edit.id ? {...item, text: edit.text!} : item);
     validateFlatMemory(document, candidateLimits);
-    if (memoryCharacters(document) > memoryCharacterCap) throw new AppFailure('memory_edit_capacity');
+    if (memoryCharacters(document) > activeMemoryCharacterCap) throw new AppFailure('memory_edit_capacity');
     if (memoryJson(document) !== memoryJson(current.document)) document.revision++;
     return { edit, document, afterHash: memoryHash(memoryJson(document)) };
   }
@@ -687,8 +703,30 @@ export class Store {
         this.run('DELETE FROM memory_legacy_seeds WHERE session_id=?', session.id);
       }
       this.memory.commitManual(checked.document);
+      this.additions.manual(prepared.edit.id, prepared.edit.text===null);
+      this.memory.load();
       return this.memoryManagement();
     });
+  }
+  memoryAddReady() { return this.transaction(()=>this.additions.ready()); }
+  prepareMemoryAdd(ordinal:number,id:string) { return this.additions.prepare(ordinal,id); }
+  dispatchMemoryAdd(id:string) { return this.additions.dispatch(id); }
+  receiveMemoryAdd(id:string,content:string,metadata:Json) { return this.additions.receive(id,content,metadata); }
+  acceptMemoryAdd(id:string) { return this.additions.accept(id); }
+  failMemoryAdd(id:string,failure:string,interrupted=false,content:string|null=null,metadata:Json={}) { return this.additions.fail(id,failure,interrupted,content,metadata); }
+  retryMemoryAdd(session:string,ordinal:number) {return this.additions.retry(session,ordinal);}
+  skipMemoryAdd(session:string,ordinal:number) {return this.additions.skip(session,ordinal);}
+  private addState(id:string):string|null {
+    const jobs=this.additions.jobs(id); if(!jobs.length)return null;
+    const unfinished=jobs.find(j=>!['completed','skipped'].includes(j.state));
+    return unfinished ? unfinished.state==='received'?'running':unfinished.state : jobs.some(j=>j.state==='completed')?'completed':'skipped';
+  }
+  private memoryView(session:Session):import('../shared/memory').MemoryView {
+    const view=this.memory.view(session), jobs=this.additions.jobs(session.id), state=this.addState(session.id);
+    if(!state)return view.job?view:{...view,addJobs:[]};
+    return {...view, addJobs:jobs, cleanup:undefined, changes:null,
+      job:{state:state as import('../shared/memory').MemoryJob['state'],created_at:jobs[0].created_at,character_id:session.character??'shared'},
+      blockedBy:this.additions.jobs().find(j=>!['completed','skipped'].includes(j.state))?.session_id??null, attempts:[]};
   }
   currentMemory() { return this.memory.load(); }
   freezeMemory(sessionId: string) { return this.transaction(() => this.memory.snapshot(this.session(sessionId))); }
@@ -698,7 +736,7 @@ export class Store {
     if (!record) return null;
     const session = this.session(id), memory = this.memory.job(id), candidate = this.memory.candidate(id), starter = this.starter.jobForSession(id);
     const stages = { starter: this.starter.catalogMode() ? 'skipped' : starter?.state ?? 'skipped',
-      update: candidate ? 'completed' : memory?.state ?? 'skipped', cleanup: candidate?.state ?? 'skipped' };
+      update: this.addState(id) ?? (candidate ? 'completed' : memory?.state ?? 'skipped'), cleanup: this.additions.jobs(id).length || this.all('SELECT 1 FROM memory_retired_jobs WHERE session_id=?',id).length ? 'skipped' : candidate?.state ?? 'skipped' };
     const attempts: Record<string, Json[]> = {
       grammar: this.all<Json>("SELECT failure,status FROM model_requests WHERE session_id=? AND role='grammar' ORDER BY rowid", id),
       starter: this.all<Json>('SELECT a.failure,a.status FROM starter_renewal_attempts a JOIN starter_renewal_jobs j ON j.id=a.job_id WHERE j.session_id=? ORDER BY a.rowid', id),
@@ -760,6 +798,7 @@ export class Store {
   }
   cancelEnd(id: string) {
     return this.transaction(() => {
+      this.additions.cancel(id,'request_cancelled');
       this.run('UPDATE end_processing SET cancelled_at=COALESCE(cancelled_at,?) WHERE session_id=?', now(), id);
       this.run("UPDATE memory_attempts SET status='interrupted',failure='request_cancelled' WHERE job_id IN (SELECT ordinal FROM memory_jobs WHERE session_id=?) AND status IN ('queued','dispatched')", id);
       this.run("UPDATE memory_jobs SET state='skipped' WHERE session_id=? AND state!='completed'", id);
@@ -778,8 +817,8 @@ export class Store {
   acceptCleanup(id: string) { return this.memory.acceptCleanup(id); }
   failCleanup(id: string, failure: string, interrupted = false, evidence?: { content: string | null; metadata: Json }) { return this.memory.failCleanup(id, failure, interrupted, evidence); }
   memoryReady(sessionIds: string[]) { return this.memory.ready(sessionIds); }
-  retryMemory(sessionId: string) { this.assertEndActive(sessionId); return this.memory.retry(sessionId); }
-  skipMemory(sessionId: string) { return this.memory.skip(sessionId); }
+  retryMemory(sessionId: string) { return this.additions.retry(sessionId); }
+  skipMemory(sessionId: string) { return this.additions.skip(sessionId); }
   prepareMemory(sessionId: string, operationId: string) { return this.memory.prepare(sessionId, operationId); }
   dispatchMemory(id: string) { return this.memory.dispatch(id); }
   saveMemory(id: string, content: string, metadata: Json) { return this.memory.save(id, content, metadata); }

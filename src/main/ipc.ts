@@ -12,7 +12,7 @@ import { ASR } from '../shared/asr';
 import { dictationId } from './asr-store';
 import { validApiKey } from '../shared/credentials';
 
-const commands: (keyof CommandArgs)[] = [...explainCommands, ...patternCommands, ...genieCommands, 'exitOptions', 'exitPrepared', 'exitCopyText', 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'setMemoryPreference', 'memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'loadSession', 'saveDraft', 'replaceStarter', 'setOpening', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
+const commands: (keyof CommandArgs)[] = [...explainCommands, ...patternCommands, ...genieCommands, 'exitOptions', 'exitPrepared', 'exitCopyText', 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'retryMemoryAdd', 'skipMemoryAdd', 'setMemoryPreference', 'memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'loadSession', 'saveDraft', 'replaceStarter', 'setOpening', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
   'searchMode', 'sendMessage', 'retryReply', 'endSession', 'newSession', 'retryAnalysis', 'cancelAnalysis', 'retryStarterRenewal', 'continueEnd', 'cancelEnd', 'retryMemory', 'skipMemory', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'manageKey', 'close'];
 const noArgs = new Set(['exitOptions', 'usageSnapshot', 'speechPreviewStop', 'retryDeletionCleanup', 'asrSnapshot', 'speechSnapshot', 'speechStop', 'speechClear', 'memoryManagement', 'currentMemory', 'snapshot', 'newSession', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'close']);
 export function validateCommand(name: unknown, args: unknown): asserts name is keyof CommandArgs {
@@ -28,6 +28,10 @@ export function validateCommand(name: unknown, args: unknown): asserts name is k
     if (Object.keys(value).length !== 2 || !Number.isSafeInteger(value.id) || (value.id as number) <= 0) bad();
     if (name === 'exitPrepared' && !['ready', 'cancelled', 'blocked'].includes(value.outcome as string)) bad();
     if (name === 'exitCopyText' && (typeof value.text !== 'string' || value.text.length > 4_000_000)) bad();
+    return;
+  }
+  if (name === 'retryMemoryAdd' || name === 'skipMemoryAdd') {
+    if(Object.keys(value).length!==2 || typeof value.sessionId!=='string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value.sessionId) || !Number.isSafeInteger(value.jobId) || (value.jobId as number)<=0) bad();
     return;
   }
   if (name === 'setMemoryPreference') {

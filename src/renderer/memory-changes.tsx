@@ -5,6 +5,13 @@ const categories: Record<MemoryCategory, string> = { traits: 'Traits', relations
 const kinds = { added: 'Added', updated: 'Updated', deleted: 'Deleted' };
 
 export function MemoryChangeHistory({ memory, ended }: { memory: MemoryView; ended: boolean }) {
+  if(memory.addJobs) return <div className="memory-changes">
+    <p className="note">Notes are added per input. Earlier additions remain if later processing is skipped or fails.</p>
+    {!memory.addJobs.length && <p className="note">No eligible memory inputs from this chat.</p>}
+    {memory.addJobs.map(job=><section key={job.ordinal} aria-label={`Memory input ${job.ordinal}`}><h4>Input {job.ordinal} · {job.state}</h4>
+      {job.changes ? <>{(['added','evicted'] as const).map(kind=><div key={kind}><strong>{kind==='added'?'Added':'Removed by capacity limit'}</strong><ul>{JSON.parse(job.changes)[kind].map((item:{id:string;text:string})=><li key={item.id}>{item.text}</li>)}</ul></div>)}</>:<p className="note">{job.failure || 'Waiting for memory processing.'}</p>}
+    </section>)}
+  </div>;
   const changes = memory.changes, state = memory.job?.state;
   if (state !== 'completed') {
     const message = !state ? ended ? 'This chat had no memory update.' : 'Memory changes are available after this chat ends and its update completes.'

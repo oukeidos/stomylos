@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MemoryPreference } from '../shared/memory-control';
 import { IconButton } from './icon-button';
 
-export function MemoryControl({ preference, active, errorText }: { active:boolean; preference?: MemoryPreference; errorText(error:unknown):string }) {
+export function MemoryControl({ preference, active, characters, errorText }: { active:boolean; preference?: MemoryPreference; characters?:number; errorText(error:unknown):string }) {
   const [saved,setSaved] = useState(preference), [open,setOpen] = useState(false);
   const [busy,setBusy] = useState(false), [error,setError] = useState(''), [notice,setNotice] = useState('');
   const [recovery,setRecovery] = useState(false);
@@ -54,9 +54,11 @@ export function MemoryControl({ preference, active, errorText }: { active:boolea
       {recovery && busy ? <div role="alert"><p>The memory setting is waiting for storage recovery.</p><button onClick={() => void window.stomylos.command('retrySaving',undefined).catch(cause=>setError(errorText(cause)))}>Retry saving</button></div> :
         error && <div role="alert"><p>Memory setting could not be saved. {error}</p>{retry.current !== null && <button disabled={busy} onClick={() => void change(retry.current!)}>Retry</button>}</div>}
       {notice && <p role="status">{notice}</p>}
-      <p>Use shared memory across all partners and update it after chats. Saved memories remain when this is off. Chats are still saved and sent to external AI providers.</p>
-      <p>Before the first reply request is sent, the current setting applies. A chat started with memory off stays without memory. Turning it off later prevents updates from that chat, even after turning it back on. It cannot remove information already used in the chat.</p>
-      <p>Edit or delete saved details here. An untouched new chat uses your changes on its first Send. Existing chats and backups are unchanged; later conversations can learn the same information again. Cancelled updates never restart when Memory is turned on.</p>
+      {characters !== undefined && <p>{characters.toLocaleString()} / 4,000 characters. Oldest notes are removed when memory is full.</p>}
+      <p>Memory saves notes from your messages for future chats with any partner.</p>
+      <p>Off stops memory use and new notes; saved notes stay. It cannot undo memory already used in this chat. Start a new chat after turning memory back on.</p>
+      <p>Edit or delete notes here. Asking a partner to forget does not delete them. Existing chats and backups stay unchanged.</p>
+      <p>Chats are still saved and sent to AI providers when memory is off.</p>
     </div>}
   </div>;
 }
