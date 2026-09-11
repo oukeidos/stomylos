@@ -26,7 +26,7 @@ export interface MemoryAttempt {
   response_content: string | null; result: string | null; metadata: string; failure: string | null;
 }
 export interface MemoryAddAttemptView {
-  id: string; job_id: number; message_id: string;
+  id: string; job_id: number; message_id: string; input_number: number;
   status: 'queued' | 'dispatched' | 'received' | 'succeeded' | 'failed' | 'interrupted' | 'cancelled';
   created_at: string; model: string; reasoning: string | null; metadata: string; failure: string | null;
 }

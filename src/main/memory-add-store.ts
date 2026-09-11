@@ -8,13 +8,28 @@ import { memoryHash, memoryJson } from './memory-updater';
 import { addAndFifo, memoryAddBody, memoryAddVersion } from './memory-add';
 import { AppFailure } from './errors';
 const now=()=>new Date().toISOString();
+// Display order is derived from the transcript, independently of global job identity.
+const inputNumberSql = `(SELECT COUNT(*) FROM messages m WHERE m.session_id=j.session_id
+  AND m.role='user' AND m.origin='learner'
+  AND m.sequence <= (SELECT sequence FROM messages WHERE id=j.message_id))`;
+
 export class MemoryAddStore {
   constructor(private db:Database.Database) {}
   private row(sql:string,...args:any[]):Json|undefined {return this.db.prepare(sql).get(...args) as Json|undefined;}
   private run(sql:string,...args:any[]) {return this.db.prepare(sql).run(...args);}
-  jobs(session?:string): Json[] {return this.db.prepare('SELECT ordinal,session_id,message_id,created_at,state,failure,changes FROM memory_add_jobs'+(session?' WHERE session_id=?':" WHERE state NOT IN ('completed','skipped')")+' ORDER BY ordinal').all(...(session?[session]:[])) as Json[];}
+  jobs(session?:string): Json[] {
+    const jobs = this.db.prepare(`SELECT j.ordinal,j.session_id,j.message_id,j.created_at,j.state,j.failure,j.changes,
+      ${inputNumberSql} AS input_number FROM memory_add_jobs j` +
+      (session ? ' WHERE j.session_id=?' : " WHERE j.state NOT IN ('completed','skipped')") + ' ORDER BY j.ordinal')
+      .all(...(session ? [session] : [])) as Json[];
+    // Mutation history survives explicit deletion from Older, preserving the original outcome.
+    const archived = this.db.prepare("SELECT 1 FROM cold_mutations WHERE memory_id=? AND kind='archive' LIMIT 1");
+    return jobs.map(job => ({...job, archived_ids: job.changes
+      ? JSON.parse(job.changes).evicted.filter((item:{id:string}) => archived.get(item.id)).map((item:{id:string}) => item.id)
+      : []}));
+  }
   attempts(session:string):import('../shared/memory').MemoryAddAttemptView[] {
-    return this.db.prepare(`SELECT a.id,a.job_id,j.message_id,a.status,a.created_at,
+    return this.db.prepare(`SELECT a.id,a.job_id,j.message_id,${inputNumberSql} AS input_number,a.status,a.created_at,
       json_extract(a.body,'$.model') model,json_extract(a.body,'$.reasoning.effort') reasoning,a.metadata,a.failure
       FROM memory_add_attempts a JOIN memory_add_jobs j ON j.ordinal=a.job_id
       WHERE j.session_id=? ORDER BY j.ordinal,a.rowid`).all(session) as import('../shared/memory').MemoryAddAttemptView[];

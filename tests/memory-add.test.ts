@@ -146,3 +146,23 @@ it('End cancel preserves earlier committed notes and suppresses a late in-flight
   expect(f.store.endStatus(s.id)?.complete).toBe(true);expect(f.store.memoryManagement().document.database_records.map(r=>r.text)).toEqual(['Already committed']);
  }finally{release?.({content:'{"add":[]}',metadata:{}});await c.command('close',undefined);}
 });
+
+
+it('projects transcript input numbers across chats and preserves Older movement history after deletion', () => {
+ const {store,db}=fixture(), first=session(store), start=send(store,first.id);
+ finish(store,['Earlier chat.']);store.finishReply(start.request.id,start.bubble.id,'Next?',{});store.end(first.id);
+ const second=session(store), next=send(store,second.id);
+ finish(store,['x'.repeat(3998)]);store.finishReply(next.request.id,next.bubble.id,'More?',{});
+ store.submit(second.id,'My second input.');finish(store,['A new note.']);
+ const jobs=store.view(second.id).memory.addJobs!;
+ expect(jobs.map(job=>[job.ordinal,job.input_number])).toEqual([[2,1],[3,2]]);
+ expect(store.view(second.id).memory.addAttempts!.map(attempt=>[attempt.job_id,attempt.input_number])).toEqual([[2,1],[3,2]]);
+ const archivedId=JSON.parse(jobs[1].changes).evicted[0].id;
+ expect(jobs[1].archived_ids).toContain(archivedId);
+ db.prepare('DELETE FROM cold_memories WHERE id=?').run(archivedId);
+ expect(store.view(second.id).memory.addJobs![1].archived_ids).toContain(archivedId);
+ // An input without a retained memory job still occupies its transcript position.
+ db.prepare('DELETE FROM memory_add_jobs WHERE ordinal=2').run();
+ expect(store.view(second.id).memory.addJobs!.map(job=>job.input_number)).toEqual([2]);
+ expect(store.view(first.id).memory.addJobs![0].input_number).toBe(1);
+});

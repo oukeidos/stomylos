@@ -53,9 +53,9 @@ it('renders flat current records and cleanup history without category headings o
 
 it('shows per-input additions and FIFO removals even if later work failed',()=>{
  const html=renderToStaticMarkup(createElement(MemoryChangeHistory,{ended:false,memory:{current:null,snapshot:null,changes:null,job:null,blockedBy:null,attempts:[],addJobs:[
-   {ordinal:1,state:'completed',changes:JSON.stringify({added:[{id:'a',text:'New <note>'}],evicted:[{id:'b',text:'Older note'}]})},
-   {ordinal:2,state:'interrupted',changes:null,failure:'interrupted_unknown_outcome'}]}}));
- expect(html).toContain('New &lt;note&gt;');expect(html).toContain('Older note');expect(html).toContain('Removed by capacity limit');expect(html).toContain('Earlier additions remain');expect(html).toContain('interrupted_unknown_outcome');
+   {ordinal:7,input_number:1,archived_ids:['b'],state:'completed',changes:JSON.stringify({added:[{id:'a',text:'New <note>'}],evicted:[{id:'b',text:'Older note'},{id:'c',text:'Historical removal'}]})},
+   {ordinal:8,input_number:2,state:'interrupted',changes:null,failure:'interrupted_unknown_outcome'}]}}));
+ expect(html).toContain('Input 1');expect(html).toContain('Input 2');expect(html).not.toContain('Input 7');expect(html).toContain('Moved to Older by capacity limit');expect(html).toContain('Historical removal');expect(html).toContain('New &lt;note&gt;');expect(html).toContain('Older note');expect(html).toContain('Removed by capacity limit');expect(html).toContain('Earlier additions remain');expect(html).toContain('interrupted_unknown_outcome');
 });
 
 it('does not describe a skipped ADD input as waiting', () => {

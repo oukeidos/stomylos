@@ -5,7 +5,7 @@ export function MemoryAddRequests({ attempts }: { attempts: MemoryAddAttemptView
   return <>{attempts.map(attempt => {
     const metadata = JSON.parse(attempt.metadata);
     return <div className="request" key={attempt.id}>
-      <strong>Memory update · Input {attempt.job_id}</strong><span className="tag neutral">{attempt.status}</span>
+      <strong>Memory update · Input {attempt.input_number}</strong><span className="tag neutral">{attempt.status}</span>
       <small>{new Date(attempt.created_at).toLocaleString()}</small>
       <small>Requested: {attempt.model}{attempt.reasoning ? ` · ${attempt.reasoning}` : ''}</small>
       {metadata.model && <small>Reported: {metadata.model}{metadata.provider ? ` · ${metadata.provider}` : ''}</small>}

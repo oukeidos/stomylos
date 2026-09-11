@@ -3,7 +3,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {expect,it,vi} from 'vitest';
 import {MemoryInputRecovery, memoryInputProgress} from '../src/renderer/memory-input-recovery';
 it('offers exact-input actions for failed work only and locks both during saving',()=>{
- const jobs=[{ordinal:3,session_id:'s',state:'failed',failure:'request_timeout'},{ordinal:4,session_id:'s',state:'pending'},{ordinal:5,session_id:'s',state:'completed'}];const onAction=vi.fn();
+ const jobs=[{ordinal:7,input_number:3,session_id:'s',state:'failed',failure:'request_timeout'},{ordinal:4,session_id:'s',state:'pending'},{ordinal:5,session_id:'s',state:'completed'}];const onAction=vi.fn();
  const html=renderToStaticMarkup(createElement(MemoryInputRecovery,{jobs,disabled:true,onAction}));
  expect(html).toContain('Memory input 3');expect(html).not.toContain('Memory input 4');expect(html).not.toContain('Memory input 5');expect(html).toContain('Retry input');expect(html).toContain('Skip input');expect(html.match(/disabled=""/g)).toHaveLength(2);expect(html).toContain('may already have been billed');
  // Exercise the same callbacks passed to both End and Settings, including the exact job object.

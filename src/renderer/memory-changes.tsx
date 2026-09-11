@@ -8,8 +8,18 @@ export function MemoryChangeHistory({ memory, ended }: { memory: MemoryView; end
   if(memory.addJobs) return <div className="memory-changes">
     <p className="note">Notes are added per input. Earlier additions remain if later processing is skipped or fails.</p>
     {!memory.addJobs.length && <p className="note">No eligible memory inputs from this chat.</p>}
-    {memory.addJobs.map(job=><section key={job.ordinal} aria-label={`Memory input ${job.ordinal}`}><h4>Input {job.ordinal} · {job.state}</h4>
-      {job.changes ? <>{(['added','evicted'] as const).map(kind=><div key={kind}><strong>{kind==='added'?'Added':'Removed by capacity limit'}</strong><ul>{JSON.parse(job.changes)[kind].map((item:{id:string;text:string})=><li key={item.id}>{item.text}</li>)}</ul></div>)}</>:<p className="note">{job.state === 'skipped' ? 'This input was skipped.' : job.failure || 'Waiting for memory processing.'}</p>}
+    {memory.addJobs.map(job=><section key={job.ordinal} aria-label={`Memory input ${job.input_number}`}><h4>Input {job.input_number} · {job.state}</h4>
+      {job.changes ? (() => {
+        const changes = JSON.parse(job.changes) as {added:{id:string;text:string}[];evicted:{id:string;text:string}[]};
+        const archived = new Set<string>(job.archived_ids ?? []);
+        const groups = [
+          {label:'Added', items:changes.added},
+          {label:'Moved to Older by capacity limit', items:changes.evicted.filter(item => archived.has(item.id))},
+          {label:'Removed by capacity limit', items:changes.evicted.filter(item => !archived.has(item.id))},
+        ];
+        return groups.filter(group => group.label === 'Added' || group.items.length).map(group =>
+          <div key={group.label}><strong>{group.label}</strong><ul>{group.items.map(item => <li key={item.id}>{item.text}</li>)}</ul></div>);
+      })() : <p className="note">{job.state === 'skipped' ? 'This input was skipped.' : job.failure || 'Waiting for memory processing.'}</p>}
     </section>)}
   </div>;
   const changes = memory.changes, state = memory.job?.state;
