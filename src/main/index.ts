@@ -174,6 +174,8 @@ if (launch) {
       migration_integrity_failed: 'Database upgrade validation failed. Your database and pre-upgrade recovery backup have been preserved. Do not delete them; retry after resolving storage problems or use a verified repair.',
       migration_backup_invalid: 'The pre-upgrade recovery backup is invalid. The database was not upgraded. Preserve both files and use a verified repair before retrying.',
       database_already_open: 'Another Stomylos window or the legacy app is using this history. Close it, then open Stomylos again.',
+      starter_catalog_newer: 'This history has a newer question catalog. It has not been downgraded. Open it with the newer application version.',
+      starter_catalog_corrupt: 'The question catalog failed verification. The database has not been silently overwritten. Use a verified backup or a valid application build.',
       unsupported_schema_version: 'This history uses an unsupported database version. It has not been reset. Open it with the matching application version.',
       external_migration_required: 'This history needs the one-time external database update for this release. It has not been changed. Complete that update before opening this version of Stomylos.',
       unsupported_schema_structure: 'This history has an unsupported database structure. It has not been reset.',

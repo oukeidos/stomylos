@@ -1,3 +1,4 @@
+import { verifyInstalledCatalog } from '../src/main/catalog-content';
 import { afterEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -20,10 +21,10 @@ function count(db: Database.Database, id: string) { return db.prepare('SELECT an
 it('bundles exactly the English-only matrix and rejects corrupted payloads', () => {
   const rows = readCatalog(); expect(rows).toHaveLength(5000); expect(Object.keys(catalogManifest.joint_cells)).toHaveLength(80);
   expect(() => readCatalog('[]')).toThrow('starter_catalog_corrupt');
-  const {db} = fresh(); verifyCatalog19(db);
+  const {db} = fresh(); verifyInstalledCatalog(db);
   expect(db.prepare('SELECT COUNT(*) FROM starter_catalog_entries').pluck().get()).toBe(5000);
   expect(db.prepare('PRAGMA table_info(starter_catalog_entries)').all().map((r:any)=>r.name)).not.toContain('ko');
-  db.prepare("UPDATE starter_catalog_install SET source_hash='corrupt'").run(); expect(()=>verifyCatalog19(db)).toThrow('starter_catalog_corrupt');
+  db.prepare("UPDATE starter_catalog_install SET source_hash='corrupt'").run(); expect(()=>verifyInstalledCatalog(db)).toThrow('starter_catalog_corrupt');
 });
 it('keeps answered candidates selectable at one/20 unanswered and at large equal counts', () => {
   for (const remaining of [1,20]) {
@@ -79,7 +80,7 @@ it('ignores skip counts, excludes same-session and recent text, and relaxes only
 });
 it('migrates v18 atomically, preserves legacy drafts/evidence, seeds exact counts, and disables replay', () => {
   const directory=dir(),db=new Database(join(directory,'stomylos.sqlite3')); dbs.push(db); db.exec(old); db.pragma('user_version=18');
-  new StarterStore(db).initialize();
+  db.transaction(()=>new StarterStore(db).initialize())();
   const memory=memoryJson(emptyMemory('shared')); db.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run(memory,memoryHash(memory));
   const q=readCatalog()[0];
   db.prepare("INSERT INTO starter_questions(id,version,text,normalized_text,origin,state,created_at) VALUES('legacy','old',?,?,'seed','retired','2026-09-09')").run(q.en,q.en.toLowerCase());
@@ -91,7 +92,7 @@ it('migrates v18 atomically, preserves legacy drafts/evidence, seeds exact count
   const exec=db.exec.bind(db),fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const r=exec(sql);if(sql.includes('CREATE TABLE starter_catalog_install'))throw new Error('v19 interruption');return r;});
   expect(()=>migrateDatabase(db,directory)).toThrow('v19 interruption'); fault.mockRestore(); validateSchema(db,old); expect(db.pragma('user_version',{simple:true})).toBe(18);
   const backup=readFileSync(join(directory,'stomylos.pre-migration-v18.sqlite3'));
-  migrateDatabase(db,directory); validateSchema(db,schema); verifyCatalog19(db);
+  migrateDatabase(db,directory); validateSchema(db,schema); verifyInstalledCatalog(db);
   expect(count(db,`catalog:joint-v1:${q.id}`)).toEqual({answer_count:1,skip_count:0});
   expect(db.prepare('SELECT input_json,config FROM starter_renewal_jobs').get()).toEqual(source);
   expect(db.prepare('SELECT status,failure,response_content FROM starter_renewal_attempts').get()).toEqual({status:'interrupted',failure:'feature_removed',response_content:'saved response'});
@@ -109,7 +110,7 @@ it('preserves an exact legacy parked opening across migration and counts its sub
   const saved=store.session(session.id);
   // Build an isolated supported-v18 fixture with the same frozen draft contract.
   const legacyDir=dir(),legacy=new Database(join(legacyDir,'stomylos.sqlite3'));dbs.push(legacy);legacy.exec(old);legacy.pragma('user_version=18');
-  new StarterStore(legacy).initialize();
+  legacy.transaction(()=>new StarterStore(legacy).initialize())();
   const memory=memoryJson(emptyMemory('shared'));legacy.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run(memory,memoryHash(memory));
   const q=JSON.parse(saved.parked_starter!).question;
   legacy.prepare("INSERT INTO starter_questions(id,version,text,normalized_text,origin,state,created_at) VALUES(?,?,?,?,'seed','retired','2026-09-09')").run('legacy-parked',q.version,q.text,q.text.normalize('NFKC').toLowerCase().replace(/\s+/gu,' ').trim());

@@ -228,11 +228,7 @@ CREATE TABLE starter_event_details (
 );
 CREATE TRIGGER immutable_starter_question BEFORE UPDATE OF
   id,version,text,normalized_text,origin,attempt_id,ordinal,created_at,expires_at,intention_job_id ON starter_questions
-WHEN NOT (EXISTS (SELECT 1 FROM starter_catalog_entries WHERE question_id=OLD.id)
-  AND NEW.id IS OLD.id AND NEW.origin IS OLD.origin AND NEW.attempt_id IS OLD.attempt_id
-  AND NEW.ordinal IS OLD.ordinal AND NEW.created_at IS OLD.created_at
-  AND NEW.expires_at IS OLD.expires_at AND NEW.intention_job_id IS OLD.intention_job_id)
-AND NOT (OLD.origin='generated' AND NEW.origin='detached' AND NEW.attempt_id IS NULL AND NEW.ordinal IS NULL AND
+WHEN NOT (OLD.origin='generated' AND NEW.origin='detached' AND NEW.attempt_id IS NULL AND NEW.ordinal IS NULL AND
   NEW.id IS OLD.id AND NEW.version IS OLD.version AND NEW.text IS OLD.text AND NEW.normalized_text IS OLD.normalized_text AND
   NEW.created_at IS OLD.created_at AND NEW.expires_at IS OLD.expires_at AND NEW.intention_job_id IS OLD.intention_job_id AND
   EXISTS (SELECT 1 FROM starter_renewal_attempts a JOIN starter_renewal_jobs j ON j.id=a.job_id
@@ -611,7 +607,7 @@ CREATE TABLE starter_catalog_install (
   version TEXT NOT NULL,
   source_hash TEXT NOT NULL,
   installed_count INTEGER NOT NULL CHECK(installed_count > 0)
-, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0));
+);
 CREATE TABLE starter_catalog_entries (
   question_id TEXT PRIMARY KEY REFERENCES starter_questions(id),
   catalog_id TEXT NOT NULL REFERENCES starter_catalog_install(catalog_id),
@@ -634,9 +630,4 @@ CREATE TABLE memory_legacy_seeds (
   session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
   document TEXT NOT NULL,
   document_hash TEXT NOT NULL
-);
-
-CREATE TABLE starter_catalog_aliases (
-  legacy_id TEXT PRIMARY KEY REFERENCES starter_questions(id),
-  question_id TEXT NOT NULL REFERENCES starter_catalog_entries(question_id)
 );

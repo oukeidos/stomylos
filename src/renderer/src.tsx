@@ -78,6 +78,7 @@ function errorText(error: unknown): string {
     credential_management_disabled: 'Key management is disabled in this isolated development or preview session.',
     analysis_not_retryable: 'This analysis is already running or has been saved.',
     starter_session_exhausted: 'All questions have been shown in this chat. Use your own opening or start a new chat.',
+    starter_catalog_newer: 'These questions were updated by a newer app. Open this data with the newer app to continue.',
     starter_catalog_corrupt: 'The question catalog could not be verified. Restart with a valid application build or restore a verified backup.',
     starter_not_retryable: 'Starter renewal is already running or has been saved.',
     memory_waiting_for_earlier_session: 'Resolve the earlier memory update first. Your conversation can continue.',

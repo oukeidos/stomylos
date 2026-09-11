@@ -1,3 +1,6 @@
+import step24 from './migrations/024.sql?raw';
+import source23 from './migrations/schema-v23.sql?raw';
+import { readCurrentCatalog, validateCatalog, updateCatalog, verifyInstalledCatalog, type Catalog } from './catalog-content';
 import step23 from './migrations/023.sql?raw';
 import step22 from './migrations/022.sql?raw';
 import source21 from './migrations/schema-v21.sql?raw';
@@ -15,7 +18,7 @@ import step17 from './migrations/017.sql?raw';
 import step18 from './migrations/018.sql?raw';
 import source18 from './migrations/schema-v18.sql?raw';
 import step19 from './migrations/019.sql?raw';
-import { installCatalog19, verifyCatalog19, readCatalog } from './migrations/019-data';
+import { installCatalog19, verifyCatalog19 } from './migrations/019-data';
 import source19 from './migrations/schema-v19.sql?raw';
 import step20 from './migrations/020.sql?raw';
 import step21 from './migrations/021.sql?raw';
@@ -24,7 +27,7 @@ import { AppFailure } from './errors';
 
 // v0.1.0 ships schema 13. Keep published source schemas and steps immutable.
 export const minimumPublicSchema = 13;
-export const currentSchema = 23;
+export const currentSchema = 24;
 export function schemaSignature(db: Database.Database) {
   return db.prepare("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
     .map((r: any) => ({ ...r, sql: r.sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim().replace(/;$/, '') }));
@@ -49,20 +52,24 @@ function dataFingerprint(db: Database.Database): string {
   }
   return digest.digest('hex');
 }
-const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }, { from: 21, to: 22, sql: step22 }, { from: 22, to: 23, sql: step23 }];
+const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }, { from: 21, to: 22, sql: step22 }, { from: 22, to: 23, sql: step23 }, { from: 23, to: 24, sql: step24 }];
 export function inspectMigration(db: Database.Database): number {
   const version = Number(db.pragma('user_version', { simple: true }));
   if (version < minimumPublicSchema || version > currentSchema) throw new AppFailure('unsupported_schema_version');
-  validateSchema(db, version === 13 ? source13 : version < 19 ? source18 : version === 19 ? source19 : version < 22 ? source21 : current);
+  validateSchema(db, version === 13 ? source13 : version < 19 ? source18 : version === 19 ? source19 : version < 22 ? source21 : version < 24 ? source23 : current);
   integrity(db);
   return version;
 }
 /** Caller holds the application data lock; no normal recovery has run yet. */
-export function migrateDatabase(db: Database.Database, directory: string) {
+export function migrateDatabase(db: Database.Database, directory: string, target: Catalog = readCurrentCatalog()) {
+  validateCatalog(target);
   const version = inspectMigration(db);
-  if (version === currentSchema) { verifyCatalog19(db); return; }
-  readCatalog();
-  const backup = join(directory, `stomylos.pre-migration-v${version}.sqlite3`);
+  const installed = version === currentSchema ? verifyInstalledCatalog(db, target.manifest.revision) : null;
+  if (installed?.revision === target.manifest.revision) { updateCatalog(db, target); return; }
+  if (version >= 19 && version < currentSchema) verifyCatalog19(db);
+  const backup = join(directory, installed
+    ? `stomylos.pre-catalog-r${installed.revision}-${installed.source_hash}.sqlite3`
+    : `stomylos.pre-migration-v${version}.sqlite3`);
   try {
     const stat = lstatSync(backup);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new AppFailure('migration_backup_invalid');
@@ -92,6 +99,7 @@ export function migrateDatabase(db: Database.Database, directory: string) {
       next = step.to;
     }
     if (next !== currentSchema) throw new AppFailure('migration_path_missing');
-    validateSchema(db, current); integrity(db); verifyCatalog19(db);
+    updateCatalog(db, target);
+    validateSchema(db, current); integrity(db); verifyInstalledCatalog(db, target.manifest.revision);
   }).immediate();
 }

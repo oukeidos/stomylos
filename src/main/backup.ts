@@ -1,4 +1,4 @@
-import { currentSchema, minimumPublicSchema } from './database-migrations';
+import { currentSchema, minimumPublicSchema, inspectMigration, migrateDatabase } from './database-migrations';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { lstat, chmod, mkdir, open, readdir, readFile, rename, rm, stat, unlink, realpath } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -7,7 +7,6 @@ import { createGzip, createGunzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import Database from 'better-sqlite3';
-import schema from './schema.sql?raw';
 import { StarterStore } from './starter-store';
 import { MemoryStore } from './memory-store';
 import { atomicFile } from './speech-store';
@@ -35,19 +34,14 @@ function allowed(file: string) {
     /^speech\/(?:preview-)?[a-f0-9]{64}\/(?:manifest\.json|[a-f0-9-]{36}\.mp3)$/.test(file);
 }
 async function regular(file: string) { const s = await lstat(file); if (!s.isFile() || s.isSymbolicLink()) fail(); return s; }
-const signature = (db: Database.Database) => db.prepare("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
-  .map((r: any) => ({ ...r, sql: r.sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim().replace(/;$/, '') }));
 export function inspectBackupDatabase(file: string): number {
   const db = new Database(file, { readonly: true, fileMustExist: true });
   try {
     const version = db.pragma('user_version', { simple: true });
     if (typeof version === 'number' && version >= 1 && version < minimumPublicSchema) fail('external_migration_required');
-    if (version !== currentSchema) fail('unsupported_schema_version');
-    const expected = new Database(':memory:');
-    try { expected.exec(schema); if (JSON.stringify(signature(db)) !== JSON.stringify(signature(expected))) fail('unsupported_schema_structure'); }
-    finally { expected.close(); }
-    if (db.pragma('integrity_check', { simple: true }) !== 'ok' || (db.pragma('foreign_key_check') as unknown[]).length) fail('backup_database_invalid');
-    new StarterStore(db).verify(); new MemoryStore(db).load();
+    inspectMigration(db);
+    if (Number(version) >= 19) new StarterStore(db).verify();
+    if (Number(version) >= 22) new MemoryStore(db).load();
     return (db.prepare('SELECT COUNT(*) n FROM sessions').get() as { n: number }).n;
   } finally { db.close(); }
 }
@@ -76,7 +70,7 @@ function validateManifest(value: any): asserts value is Manifest {
       !Number.isSafeInteger(value.schemaVersion) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) ||
       !Array.isArray(value.files) || !value.files.length || value.files.length > maxFiles) fail();
   if (value.schemaVersion >= 1 && value.schemaVersion < minimumPublicSchema) fail('external_migration_required');
-  if (value.schemaVersion !== currentSchema) fail('unsupported_schema_version');
+  if (value.schemaVersion < minimumPublicSchema || value.schemaVersion > currentSchema) fail('unsupported_schema_version');
   let total = 0; const names = new Set();
   for (const f of value.files) {
     if (!f || typeof f.path !== 'string' || !allowed(f.path) || names.has(f.path) || !Number.isSafeInteger(f.size) || f.size < 0 ||
@@ -144,6 +138,15 @@ export async function prepareBackup(directory: string, source: string): Promise<
     }
     if (buffer.length || !(await iterator.next()).done) fail(); await pumping;
     const conversations = inspectBackupDatabase(join(stage, roots[0]));
+    const staged = new Database(join(stage, roots[0]));
+    try {
+      if (staged.pragma('user_version', { simple: true }) !== manifest.schemaVersion) fail('backup_invalid');
+      migrateDatabase(staged, stage);
+    } finally { staged.close(); }
+    inspectBackupDatabase(join(stage, roots[0]));
+    await atomicFile(join(stage, 'source-manifest.json'), JSON.stringify(manifest));
+    manifest.schemaVersion = currentSchema;
+    manifest.files = await inventory(stage);
     await atomicFile(join(stage, 'manifest.json'), JSON.stringify(manifest));
     for (const root of ['speech', 'asr']) if (await exists(join(stage, root))) {
       if (root === 'speech') for (const name of await readdir(join(stage, root))) await syncDirectory(join(stage, root, name));

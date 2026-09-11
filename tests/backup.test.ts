@@ -83,12 +83,12 @@ it.each(['checksum', 'truncated', 'traversal', 'duplicate', 'oversized', 'extra'
   expect(bytes(target)).toEqual(original); expect(readdirSync(target).some(n => n.startsWith('.backup-stage-'))).toBe(false);
 });
 
-it.each([12, 13, 15, 20, 21])('refuses schema v%i before installation', async version => {
+it.each([12, 13, 15, 20, 21])('refuses a mislabeled schema v%i before installation', async version => {
   const file = await archive(); seed(target, 'Keep target');
   const changed = join(root, 'changed.sqlite3'); writeFileSync(changed, bytes(source));
   const db = new Database(changed); db.pragma(`user_version = ${version}`); db.close(); const replacement = readFileSync(changed);
   manifestFile(file, m => { m.files[0].size = replacement.length; m.files[0].sha256 = createHash('sha256').update(replacement).digest('hex'); return replacement; });
-  await expect(prepareBackup(target, file)).rejects.toThrow(version === 12 ? 'external_migration_required' : 'unsupported_schema_version');
+  await expect(prepareBackup(target, file)).rejects.toThrow(version === 12 ? 'external_migration_required' : 'unsupported_schema_structure');
 });
 
 it('rejects a changed prepared copy and preserves existing DB on pre-replacement failure', async () => {

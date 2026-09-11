@@ -1,3 +1,4 @@
+import { catalogIdentity, hasCatalogUpdates, installCurrentCatalog, verifyCatalogForSchema } from './catalog-content';
 import type Database from 'better-sqlite3';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Json, Message, RenewalAttempt, RenewalJob, RenewalView, Session, Starter } from '../shared/types';
@@ -8,7 +9,7 @@ import type { StarterPreparation } from '../shared/intention';
 import { sessionOpening } from './opening';
 import { parseStarterQuestions, questionKey, selectStarter, starterBody, starterContext, starterPolicy, starterSnapshot, renewalV2, renewalV3, renewalV4, renewalV5, type SlotQuestion } from './starter-renewal';
 
-import { installCatalog19, verifyCatalog19 } from './migrations/019-data';
+import { installCatalog19 } from './migrations/019-data';
 import { selectCatalog } from './starter-catalog';
 
 const now = () => new Date().toISOString();
@@ -29,10 +30,10 @@ export class StarterStore {
         q.id, q.version, q.text, questionKey(q.text), time);
       this.run('INSERT INTO starter_slots(slot,question_id,initialized_at) VALUES(?,?,?)', i + 1, q.id, time);
     }
-    if (this.catalogMode()) installCatalog19(this.db);
+    if (this.catalogMode()) { if (hasCatalogUpdates(this.db)) installCurrentCatalog(this.db); else installCatalog19(this.db); }
   }
   verify() {
-    if (this.catalogMode()) { verifyCatalog19(this.db); return; }
+    if (this.catalogMode()) { verifyCatalogForSchema(this.db); return; }
     const count = this.rows<{ n: number }>('SELECT COUNT(*) n FROM starter_slots')[0].n;
     const mismatch = this.rows("SELECT q.id FROM starter_questions q LEFT JOIN starter_slots s ON s.question_id=q.id WHERE (q.state='active')!=(s.slot IS NOT NULL)");
     if (count !== starterPolicy.slots || mismatch.length) throw new AppFailure('starter_pool_corrupt');
@@ -107,9 +108,8 @@ export class StarterStore {
   consume(id: string, reason: 'answered' | 'skipped') {
     if (this.catalogMode()) {
       const column = reason === 'answered' ? 'answer_count' : 'skip_count';
-      this.run(`UPDATE starter_catalog_entries SET ${column}=${column}+1 WHERE question_id IN
-        (SELECT c.question_id FROM starter_catalog_entries c JOIN starter_questions q ON q.id=c.question_id
-         WHERE q.normalized_text=(SELECT normalized_text FROM starter_questions WHERE id=?))`, id);
+      const target = catalogIdentity(this.db, id);
+      if (target) this.run(`UPDATE starter_catalog_entries SET ${column}=${column}+1 WHERE question_id=?`, target);
       return { slot: null, created: false };
     }
     const slot = this.rows<{ slot: number; pending_since: string | null }>('SELECT slot,pending_since FROM starter_slots WHERE question_id=?', id)[0];
