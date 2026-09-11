@@ -1,3 +1,4 @@
+import { AppFailure } from '../src/main/errors';
 import {afterEach,expect,it,vi} from 'vitest';
 import Database from 'better-sqlite3';
 import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
@@ -63,7 +64,9 @@ it('does not auto-retry unknown calls, blocks later sources, and rejects stale a
  f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));expect(f.store.memoryAddReady()).toBeNull();
  expect(()=>f.store.retryMemoryAdd(s.id,999)).toThrow('memory_add_not_retryable');f.store.retryMemoryAdd(s.id,a.job_id);const b=prepare(f.store);
  f.store.failMemoryAdd(a.id,'late failure');expect(()=>f.store.receiveMemoryAdd(a.id,'{"add":["Late"]}',{})).toThrow();
- f.store.receiveMemoryAdd(b.id,'{"add":["Fresh"]}',{});f.store.acceptMemoryAdd(b.id);expect(f.store.memoryAddReady()?.ordinal).toBe(2);
+ f.store.receiveMemoryAdd(b.id,'{"add":["Fresh"]}',{});f.store.acceptMemoryAdd(b.id);const attempts=f.store.view(s.id).memory.addAttempts!;
+ expect(attempts.map(a=>a.id)).toEqual([a.id,b.id]);expect(attempts.map(a=>a.status)).toEqual(['interrupted','succeeded']);expect(attempts[1].model).toBe('openai/gpt-5.6-luna');expect(attempts[1]).not.toHaveProperty('body');expect(attempts[1]).not.toHaveProperty('response_content');
+expect(f.store.memoryAddReady()?.ordinal).toBe(2);
  const c=prepare(f.store);f.store.failMemoryAdd(c.id,'bad_output');f.store.skipMemoryAdd(s.id,2);expect(f.store.memoryAddReady()).toBeNull();expect(renderMemoryBody(f.store.currentMemory())).toBe('- Fresh');
 });
 it('Off cancels waiting and in-flight inputs, On never backfills, and malformed results cannot mutate active memory',()=>{
@@ -85,4 +88,61 @@ it('runs ADD in parallel with a held reply, sends one request per input, and dra
  release();await vi.waitFor(()=>expect(f.store.messages(s.id).at(-1)?.delivery).toBe('complete'));await c.command('endSession',{sessionId:s.id});expect(f.store.endBlocker()).toBeNull();expect(calls.map(b=>b.model)).toEqual(['openai/gpt-5.6-luna']);
  expect(f.db.prepare('SELECT provider_request FROM memory_add_attempts').pluck().get()).toContain('"allow_fallbacks":true');
  }finally{release();await c.command('close',undefined);}
+});
+
+function controller(f:ReturnType<typeof fixture>,gateway:Gateway) {
+ const client={ready:Promise.resolve(),call:async(method:StoreMethod,...args:any[])=>(f.store[method] as Function).apply(f.store,args),close:async()=>f.store.close()} as unknown as DatabaseClient;
+ return new Coordinator(client,gateway,{keyPresent:true,keyPath:'',dataPath:f.dir,appVersion:'test',development:true},()=>{},()=>true);
+}
+it.each(['retryMemoryAdd','skipMemoryAdd'] as const)('End %s targets exactly the failed input and drains remaining inputs',async action=>{
+ const f=fixture(),s=session(f.store);const first=send(f.store,s.id,'First detail');f.store.finishReply(first.request.id,first.bubble.id,'More?',{});
+ f.store.submit(s.id,'Second detail');const second=f.store.startChat(f.store.prepareChat(s.id,'second-chat').id);f.store.finishReply(second.request.id,second.bubble.id,'Thanks.',{});f.store.end(s.id);
+ const calls:string[]=[];const c=controller(f,{async complete(body){const source=JSON.parse(body.messages[1].content).current_user.content;calls.push(source);if(calls.length===1)throw new AppFailure('request_timeout');return {content:JSON.stringify({add:[source]}),metadata:{usage:{total_tokens:20,cost:0.001}}};},async stream(){throw new Error('No conversation expected');}});
+ try {
+  await c.initialize();await vi.waitFor(()=>expect(f.store.view(s.id).memory.addJobs?.[0].state).toBe('failed'));
+  expect(calls).toEqual(['First detail']);expect(f.store.endStatus(s.id)?.details.update).toEqual({attempts:1,failure:'request_timeout'});
+  const attempt=f.store.view(s.id).memory.addAttempts![0];expect(JSON.parse(attempt.metadata).elapsed_seconds).toBeGreaterThanOrEqual(0);
+  const jobId=f.store.view(s.id).memory.addJobs![0].ordinal;
+  await c.command(action,{sessionId:s.id,jobId});await vi.waitFor(()=>expect(f.store.endStatus(s.id)?.complete).toBe(true));
+  expect(calls).toEqual(action==='retryMemoryAdd'?['First detail','First detail','Second detail']:['First detail','Second detail']);
+  expect(f.store.endStatus(s.id)?.details.update).toEqual({attempts:calls.length,failure:null});
+  expect(f.store.memoryManagement().document.database_records.map(r=>r.text)).toEqual(action==='retryMemoryAdd'?['First detail','Second detail']:['Second detail']);
+ }finally{await c.command('close',undefined);}
+});
+it('actual coordinator quit interrupts a dispatched ADD, preserves the queued source and makes no unknown-outcome retry after restart',async()=>{
+ const f=fixture(),s=session(f.store);let calls=0;
+ const gateway:Gateway={async complete(_body,_identity,signal){calls++;return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new AppFailure('request_cancelled')),{once:true}));},async stream(_body,_signal,chunk){chunk('More?');return {content:'More?',metadata:{}};}};
+ const c=controller(f,gateway);
+ await c.command('sendMessage',{sessionId:s.id,text:'First detail',revision:0});
+ await vi.waitFor(()=>{expect(calls).toBe(1);expect(f.store.messages(s.id).at(-1)?.delivery).toBe('complete');});
+ f.store.submit(s.id,'Second detail');await c.command('close',undefined);
+ f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ expect(f.store.view(s.id).memory.addJobs?.map(j=>j.state)).toEqual(['interrupted','pending']);expect(f.store.currentMemory().revision).toBe(0);
+ const resumed=controller(f,{async complete(){calls++;return {content:'{"add":["Second detail"]}',metadata:{}};},async stream(){throw new Error('No reply expected');}});
+ try{await resumed.initialize();expect(f.store.memoryAddReady()).toBeNull();expect(calls).toBe(1);
+  await resumed.command('skipMemoryAdd',{sessionId:s.id,jobId:f.store.view(s.id).memory.addJobs![0].ordinal});
+  await vi.waitFor(()=>expect(f.store.currentMemory().revision).toBe(1));expect(calls).toBe(2);
+ }finally{await resumed.command('close',undefined);}
+});
+it('restart distinguishes an attempt prepared but never dispatched',()=>{
+ const f=fixture(),s=session(f.store);send(f.store,s.id);const job=f.store.memoryAddReady()!;f.store.prepareMemoryAdd(job.ordinal,'unsent');
+ f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ expect(f.store.view(s.id).memory.addJobs![0].failure).toBe('queued_not_dispatched');expect(f.store.view(s.id).memory.addAttempts![0].failure).toBe('queued_not_dispatched');
+});
+it('startup applies a received response without an API key or another provider call',async()=>{
+ const f=fixture(),s=session(f.store);send(f.store,s.id);const a=prepare(f.store);f.store.receiveMemoryAdd(a.id,'{"add":["Received before quit"]}',{usage:{cost:0.001}});
+ f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ const complete=vi.fn(async()=>{throw new Error('Unexpected paid call');});
+ const client={ready:Promise.resolve(),call:async(method:StoreMethod,...args:any[])=>(f.store[method] as Function).apply(f.store,args),close:async()=>f.store.close()} as unknown as DatabaseClient;
+ const c=new Coordinator(client,{complete,async stream(){throw new Error('No reply expected');}},{keyPresent:false,keyPath:'',dataPath:f.dir,appVersion:'test',development:true},()=>{},()=>true);
+ try{await c.initialize();await vi.waitFor(()=>expect(f.store.currentMemory().revision).toBe(1));expect(complete).not.toHaveBeenCalled();expect(f.store.view(s.id).memory.addAttempts).toHaveLength(1);}finally{await c.command('close',undefined);}
+});
+it('End cancel preserves earlier committed notes and suppresses a late in-flight result',async()=>{
+ const f=fixture(),s=session(f.store),first=send(f.store,s.id,'First');finish(f.store,['Already committed']);f.store.finishReply(first.request.id,first.bubble.id,'More?',{});
+ f.store.submit(s.id,'Second');let release!:(value:{content:string;metadata:Json})=>void;let entered=false;
+ const c=controller(f,{async complete(){entered=true;return new Promise(resolve=>release=resolve);},async stream(){throw new Error('No reply expected');}});
+ try{await c.initialize();await vi.waitFor(()=>expect(entered).toBe(true));await c.command('endSession',{sessionId:s.id});await c.command('cancelEnd',{sessionId:s.id});
+  release({content:'{"add":["Late note"]}',metadata:{}});await vi.waitFor(()=>expect(f.store.view(s.id).memory.addAttempts?.at(-1)?.status).toBe('cancelled'));
+  expect(f.store.endStatus(s.id)?.complete).toBe(true);expect(f.store.memoryManagement().document.database_records.map(r=>r.text)).toEqual(['Already committed']);
+ }finally{release?.({content:'{"add":[]}',metadata:{}});await c.command('close',undefined);}
 });

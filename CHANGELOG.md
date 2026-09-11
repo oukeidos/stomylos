@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Consolidate conversation memory details into the fixed snapshot and per-input changes with exact-input recovery.
 - Fix startup for existing schema-28 databases by removing the previous-memory archive through a backed-up schema-29 migration.
 
 - Add Luna memory notes after each eligible message, retaining up to 4,000 characters by oldest-first removal; schema 29 uses the standard pre-upgrade backup and offers per-input recovery without automatic paid retries.

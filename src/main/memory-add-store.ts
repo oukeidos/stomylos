@@ -12,6 +12,12 @@ export class MemoryAddStore {
   private row(sql:string,...args:any[]):Json|undefined {return this.db.prepare(sql).get(...args) as Json|undefined;}
   private run(sql:string,...args:any[]) {return this.db.prepare(sql).run(...args);}
   jobs(session?:string): Json[] {return this.db.prepare('SELECT ordinal,session_id,message_id,created_at,state,failure,changes FROM memory_add_jobs'+(session?' WHERE session_id=?':" WHERE state NOT IN ('completed','skipped')")+' ORDER BY ordinal').all(...(session?[session]:[])) as Json[];}
+  attempts(session:string):import('../shared/memory').MemoryAddAttemptView[] {
+    return this.db.prepare(`SELECT a.id,a.job_id,j.message_id,a.status,a.created_at,
+      json_extract(a.body,'$.model') model,json_extract(a.body,'$.reasoning.effort') reasoning,a.metadata,a.failure
+      FROM memory_add_attempts a JOIN memory_add_jobs j ON j.ordinal=a.job_id
+      WHERE j.session_id=? ORDER BY j.ordinal,a.rowid`).all(session) as import('../shared/memory').MemoryAddAttemptView[];
+  }
   freeze(message:Message, previous:Message|undefined, sent:RecordedTime) {
     if (!memoryWriteAllowed(this.db,message.session_id)) return;
     const input=JSON.stringify({timezone:sent.timezone,current_user:{content:message.content,sent_at:sent.utc},
@@ -26,8 +32,8 @@ export class MemoryAddStore {
   }
   end(session:string) {if(memoryPolicy(this.db,session).firstEnabled===null)this.cancel(session,'chat_not_dispatched');}
   recover() {
-    this.run("UPDATE memory_add_jobs SET state='interrupted',failure='interrupted_unknown_outcome' WHERE state='running'");
-    this.run("UPDATE memory_add_attempts SET status='interrupted',failure='interrupted_unknown_outcome' WHERE status IN ('queued','dispatched')");
+    this.run("UPDATE memory_add_jobs SET state='interrupted',failure=CASE WHEN EXISTS (SELECT 1 FROM memory_add_attempts a WHERE a.job_id=memory_add_jobs.ordinal AND a.status='queued') THEN 'queued_not_dispatched' ELSE 'interrupted_unknown_outcome' END WHERE state='running'");
+    this.run("UPDATE memory_add_attempts SET status='interrupted',failure=CASE WHEN status='queued' THEN 'queued_not_dispatched' ELSE 'interrupted_unknown_outcome' END WHERE status IN ('queued','dispatched')");
     if(!memoryPreference(this.db).enabled)this.cancel();
   }
   ready():Json|null {
@@ -94,6 +100,7 @@ export class MemoryAddStore {
     this.db.transaction(()=>{
       const a=this.row('SELECT * FROM memory_add_attempts WHERE id=?',id);
       if(!a||['succeeded','cancelled','failed','interrupted'].includes(a.status))return;
+      if(a.status==='queued')failure='queued_not_dispatched';
       const state=interrupted?'interrupted':'failed';
       this.run('UPDATE memory_add_attempts SET status=?,failure=?,response_content=COALESCE(response_content,?),metadata=? WHERE id=?',state,failure,content,JSON.stringify({...JSON.parse(a.metadata),...metadata}),id);
       this.run('UPDATE memory_add_jobs SET state=?,failure=? WHERE ordinal=?',state,failure,a.job_id);

@@ -25,7 +25,13 @@ export interface MemoryAttempt {
   created_at: string; dispatched_at: string | null; finished_at: string | null;
   response_content: string | null; result: string | null; metadata: string; failure: string | null;
 }
+export interface MemoryAddAttemptView {
+  id: string; job_id: number; message_id: string;
+  status: 'queued' | 'dispatched' | 'received' | 'succeeded' | 'failed' | 'interrupted' | 'cancelled';
+  created_at: string; model: string; reasoning: string | null; metadata: string; failure: string | null;
+}
 export interface MemoryView {
+  addAttempts?: MemoryAddAttemptView[];
   addJobs?: import('./types').Json[];
   cleanup?: { state: string; before: StoredMemoryDocument; after: StoredMemoryDocument | null; beforeChars: number; afterChars: number | null; attempts: import('./types').Json[] } | null;
   changes: MemoryChanges | null;

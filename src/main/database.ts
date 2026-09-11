@@ -724,7 +724,7 @@ export class Store {
   private memoryView(session:Session):import('../shared/memory').MemoryView {
     const view=this.memory.view(session), jobs=this.additions.jobs(session.id), state=this.addState(session.id);
     if(!state)return view.job?view:{...view,addJobs:[]};
-    return {...view, addJobs:jobs, cleanup:undefined, changes:null,
+    return {...view, addAttempts:this.additions.attempts(session.id), addJobs:jobs, cleanup:undefined, changes:null,
       job:{state:state as import('../shared/memory').MemoryJob['state'],created_at:jobs[0].created_at,character_id:session.character??'shared'},
       blockedBy:this.additions.jobs().find(j=>!['completed','skipped'].includes(j.state))?.session_id??null, attempts:[]};
   }
@@ -740,7 +740,7 @@ export class Store {
     const attempts: Record<string, Json[]> = {
       grammar: this.all<Json>("SELECT failure,status FROM model_requests WHERE session_id=? AND role='grammar' ORDER BY rowid", id),
       starter: this.all<Json>('SELECT a.failure,a.status FROM starter_renewal_attempts a JOIN starter_renewal_jobs j ON j.id=a.job_id WHERE j.session_id=? ORDER BY a.rowid', id),
-      update: this.all<Json>('SELECT a.failure,a.status FROM memory_attempts a JOIN memory_jobs j ON j.ordinal=a.job_id WHERE j.session_id=? ORDER BY a.rowid', id),
+      update: this.additions.jobs(id).length ? this.additions.attempts(id) : this.all<Json>('SELECT a.failure,a.status FROM memory_attempts a JOIN memory_jobs j ON j.ordinal=a.job_id WHERE j.session_id=? ORDER BY a.rowid', id),
       cleanup: this.memory.cleanupAttempts(id)
     };
     const details = Object.fromEntries(Object.entries(attempts).map(([stage, rows]) => [stage, { attempts: rows.length, failure: rows.at(-1)?.failure ?? null }]));

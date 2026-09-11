@@ -1,3 +1,5 @@
+import { MemoryInputRecovery } from './memory-input-recovery';
+import type { Json } from '../shared/types';
 import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { SessionView } from '../shared/types';
@@ -32,12 +34,15 @@ export function EndProcessingDialog({ sessionId, storageError, errorText }: {
   const running = values.includes('running');
   const failed = values.some(value => value === 'failed' || value === 'interrupted');
   const retryable = !running && !processing?.complete && values.some(value => ['pending', 'failed', 'interrupted'].includes(String(value)));
-  const act = async (command: 'continueEnd' | 'cancelEnd' | 'retrySaving') => {
+  const act = async (command: 'continueEnd' | 'cancelEnd' | 'retrySaving' | 'retryMemoryAdd' | 'skipMemoryAdd', job?: Json) => {
     if (pending.current) return;
     pending.current = true; setBusy(true); setActionError(null);
     try {
       if (command === 'retrySaving') await window.stomylos.command(command, undefined);
-      else await window.stomylos.command(command, { sessionId });
+      else if(command==='retryMemoryAdd'||command==='skipMemoryAdd') {
+        if(!job)throw new Error('Memory input missing');
+        await window.stomylos.command(command,{sessionId:job.session_id,jobId:job.ordinal});
+      } else await window.stomylos.command(command, { sessionId });
       reload.current();
     } catch (error) { setActionError(errorText(error)); }
     finally { pending.current = false; setBusy(false); }
@@ -51,7 +56,6 @@ export function EndProcessingDialog({ sessionId, storageError, errorText }: {
       <div className="end-processing-symbol" aria-hidden="true">{failed || loadError || storageError ? <Icon name="info" /> : <span className="end-spinner" />}</div>
       <Dialog.Title ref={heading} tabIndex={-1}>{failed ? 'Almost done' : 'Finishing your chat'}</Dialog.Title>
       <Dialog.Description>{failed ? 'Retry or cancel remaining.' : 'Chat saved.'}</Dialog.Description>
-      {view?.memory.addJobs?.some(job=>job.state==='interrupted') && <p className="note">An interrupted memory request may already have been billed. Trying again makes a new request.</p>}
       <ul className="end-processing-stages" aria-label="Processing stages" aria-live="polite">
         {Object.entries(view?.memory.addJobs ? {update:'Memory'} : stages).map(([stage, label]) => {
           const raw = String(processing?.stages?.[stage] ?? 'pending');
@@ -67,12 +71,13 @@ export function EndProcessingDialog({ sessionId, storageError, errorText }: {
           </li>;
         })}
       </ul>
+      <MemoryInputRecovery jobs={view?.memory.addJobs ?? []} disabled={busy || !!storageError} onAction={(command,job)=>void act(command,job)} />
       {(actionError || loadError || storageError) && <p className="end-processing-error" role="alert">{actionError || loadError || 'Changes could not be saved. Retry saving to continue.'}</p>}
       <div className="dialog-actions">
         <button disabled={busy || !!storageError} onClick={() => void act('cancelEnd')}>Cancel remaining</button>
         {storageError ? <button className="primary" disabled={busy} onClick={() => void act('retrySaving')}>Retry saving</button> :
           loadError ? <button className="primary" disabled={busy} onClick={() => reload.current()}>Reload status</button> :
-          retryable && <button className="primary" disabled={busy} onClick={() => void act('continueEnd')}>Try again</button>}
+          retryable && !(view?.memory.addJobs?.some(job=>['failed','interrupted'].includes(job.state))) && <button className="primary" disabled={busy} onClick={() => void act('continueEnd')}>Try again</button>}
       </div>
     </Dialog.Content>
   </Dialog.Portal></Dialog.Root>;

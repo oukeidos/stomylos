@@ -1,3 +1,4 @@
+import { MemoryInputRecovery } from './memory-input-recovery';
 import { MemoryControl } from './memory-control';
 import type { MemoryPreference } from '../shared/memory-control';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
@@ -111,9 +112,10 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
     }}>{retryingSave ? 'Retrying…' : 'Retry saving memory'}</button></div>}
     {data && <>
       {!!data.jobs?.length && <section aria-label="Memory queue"><p className="note">{data.jobs.length} memory inputs pending. Conversation replies can continue while memory is processed.</p>
-        {data.jobs.filter(j=>['failed','interrupted'].includes(j.state)).map(j=><div key={j.ordinal}><p>Input {j.ordinal}: {j.state}. {j.failure==='memory_add_item_capacity'?'A note exceeds 4,000 characters. Retry extraction or skip this input.':''} {j.state==='interrupted'?'The previous call may have been billed. Retrying makes a new call.':''}</p>
-          <button disabled={busy} onClick={async()=>{try{await window.stomylos.command('retryMemoryAdd',{sessionId:j.session_id,jobId:j.ordinal});await refresh();}catch(cause){setError(errorText(cause));}}}>Retry input</button>
-          <button disabled={busy} onClick={async()=>{try{await window.stomylos.command('skipMemoryAdd',{sessionId:j.session_id,jobId:j.ordinal});await refresh();}catch(cause){setError(errorText(cause));}}}>Skip input</button></div>)}
+        <MemoryInputRecovery jobs={data.jobs} disabled={busy || saveRecovery} onAction={async(command,job)=>{
+          try {await window.stomylos.command(command,{sessionId:job.session_id,jobId:job.ordinal});await refresh();}
+          catch(cause){setError(errorText(cause));}
+        }} />
       </section>}
       {error && !editor && <p role="alert">{error}</p>}
       {data.blocker && <div className="memory-lock"><p className="note">{data.blocker.reason === 'chat' ? 'Memory is in use by your current chat. Finish the chat to edit it.' : 'Finish memory processing to edit saved memories.'}</p>

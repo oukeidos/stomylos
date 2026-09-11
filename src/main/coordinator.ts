@@ -690,9 +690,13 @@ export class Coordinator {
               const routed=await this.prepareProvider('memory_add',attempt.id,JSON.parse(attempt.body),JSON.parse(job.config).identity);
               await this.write('dispatchMemoryAdd',attempt.id);
               if(abort.signal.aborted)throw new AppFailure('request_cancelled');
-              return {response:this.gateway.complete(routed.body,routed.identity!,abort.signal,JSON.parse(job.config).timeout_ms)};
+              return {response:this.gateway.complete(routed.body,routed.identity!,abort.signal,JSON.parse(job.config).timeout_ms)
+                .then(result=>({result}),error=>({error}))};
             });
-            const result=await launch.response;
+            await this.publish(sessionId);
+            const outcome=await launch.response;
+            if('error' in outcome)throw outcome.error;
+            const result=outcome.result;
             if(abort.signal.aborted)throw new AppFailure('request_cancelled');
             content=result.content; metadata={...result.metadata,elapsed_seconds:(performance.now()-started)/1000};
             await this.write('receiveMemoryAdd',attempt.id,content,metadata);
@@ -700,6 +704,7 @@ export class Coordinator {
           await this.write('acceptMemoryAdd',attempt.id);
         } catch(error) {
           if(error instanceof CompletionFailure){content=error.content;metadata={...metadata,...error.metadata};}
+          if(attempt.status!=='received')metadata.elapsed_seconds=(performance.now()-started)/1000;
           await this.write('failMemoryAdd',attempt.id,failureCode(error),abort.signal.aborted,content,metadata);
         }
         await this.memoryChanged(sessionId); this.memory!.sessionId=null;

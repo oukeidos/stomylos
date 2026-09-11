@@ -57,3 +57,9 @@ it('shows per-input additions and FIFO removals even if later work failed',()=>{
    {ordinal:2,state:'interrupted',changes:null,failure:'interrupted_unknown_outcome'}]}}));
  expect(html).toContain('New &lt;note&gt;');expect(html).toContain('Older note');expect(html).toContain('Removed by capacity limit');expect(html).toContain('Earlier additions remain');expect(html).toContain('interrupted_unknown_outcome');
 });
+
+it('does not describe a skipped ADD input as waiting', () => {
+ const html=renderToStaticMarkup(createElement(MemoryChangeHistory,{ended:true,memory:{current:null,snapshot:null,changes:null,job:null,blockedBy:null,attempts:[],addJobs:[{ordinal:1,state:'skipped',changes:null,failure:null}]}}));
+ expect(html).toContain('This input was skipped.');
+ expect(html).not.toContain('Waiting for memory processing.');
+});

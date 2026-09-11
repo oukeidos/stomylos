@@ -1,3 +1,5 @@
+import { MemoryInputRecovery, memoryInputProgress } from './memory-input-recovery';
+import { MemoryAddRequests } from './memory-add-requests';
 import { orderedPartners, partnerDisplayName } from '../shared/partners';
 import { MemoryRecords } from './memory-records';
 import { EndProcessingDialog } from './end-processing';
@@ -191,30 +193,6 @@ function GrammarDetails({view, act}: {view: SessionView; act: (fn: () => Promise
     </> : <p className="note">There are no learner messages to analyze.</p>}
   </Disclosure>;
 }
-const endStageLabels: Record<string, string> = { update: 'Memory update', cleanup: 'Memory cleanup' };
-function endSummary(view: SessionView) {
-  const processing = view.endProcessing!;
-  if (processing.cancelled) return 'Chat saved · Remaining work cancelled';
-  if (processing.complete) return 'Chat saved · Processing complete';
-  const stages = Object.entries(processing.stages).filter(([stage]) => Object.hasOwn(endStageLabels, stage));
-  const running = stages.filter(([, state]) => state === 'running').map(([stage]) => endStageLabels[stage]);
-  if (running.length) return `Finishing chat · ${running.join(' · ')}`;
-  return stages.some(([, state]) => ['failed', 'interrupted'].includes(String(state)))
-    ? 'Chat saved · Processing needs attention' : 'Finishing chat · Preparing updates';
-}
-function EndProcessingDetails({ view }: { view: SessionView }) {
-  const processing = view.endProcessing;
-  if (!processing) return null;
-  const stateLabels: Record<string, string> = { pending: 'Waiting', running: 'Working…', completed: 'Done', skipped: 'Not needed', failed: 'Needs attention', interrupted: 'Interrupted', cancelled: 'Cancelled' };
-  return <section className="end-details" aria-label="Processing stages">
-    <h3>After this chat</h3><p className="note" role="status">{endSummary(view)}</p>
-    <ul>{Object.entries(processing.stages).filter(([stage]) => Object.hasOwn(endStageLabels, stage)).map(([stage, state]) => <li key={stage}>
-      <div><span>{endStageLabels[stage]}</span><span>{stateLabels[String(state)] ?? String(state)}</span></div>
-      {processing.details?.[stage]?.failure && <p className="note">{errorText(processing.details[stage].failure)}</p>}
-    </li>)}</ul>
-
-  </section>;
-}
 function Renewal({ view, onToggle, act, initialOpen = false }: { view: SessionView; onToggle: () => void; act: (fn: () => Promise<unknown>) => void; initialOpen?: boolean }) {
   const renewal = view.renewal;
   if (!renewal) return null;
@@ -231,29 +209,35 @@ function Renewal({ view, onToggle, act, initialOpen = false }: { view: SessionVi
     {!view.endProcessing?.cancelled && ['pending', 'failed', 'interrupted'].includes(renewal.state) && <button onClick={() => act(() => window.stomylos.command('retryStarterRenewal', { sessionId: view.session.id }))}>Try starter renewal again</button>}
   </Disclosure>;
 }
-function MemoryDetails({ view, act, show, openShared, initialOpen }: { view: SessionView; act: (fn: () => Promise<unknown>) => void; show: (id: string) => Promise<void>; openShared(): void; initialOpen: boolean }) {
-  const memory = view.memory, job = memory?.job;
-  const policy=view.memoryPolicy;
-  const memoryStatus=policy?.firstEnabled === null ? 'Not used yet' : policy?.firstEnabled === false ? 'Not used in this chat' : policy?.updatesDisabled ? 'Used in this chat · Updates disabled' : 'Used in this chat';
-  const state = job?.state;
-  const recover = !view.endProcessing?.cancelled && !!state && ['pending', 'failed', 'interrupted'].includes(state);
-  return <Disclosure initialOpen={initialOpen} title="Shared memory" subtitle={state === 'completed' ? 'Updated' : state === 'running' ? 'Updating' : state === 'skipped' ? 'Update skipped' : recover ? 'Update pending' : undefined}>
+function MemoryDetails({ view, act, show, openShared, initialOpen, disabled }: { view: SessionView; act: (fn: () => Promise<unknown>) => void; show: (id: string) => Promise<void>; openShared(): void; initialOpen: boolean; disabled: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const memory = view.memory, policy = view.memoryPolicy;
+  const jobs = memory.addJobs ?? [];
+  const { summary, earlierChat } = memoryInputProgress(jobs, view.session.id, memory.blockedBy);
+  const memoryStatus = policy?.firstEnabled == null ? 'Not used yet' : policy.firstEnabled === false ? 'Not used in this chat' : policy.updatesDisabled ? 'Used in this chat · Updates disabled' : 'Used in this chat';
+  return <Disclosure initialOpen={initialOpen} title="Shared memory" subtitle={summary}>
     <p className="note">{memoryStatus}</p><button onClick={openShared}>Open shared memory</button>
-    {recover && <p className="note">Your chat is saved. {memory.blockedBy ? 'An earlier memory update needs to be resolved first.' : 'Retry the unfinished memory stage or force cancel remaining work. Force cancellation preserves already saved results and discards uncommitted memory.'}</p>}
-    {memory?.blockedBy && recover && <button onClick={() => act(() => show(memory.blockedBy!))}>Open earlier chat</button>}
-    {recover && !memory.blockedBy && <button onClick={() => act(() => window.stomylos.command('retryMemory', { sessionId: view.session.id }))}>Retry memory update</button>}
-    {recover && <button onClick={() => act(() => window.stomylos.command('skipMemory', { sessionId: view.session.id }))}>Force cancel remaining work</button>}
-    <Disclosure title="Changes from this chat">
+    <Disclosure title="Used in this chat">
+      {!memory.snapshot || policy?.firstEnabled !== true ? <p className="note">{memoryStatus}</p> : <>
+        <p className="note">The memory snapshot saved for this chat stays fixed as new notes are added.</p>
+        <MemoryRecords document={memory.snapshot} />
+      </>}
+    </Disclosure>
+    <Disclosure title="Changes from this chat" subtitle={summary}>
+      {earlierChat && <><p className="note">Waiting for memory processing in an earlier chat.</p>
+        <button onClick={() => act(() => show(earlierChat))}>Open earlier chat</button></>}
+      {!view.endProcessing?.cancelled && <MemoryInputRecovery jobs={jobs} disabled={disabled || busy} onAction={(command, job) => act(async () => {
+        setBusy(true);
+        try { await window.stomylos.command(command, { sessionId: view.session.id, jobId: job.ordinal }); }
+        finally { setBusy(false); }
+      })} />}
       <MemoryChangeHistory memory={memory} ended={view.session.state === 'ended'} />
     </Disclosure>
-    {([['Used in this chat', memory?.snapshot]] as const).map(([title, doc]) => <Disclosure title={title} key={title}>
-      {!doc || policy?.firstEnabled !== true ? <p className="note">{memoryStatus}</p> : <MemoryRecords document={doc} />}
-    </Disclosure>)}
   </Disclosure>;
 }
 function RequestDetails({ view, onToggle }: { view: SessionView; onToggle: () => void }) {
   const dictations = useDictation().snapshot.records.filter(r => r.sessionId === view.session.id);
-  const count = (view.searches?.reduce((n, s) => n + s.attempts.length, 0) ?? 0) + view.requests.length + (view.renewal?.attempts.length ?? 0) + (view.memory?.attempts.length ?? 0) + dictations.reduce((sum, record) => sum + record.attempts.length, 0);
+  const count = (view.searches?.reduce((n, s) => n + s.attempts.length, 0) ?? 0) + view.requests.length + (view.renewal?.attempts.length ?? 0) + (view.memory?.attempts.length ?? 0) + (view.memory?.addAttempts?.length ?? 0) + dictations.reduce((sum, record) => sum + record.attempts.length, 0);
   return <Disclosure title="Request details" subtitle={`${count} ${count === 1 ? 'attempt' : 'attempts'}`} onToggle={onToggle}>
     {!count && <p className="note">No model requests have been made for this chat.</p>}
     {view.requests.map(request => { const metadata = JSON.parse(request.metadata), settings = JSON.parse(request.config); const requestedModel = settings.request_partner?.target.model ?? (request.role === 'chat' ? view.session.model : settings.parameters?.model); return <div className="request" key={request.id}>
@@ -281,6 +265,7 @@ function RequestDetails({ view, onToggle }: { view: SessionView; onToggle: () =>
       {attempt.usage?.cost != null && <small>${Number(attempt.usage.cost).toFixed(5)}</small>}
       {record.submitted && <small>{record.submitted.edited ? 'Edited dictation was sent.' : 'Dictation was sent.'}</small>}
     </div>))}
+    <MemoryAddRequests attempts={view.memory?.addAttempts ?? []} />
     {view.memory?.attempts.map(request => { const metadata = JSON.parse(request.metadata); return <div className="request" key={request.id}>
       <strong>Memory update</strong><span className="tag neutral">{request.status}</span>
       <small>{new Date(request.created_at).toLocaleString()}</small>
@@ -539,8 +524,8 @@ function App() {
         {app.activity.sessionId === view.session.id && app.activity.phase === 'routing' && <p className="note" role="status">Choosing your conversation partner…</p>}
         {app.activity.sessionId === view.session.id && app.activity.phase === 'preparing' && <p className="note" role="status">Preparing your reply…</p>}
         {view.session.state === 'ended' && <>
-          {view.endProcessing && <section className="end-summary" aria-label="End processing">
-            <span role="status">{endSummary(view)}</span>
+          {memoryInputProgress(view.memory.addJobs ?? [], view.session.id, view.memory.blockedBy).summary && <section className="end-summary" aria-label="Memory processing">
+            <span role="status">{memoryInputProgress(view.memory.addJobs ?? [], view.session.id, view.memory.blockedBy).summary}</span>
           </section>}
 
           <div className="ended-marker">{!view.endProcessing && labels[view.session.analysis_state]}{view.session.draft && <button className="icon-button retained-draft-link" aria-label="View unsent draft" title="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></button>}</div>
@@ -571,9 +556,8 @@ function App() {
     <div className="dialog-actions"><button disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button><button className="delete-confirm" disabled={deleting} onClick={() => void confirmDelete()}>{deleting ? 'Deleting…' : 'Delete chat'}</button></div>
   </Modal>
   <Modal open={details} onOpenChange={setDetails} title="Conversation details">{view && <>
-    <EndProcessingDetails view={view} />
     <GrammarDetails key={view.session.id} view={view} act={act} />
-    <MemoryDetails view={view} act={act} initialOpen={detailsSection === 'memory'} openShared={() => { setDetails(false); setSettingsTab('memory'); setSettings(true); }} show={async id => { setDetails(false); await show(id); }} />
+    <MemoryDetails key={view.session.id} disabled={!!app.activity.storageError || app.activity.closing} view={view} act={act} initialOpen={detailsSection === 'memory'} openShared={() => { setDetails(false); setSettingsTab('memory'); setSettings(true); }} show={async id => { setDetails(false); await show(id); }} />
     <RequestDetails view={view} onToggle={() => undefined} />
     <Renewal initialOpen={detailsSection === 'starter'} view={view} onToggle={() => undefined} act={act} />
     {view.session.state === 'ended' && view.session.draft && <Disclosure title="Unsent draft"><p className="retained-text">{view.session.draft}</p></Disclosure>}
