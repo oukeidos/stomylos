@@ -113,3 +113,29 @@ it('keeps network entry points explicit so a new raw transport cannot bypass the
   expect(direct.sort()).toEqual(['asr-transport.ts', 'transport.ts', 'tts.ts']);
   for (const file of direct) expect(readFileSync(join('src/main',file),'utf8')).toContain('assertProviderBody(');
 });
+it('sends Lighter and Standard conversation prefixes unchanged through search and central provider admission', async () => {
+  const dir=mkdtempSync(join(tmpdir(),'stomylos-reply-wire-')), store=new Store(dir,resolve('native/advisory-lock.node'));
+  const wire=vi.fn(async(_url:unknown,init:RequestInit)=>{
+    const body=JSON.parse(init.body as string);assertProviderBody(body);
+    return new Response(`data: ${JSON.stringify({model:body.model,provider:'Alternate provider',choices:[{delta:{content:'Accepted'},finish_reason:'stop'}]})}\n\ndata: [DONE]\n\n`);
+  });vi.stubGlobal('fetch',wire);
+  try {
+    const gateway=new OpenRouter(()=>'synthetic');
+    for(const mode of ['one_point','standard'] as const) {
+      const s=store.createSession();store.setReplyContext(s.id,randomUUID(),0,mode);store.searchMode(s.id,'off');
+      store.selectManual(s.id,'model_04');store.submit(s.id,'A synthetic answer.',randomUUID(),1);store.commitRoute(s.id,null,'fixture',null);
+      const request=store.prepareChat(s.id,randomUUID()), body=store.chatBody(request.id);
+      for(const search of [false,true]) {
+        const source=withSearch(body,search),before=JSON.stringify(source);
+        const routed=prepareProviderRequest(source,{allowed_models:[source.model],provider:null});
+        await gateway.stream(routed.body,new AbortController().signal,()=>{});
+        const sent=JSON.parse(wire.mock.calls.at(-1)![1].body as string);
+        expect(sent.messages).toEqual(body.messages);
+        expect(sent.messages.filter((m:any)=>m.content.includes('What are your values?'))).toHaveLength(mode==='one_point'?1:0);
+        expect(JSON.stringify(source)).toBe(before);expect(!!sent.tools).toBe(search);
+        expect(sent.provider.allow_fallbacks).toBe(true);expect(sent.provider.data_collection).toBe('deny');
+      }
+      store.end(s.id);store.cancelEnd(s.id);
+    }
+  } finally {store.close();rmSync(dir,{recursive:true,force:true});}
+});

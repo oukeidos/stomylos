@@ -811,17 +811,3 @@ CREATE TABLE session_cold_recollections (
 );
 CREATE TRIGGER immutable_cold_recollection BEFORE UPDATE ON session_cold_recollections
 BEGIN SELECT RAISE(ABORT,'immutable COLD recollection revision'); END;
-
-ALTER TABLE sessions ADD COLUMN reply_context_revision INTEGER NOT NULL DEFAULT 0 CHECK(reply_context_revision >= 0);
-ALTER TABLE sessions ADD COLUMN last_reply_context_operation TEXT;
-CREATE TABLE reply_preferences (
-  id INTEGER PRIMARY KEY CHECK(id=1),
-  mode TEXT NOT NULL CHECK(mode IN ('standard','one_point'))
-);
-INSERT INTO reply_preferences(id,mode) VALUES(1,'one_point');
-
-CREATE TABLE search_preferences (
-  id INTEGER PRIMARY KEY CHECK(id=1),
-  mode TEXT NOT NULL CHECK(mode IN ('auto','off'))
-);
-INSERT INTO search_preferences(id,mode) VALUES(1,'auto');

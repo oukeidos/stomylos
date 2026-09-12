@@ -12,7 +12,7 @@ import { ASR } from '../shared/asr';
 import { dictationId } from './asr-store';
 import { validApiKey } from '../shared/credentials';
 
-const commands: (keyof CommandArgs)[] = [...explainCommands, ...patternCommands, ...genieCommands, 'exitOptions', 'exitPrepared', 'exitCopyText', 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'retryMemoryAdd', 'skipMemoryAdd', 'setMemoryPreference', 'coldPage','coldStatus','coldDelete','coldRetry','memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'loadSession', 'saveDraft', 'replaceStarter', 'setOpening', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
+const commands: (keyof CommandArgs)[] = [...explainCommands, ...patternCommands, ...genieCommands, 'exitOptions', 'exitPrepared', 'exitCopyText', 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'retryMemoryAdd', 'skipMemoryAdd', 'setMemoryPreference', 'coldPage','coldStatus','coldDelete','coldRetry','memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'loadSession', 'saveDraft', 'replaceStarter', 'setOpening', 'setReplyContext', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
   'searchMode', 'sendMessage', 'retryReply', 'endSession', 'newSession', 'retryAnalysis', 'cancelAnalysis', 'retryStarterRenewal', 'continueEnd', 'cancelEnd', 'retryMemory', 'skipMemory', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'manageKey', 'close'];
 const noArgs = new Set(['coldStatus','coldRetry','exitOptions', 'usageSnapshot', 'speechPreviewStop', 'retryDeletionCleanup', 'asrSnapshot', 'speechSnapshot', 'speechStop', 'speechClear', 'memoryManagement', 'currentMemory', 'snapshot', 'newSession', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'close']);
 export function validateCommand(name: unknown, args: unknown): asserts name is keyof CommandArgs {
@@ -143,6 +143,15 @@ export function validateCommand(name: unknown, args: unknown): asserts name is k
       const pattern = key === 'expectedQuestionId' ? /^(?:[a-zA-Z0-9_-]{1,100}|catalog:joint-v1:Q[0-9]{5})$/ : /^[a-zA-Z0-9_-]{1,100}$/;
       if (typeof value[key] !== 'string' || !pattern.test(value[key] as string)) bad();
     }
+  }
+  if (name === 'setReplyContext') {
+    fields.push('operationId', 'expectedRevision', 'mode');
+    if (typeof value.operationId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value.operationId) ||
+        !Number.isSafeInteger(value.expectedRevision) || (value.expectedRevision as number) < 0 || !['standard','one_point'].includes(value.mode as string)) bad();
+  }
+  if (name === 'sendMessage' && Object.hasOwn(value, 'expectedReplyContextRevision')) {
+    fields.push('expectedReplyContextRevision');
+    if (!Number.isSafeInteger(value.expectedReplyContextRevision) || (value.expectedReplyContextRevision as number) < 0) bad();
   }
   if (name === 'setOpening') {
     fields.push('operationId', 'kind');

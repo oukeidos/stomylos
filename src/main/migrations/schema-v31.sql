@@ -819,9 +819,3 @@ CREATE TABLE reply_preferences (
   mode TEXT NOT NULL CHECK(mode IN ('standard','one_point'))
 );
 INSERT INTO reply_preferences(id,mode) VALUES(1,'one_point');
-
-CREATE TABLE search_preferences (
-  id INTEGER PRIMARY KEY CHECK(id=1),
-  mode TEXT NOT NULL CHECK(mode IN ('auto','off'))
-);
-INSERT INTO search_preferences(id,mode) VALUES(1,'auto');

@@ -257,12 +257,12 @@ export class Coordinator {
     }
     if (name === 'genieOpen' && this.explain.visible) throw new AppFailure('explain_busy');
     const id = args?.sessionId as string;
-    if (this.genie.locked && ['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'setOpening', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'asrBegin', 'asrTranscribe', 'asrInserted'].includes(name)) throw new AppFailure('genie_busy');
+    if (this.genie.locked && ['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'setOpening', 'setReplyContext', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'asrBegin', 'asrTranscribe', 'asrInserted'].includes(name)) throw new AppFailure('genie_busy');
     if (this.genie.locked && name === 'saveDraft') {
       const known = this.drafts.get(id);
       if (!known || known.revision !== args.revision || known.text !== args.text) throw new AppFailure('genie_busy');
     }
-    if (this.dictation?.locked && ['saveDraft', 'sendMessage', 'endSession', 'newSession', 'replaceStarter', 'setOpening', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) throw new AppFailure('asr_busy');
+    if (this.dictation?.locked && ['saveDraft', 'sendMessage', 'endSession', 'newSession', 'replaceStarter', 'setOpening', 'setReplyContext', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) throw new AppFailure('asr_busy');
     if (['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) this.speech?.stop();
     switch (name) {
       case 'setMemoryPreference': {
@@ -328,6 +328,11 @@ export class Coordinator {
           await this.dictation?.bindDraft(id, args.dictationIds ?? [], args.revision, args.text);
         return { revision: args.revision };
       }
+      case 'setReplyContext': {
+        if (this.interactive) throw new AppFailure('reply_in_progress');
+        try { return await this.write('setReplyContext', id, args.operationId, args.expectedRevision, args.mode); }
+        finally { await this.publish(id); }
+      }
       case 'setOpening': {
         await this.speech?.pauseOpening();
         try { const result = await this.write('setOpening', id, args.operationId, args.expectedRevision, args.kind); await this.publish(id); return result; }
@@ -372,7 +377,10 @@ export class Coordinator {
         if (args.text === '/end') { this.drafts.set(id, { revision: args.revision, text: '' }); await this.write('saveDraft', id, ''); await this.end(id); return; }
         if (this.interactive) throw new AppFailure('reply_in_progress');
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
-        const message = await this.write('submit', id, args.text, randomUUID());
+        const message = await this.write('submit', id, args.text, randomUUID(), args.expectedReplyContextRevision)
+          .catch(async error => { await this.publish(id); throw error; });
+        // Publish the durable lock even if later dictation or dispatch work fails.
+        await this.publish(id);
         await this.dictation?.submitted(id, args.dictationIds ?? [], message.id, message.content);
         if ((this.drafts.get(id)?.revision ?? -1) <= args.revision) this.drafts.set(id, { revision: args.revision, text: '' });
         this.startReply(id); await this.publish(id); return;

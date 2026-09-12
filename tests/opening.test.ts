@@ -89,7 +89,9 @@ it('stores the first direct message at zero, freezes the opening, and preserves 
   const source = JSON.parse(grammarBody(grammarSnapshot(), store.messages(session.id)).messages[1].content);
   expect(source).toEqual([{ index: 0, role: 'user', content: user.content }]);
   expect(validateGrammar(JSON.stringify({ units: [{ index: 0, corrected_text: '  I go walking.\n', explanation: 'Use go with I.' }] }), [user])[0].source_message_id).toBe(user.id);
-  expect(JSON.parse(store.memoryJob(session.id)!.source).messages.map(({ sent_time, ...message }: any) => { expect(sent_time.utc).toBeTypeOf('string'); return message; })).toEqual([{ id: user.id, role: 'user', origin: 'learner', delivery: 'complete', content: user.content }]);
+  const input = raw.prepare('SELECT input_json FROM memory_add_jobs WHERE message_id=?').pluck().get(user.id) as string;
+  expect(JSON.parse(input)).toMatchObject({ previous_assistant: null, current_user: { content: user.content } });
+  expect(input).not.toContain('What are your values?');
   expect(counts(session.id)).toEqual([{ kind: 'presented', n: 1 }]);
 });
 

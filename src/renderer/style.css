@@ -168,7 +168,7 @@ aside[hidden] { display: none; }
 #conversation-sidebar { padding: 12px; }
 .library-tabs { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; flex-shrink: 0; }
 .library-tabs .library-close { margin-left: auto; }
-.library-tabs button[aria-pressed=true], .opening-action[aria-pressed=true] { background: #e1ebe3; color: var(--accent); }
+.library-tabs button[aria-pressed=true], .opening-action[aria-pressed=true], .reply-context-action[aria-pressed=true] { background: #e1ebe3; color: var(--accent); }
 .library-tabs .learning-nav { position: relative; margin: 0; min-height: var(--control); }
 .report-indicator { position: absolute; right: 5px; top: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 header .new-chat { min-height: var(--control); justify-content: center; background: transparent; }
@@ -466,3 +466,5 @@ footer.help-open { max-height: calc(100dvh - 150px); overflow-y: auto; }
 .memory-info-popover p { margin:0 0 10px; }
 .memory-info-popover p:last-child { margin-bottom:0; }
 .memory-sr-status { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+
+.reply-context-action[aria-busy=true] { opacity: .5; }

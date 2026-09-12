@@ -49,13 +49,13 @@ it('strictly validates the single Boolean and rejects output or request injectio
   expect(() => withSearch({ model: 'selected:online' }, false)).toThrow('search_body_conflict');
   expect(() => validateCommand('searchMode', { sessionId: 'one', mode: 'auto', tools: [] })).toThrow('invalid_command');
 });
-it('defaults new chats to Auto, persists Off, freezes starter/direct input and locks unresolved mode', () => {
+it('defaults initially to Auto, remembers Off for new chats, freezes input and locks unresolved mode', () => {
   const first = store.createSession(); expect(first.search_mode).toBe('auto'); store.searchMode(first.id, 'off');
   store.close(); store = new Store(directory, native); expect(store.session(first.id).search_mode).toBe('off');
   const user = store.submit(first.id, '  Exact input\n');
   expect(JSON.parse(store.searchView(first.id)!.turn.input)).toEqual({ previous_assistant: first.starter_text, current_user: user.content });
   expect(() => store.searchMode(first.id, 'auto')).toThrow('search_mode_locked');
-  store.end(first.id); const next = store.createSession(); expect(next.search_mode).toBe('auto');
+  store.end(first.id); const next = store.createSession(); expect(next.search_mode).toBe('off');
   store.setOpening(next.id, randomUUID(), next.opening_revision, 'user'); store.submit(next.id, 'Hello');
   expect(JSON.parse(store.searchView(next.id)!.turn.input).previous_assistant).toBe('');
 });

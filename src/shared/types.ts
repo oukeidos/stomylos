@@ -1,3 +1,4 @@
+import type { ReplyMode, ReplyContextView } from './reply-context';
 import type { VoiceId } from './voice';
 import type { ExplainCommandArgs, ExplainCommandResults } from './explain';
 import type { PatternCommandArgs, PatternCommandResults } from './pattern-report';
@@ -14,6 +15,7 @@ export interface Session {
   id: string; state: 'draft' | 'active' | 'ended'; starter_id: string | null; starter_version: string | null;
   starter_text: string | null; created_at: string; ended_at: string | null; draft: string;
   opening_kind: OpeningKind; opening_revision: number; parked_starter: string | null; last_opening_operation: string | null;
+  reply_context_revision: number; last_reply_context_operation: string | null;
   manual_character: string | null; character: string | null; model: string | null;
   chat_config: string; grammar_config: string | null; source_hash: string | null;
   analysis_state: 'none' | 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
@@ -51,7 +53,7 @@ export interface RenewalView {
   id: string; state: RenewalJob['state']; model: string; created_at: string; accepted_count: number;
   attempts: Omit<RenewalAttempt, 'response_content'>[];
 }
-export interface SessionView { memoryPolicy?: import('./memory-control').MemoryPolicy; endProcessing?: Json | null; partner: PartnerView; bookmarked: boolean; canBookmark: boolean; session: Session; messages: Message[]; requests: RequestRecord[]; units: GrammarUnit[]; renewal: RenewalView | null; intentions?: import('./intention').IntentionView; outdatedOpening?: boolean; memory: import('./memory').MemoryView; search?: import('./search').SearchView | null; searches?: import('./search').SearchView[] }
+export interface SessionView { replyContext?: ReplyContextView; memoryPolicy?: import('./memory-control').MemoryPolicy; endProcessing?: Json | null; partner: PartnerView; bookmarked: boolean; canBookmark: boolean; session: Session; messages: Message[]; requests: RequestRecord[]; units: GrammarUnit[]; renewal: RenewalView | null; intentions?: import('./intention').IntentionView; outdatedOpening?: boolean; memory: import('./memory').MemoryView; search?: import('./search').SearchView | null; searches?: import('./search').SearchView[] }
 export type SessionSummary = Pick<Session, 'id' | 'state' | 'starter_text' | 'created_at' | 'analysis_state'> & { title: string; bookmarked: boolean; canBookmark: boolean };
 export type HistoryFilter = 'all' | 'bookmarked';
 export interface SessionPage { sessions: SessionSummary[]; hasMore: boolean; offset: number; filter: HistoryFilter }
@@ -120,13 +122,14 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   loadSession: { sessionId: string };
   saveDraft: { sessionId: string; text: string; revision: number; dictationIds?: string[] };
   replaceStarter: { sessionId: string; operationId: string; expectedQuestionId: string; expectedRevision?: number };
+  setReplyContext: { sessionId: string; operationId: string; expectedRevision: number; mode: ReplyMode };
   setOpening: { sessionId: string; operationId: string; expectedRevision: number; kind: OpeningKind };
   changePartner: { sessionId: string; character: string | null; operationId: string; expectedRevision: number };
   useSelectedPartner: { sessionId: string };
   retryPartnerSelection: { sessionId: string };
   selectPartner: { sessionId: string; character: string | null };
   searchMode: { sessionId: string; mode: import('./search').SearchMode };
-  sendMessage: { sessionId: string; text: string; revision: number; dictationIds?: string[] };
+  sendMessage: { sessionId: string; text: string; revision: number; dictationIds?: string[]; expectedReplyContextRevision?: number };
   retryReply: { sessionId: string };
   endSession: { sessionId: string; command?: boolean };
   deleteSession: { sessionId: string };
@@ -171,6 +174,7 @@ export interface CommandResults extends ExplainCommandResults, GenieCommandResul
   snapshot: AppSnapshot; listSessions: SessionPage; loadSession: SessionView;
   changePartner: void; useSelectedPartner: void; retryPartnerSelection: void;
   saveDraft: { revision: number }; replaceStarter: void; selectPartner: void; searchMode: void;
+  setReplyContext: ReplyContextView;
   setOpening: { revision: number };
   sendMessage: void; retryReply: void; endSession: void; newSession: string;
   setSessionBookmark: { sessionId: string; bookmarked: boolean; revision: number };

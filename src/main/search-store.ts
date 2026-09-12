@@ -38,6 +38,7 @@ export class SearchStore {
     const last = messages.at(-1);
     if (session.state === 'ended' || last?.role === 'user' || last?.delivery === 'interrupted' || last?.delivery === 'streaming') throw new AppFailure('search_mode_locked');
     this.db.prepare('UPDATE sessions SET search_mode=? WHERE id=?').run(mode, session.id);
+    this.db.prepare('UPDATE search_preferences SET mode=? WHERE id=1').run(mode);
   }
   prepare(sessionId: string): SearchAttempt | null {
     return this.db.transaction(() => {

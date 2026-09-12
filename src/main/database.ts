@@ -1,3 +1,5 @@
+import { replyContext, replyMode, retainReplyContext } from './reply-context';
+import type { ReplyMode, ReplyContextView } from '../shared/reply-context';
 import { MemoryAddStore } from './memory-add-store';
 import { prepareProviderRequest, validateProviderRequest, type ProviderOwner, type ProviderRequest } from './provider-policy';
 import { memoryControlVersion } from '../shared/memory-control';
@@ -226,7 +228,7 @@ export class Store {
   units(id: string): GrammarUnit[] {
     return this.all('SELECT u.* FROM grammar_units u JOIN sessions s ON s.selected_analysis_id=u.analysis_attempt_id WHERE s.id=? ORDER BY u.ordinal', id);
   }
-  view(id: string): SessionView { const session = this.session(id); return { session, memoryPolicy: memoryPolicy(this.db,id), endProcessing: this.endStatus(id), partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: undefined, outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && this.starter.outdated(session.starter_id), memory: this.memoryView(session), search: this.search.view(id), searches: this.search.history(id) }; }
+  view(id: string): SessionView { const session = this.session(id); return { session, replyContext: this.replyContextView(id), memoryPolicy: memoryPolicy(this.db,id), endProcessing: this.endStatus(id), partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: undefined, outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && this.starter.outdated(session.starter_id), memory: this.memoryView(session), search: this.search.view(id), searches: this.search.history(id) }; }
   searchMode(id: string, mode: SearchMode) { this.transaction(() => this.search.setMode(this.session(id), this.messages(id), mode)); }
   searchView(id: string) { this.session(id); return this.search.view(id); }
   searchPrepare(id: string) { return this.search.prepare(id); }
@@ -263,13 +265,40 @@ export class Store {
       if (kind !== 'starter' && kind !== 'user') throw new AppFailure('unsupported_opening');
       const choice = kind === 'starter' ? this.starter.select() : null;
       const question = choice?.question; const id = randomUUID();
-      this.run("INSERT INTO sessions(id,state,starter_id,starter_version,starter_text,created_at,chat_config,opening_kind,search_mode) VALUES(?,'draft',?,?,?,?,?,?,'auto')",
-        id, question?.id ?? null, question?.version ?? null, question?.text ?? null, now(), JSON.stringify(conversationSnapshot(kind)), kind);
+      this.run("INSERT INTO sessions(id,state,starter_id,starter_version,starter_text,created_at,chat_config,opening_kind,search_mode) VALUES(?,'draft',?,?,?,?,?,?,?)",
+        id, question?.id ?? null, question?.version ?? null, question?.text ?? null, now(), JSON.stringify({ ...conversationSnapshot(kind), reply_context: replyContext(this.all<{mode: ReplyMode}>('SELECT mode FROM reply_preferences WHERE id=1')[0].mode) }), kind, this.all<{mode: SearchMode}>('SELECT mode FROM search_preferences WHERE id=1')[0].mode);
       if (question && choice) {
         this.insertStarter(id, question);
         this.starter.event(this.event(id, 'presented', question), { slot: question.slot, fallback: choice.fallback, relaxed: choice.relaxed });
       }
       return this.session(id);
+    });
+  }
+  replyContextView(id: string): ReplyContextView {
+    const session = this.session(id);
+    const canChange = session.state === 'draft' && !this.messages(id).some(isLearner) && !this.requests(id).length;
+    return { mode: replyMode(JSON.parse(session.chat_config)), revision: session.reply_context_revision,
+      canChange, lockReason: canChange ? null : session.state === 'ended' ? 'ended' : 'started' };
+  }
+  setReplyContext(id: string, operationId: string, expectedRevision: number, mode: ReplyMode): ReplyContextView {
+    return this.transaction(() => {
+      const current = this.session(id), saved = JSON.parse(current.chat_config);
+      sessionRuntime(saved);
+      const envelope = replyContext(mode), view = this.replyContextView(id);
+      if (!operationId || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new AppFailure('unsupported_reply_context');
+      const receipt = current.last_reply_context_operation ? JSON.parse(current.last_reply_context_operation) : null;
+      if (receipt?.operationId === operationId) {
+        if (receipt.expectedRevision !== expectedRevision || receipt.mode !== mode) throw new AppFailure('reply_context_operation_conflict');
+        if (receipt.revision !== view.revision) throw new AppFailure('reply_context_changed');
+        return view;
+      }
+      if (!view.canChange) throw new AppFailure('reply_context_frozen');
+      if (view.revision !== expectedRevision) throw new AppFailure('reply_context_changed');
+      const revision = view.revision + 1;
+      this.run('UPDATE sessions SET chat_config=?,reply_context_revision=?,last_reply_context_operation=? WHERE id=?',
+        JSON.stringify({ ...saved, reply_context: envelope }), revision, JSON.stringify({ operationId, expectedRevision, mode, revision }), id);
+      this.run('UPDATE reply_preferences SET mode=? WHERE id=1', mode);
+      return this.replyContextView(id);
     });
   }
   setOpening(id: string, operationId: string, expectedRevision: number, kind: OpeningKind): { revision: number } {
@@ -338,7 +367,7 @@ export class Store {
     if (this.session(id).state !== 'draft') throw new AppFailure('opening_is_frozen');
     this.run('UPDATE sessions SET manual_character=? WHERE id=?', partner, id);
   }
-  submit(id: string, text: string, messageId: string = randomUUID()): Message {
+  submit(id: string, text: string, messageId: string = randomUUID(), expectedReplyContextRevision?: number): Message {
     return this.transaction(() => {
       const content = text === '//end' ? '/end' : text;
       const previous = this.all<Message>('SELECT * FROM messages WHERE id=?', messageId)[0];
@@ -348,6 +377,8 @@ export class Store {
         return previous;
       }
       const current = this.session(id); const messages = this.messages(id);
+      const saved = JSON.parse(current.chat_config); replyMode(saved);
+      if (current.state === 'draft' && current.reply_context_revision !== (expectedReplyContextRevision ?? 0)) throw new AppFailure('reply_context_changed');
       if (current.state === 'draft' && current.opening_kind === 'starter' && this.starter.outdated(current.starter_id)) throw new AppFailure('starter_outdated');
       if (current.state === 'ended' || !text.trim() || text === '/end') throw new AppFailure('invalid_submission');
       validateOpeningSource(current, messages);
@@ -475,7 +506,7 @@ export class Store {
         const saved=JSON.parse(session.chat_config);
         if(saved.memory_version!==coldContextVersion) {
           const modern=['stomylos_conversation_v6','stomylos_conversation_v7',config.conversation.version].includes(saved.version);
-          const next=modern?{...saved,memory_version:coldContextVersion,component_hashes:conversationComponents(saved.version,coldContextVersion)}:conversationSnapshot(session.opening_kind);
+          const next=modern?{...saved,memory_version:coldContextVersion,component_hashes:conversationComponents(saved.version,coldContextVersion)}:retainReplyContext(conversationSnapshot(session.opening_kind),saved);
           if(session.character)character(session.character,next);
           this.run('UPDATE sessions SET chat_config=? WHERE id=?',JSON.stringify(next),id);
           this.run('DELETE FROM memory_legacy_seeds WHERE session_id=?',id);
@@ -521,6 +552,7 @@ export class Store {
           memory_owner_character: session.character, operation_id: pending?.id ?? null, kind,
           supersedes_request_id: kind === 'different_model' ? last?.id ?? null : null };
       }
+      if (replyMode(snapshot) !== replyMode(JSON.parse(session.chat_config))) throw new AppFailure('reply_context_changed');
       conversationBody(snapshot, target, session.starter_text, source);
       const request = this.createRequest(id, 'chat', snapshot, parent?.id ?? null, operationId);
       this.search.attach(request, user);
@@ -534,6 +566,7 @@ export class Store {
     const all = this.messages(session.id), source = all.filter(m => m.sequence <= request.source_sequence);
     if (all.findLast(isLearner)?.sequence !== request.source_sequence || hash(transcriptJson(source)) !== request.source_hash) throw new AppFailure('request_source_changed');
     const snapshot = JSON.parse(request.config);
+    if (replyMode(snapshot) !== replyMode(JSON.parse(session.chat_config))) throw new AppFailure('reply_context_changed');
     if (snapshot.time_version && !isDeepStrictEqual(snapshot.time_context?.sources, timeSources(source, id => readMessageTime(this.db, id)))) throw new AppFailure('temporal_source_changed');
     return this.search.body(request, source.findLast(isLearner)!, conversationBody(snapshot, requestPartner(snapshot, session.character), session.starter_text, source));
   }
@@ -772,7 +805,7 @@ export class Store {
         const saved = JSON.parse(session.chat_config);
         if (saved.memory_version === coldContextVersion) continue;
         const modern = ['stomylos_conversation_v6','stomylos_conversation_v7',config.conversation.version].includes(saved.version);
-        const next = modern ? {...saved, memory_version:coldContextVersion, component_hashes:conversationComponents(saved.version, coldContextVersion)} : conversationSnapshot(session.opening_kind);
+        const next = modern ? {...saved, memory_version:coldContextVersion, component_hashes:conversationComponents(saved.version, coldContextVersion)} : retainReplyContext(conversationSnapshot(session.opening_kind), saved);
         if (session.manual_character) character(session.manual_character, next);
         sessionRuntime(next);
         this.run('UPDATE sessions SET chat_config=? WHERE id=?', JSON.stringify(next), session.id);

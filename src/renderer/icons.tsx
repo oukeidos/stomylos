@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 const paths = {
+  feather: <><path d="M20.24 12.24a6 6 0 0 0-8.48-8.48L3 12.5V21h8.5Z" /><path d="m16 8-2 2M9 15l5-5M3 21l6-6M9 15H3M9 15V9" /></>,
   explain: <><path d="M21 11a8 8 0 0 1-8 8H7l-4 3V11a9 9 0 0 1 18 0Z" /><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4" /><path d="M12 15h.01" /></>,
   bookmark: <path d="M6 3h12v18l-6-4-6 4Z" />,
   edit: <><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" /></>,

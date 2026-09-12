@@ -1,3 +1,4 @@
+import { useReplyContext } from './reply-context';
 import { MemoryInputRecovery, memoryInputProgress } from './memory-input-recovery';
 import { MemoryAddRequests } from './memory-add-requests';
 import { orderedPartners, partnerDisplayName } from '../shared/partners';
@@ -295,6 +296,7 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
   const dictation = useDictation(); const genie = useGenie();
   const selection = useRef<ReturnType<typeof captureGenieRange> | null>(null);
   const id = view.session.id; const draft = useDraft(id); const composing = useRef(false); const textarea = useRef<HTMLTextAreaElement>(null);
+  const replyChoice = useReplyContext(view, () => textarea.current?.focus({ preventScroll: true }));
   const openingRevision = useRef(view.session.opening_revision);
   useEffect(() => { if (openingRevision.current !== view.session.opening_revision) { openingRevision.current = view.session.opening_revision; textarea.current?.focus({ preventScroll: true }); } }, [view.session.opening_revision]);
   const [sending, setSending] = useState(false); const busy = app.activity.sessionId === id && app.activity.phase !== 'idle';
@@ -309,17 +311,18 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
   useEffect(() => { const timer = setTimeout(() => { void flushDraft(id).catch(() => undefined); }, 350); return () => clearTimeout(timer); }, [id, draft.revision]);
   useEffect(() => { const node = textarea.current; if (node) { node.style.height = 'auto'; node.style.height = `${Math.min(node.scrollHeight, 160)}px`; } }, [draft.text]);
   const send = () => act(async () => {
-    if ((view.outdatedOpening && draft.text !== '/end') || blocked || genieBusy() || sending || dictationBusy() || overBudget || !draft.text.trim()) return;
+    if (replyChoice.busy.current || replyChoice.failed || (view.outdatedOpening && draft.text !== '/end') || blocked || genieBusy() || sending || dictationBusy() || overBudget || !draft.text.trim()) return;
     const accepted = afterAcceptedAction();
     setSending(true);
     try {
       const dictationIds = await prepareDictationSend(id); const submitted = currentDraft(id);
-      await window.stomylos.command('sendMessage', { sessionId: id, text: submitted.text, revision: submitted.revision, dictationIds });
+      await window.stomylos.command('sendMessage', { sessionId: id, text: submitted.text, revision: submitted.revision, dictationIds, expectedReplyContextRevision: replyChoice.revision });
       submittedDraft(id, submitted.revision); dictationSent(id); textarea.current?.focus({ preventScroll: true });
       if (submitted.text !== '/end') accepted();
     } finally { setSending(false); }
   });
   return <footer className={genie.locked ? 'help-open' : undefined}>
+    {replyChoice.recovery}
     {overBudget && <p className="limit-note">This draft exceeds the remaining chat allowance. It is preserved; shorten or copy it before sending.</p>}
     {view.outdatedOpening && <p className="limit-note" role="status">This question is outdated. Choose another question or start with your own message. Your draft is preserved.</p>}
     {near && <p className="limit-note">This chat is nearing its size limit. You can end it and continue in a new chat.</p>}
@@ -345,9 +348,9 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
           title={view.session.search_mode === 'auto' ? 'Web search: Auto — Search when helpful' : 'Web search: Off — No web search'}
           disabled={blocked || sending || busy || unresolved || genie.locked || dictation.locked || !!app.activity.storageError || app.activity.closing}
           onClick={() => act(() => window.stomylos.command('searchMode', { sessionId: id, mode: view.session.search_mode === 'auto' ? 'off' : 'auto' }))}>
-          <Icon name={view.session.search_mode === 'auto' ? 'globe' : 'globeOff'} /></button>{openingAction}<UndoGenie sessionId={id} textarea={textarea} /><span className="composer-spacer" /><RecordButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} />
+          <Icon name={view.session.search_mode === 'auto' ? 'globe' : 'globeOff'} /></button>{replyChoice.control(blocked || sending || busy || unresolved || genie.locked || dictation.locked || composing.current || !!app.activity.storageError || app.activity.closing)}{openingAction}<UndoGenie sessionId={id} textarea={textarea} /><span className="composer-spacer" /><RecordButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} />
         <span className={draft.error ? 'draft-error' : 'sr-only'} role="status">{draft.error ? 'Draft not saved' : draft.revision !== draft.saved ? 'Saving draft…' : 'Draft saved'}</span>
-        <button className="primary icon-button send" aria-label="Send" title="Send · Enter" onClick={send} disabled={(view.outdatedOpening && draft.text !== '/end') || blocked || genie.locked || sending || dictation.locked || overBudget || !draft.text.trim() || app.activity.closing || (draft.text !== '/end' && (busy || unresolved))}><Icon name="send" /></button></div></div>
+        <button className="primary icon-button send" aria-label="Send" title="Send · Enter" onClick={send} disabled={replyChoice.saving || replyChoice.failed || (view.outdatedOpening && draft.text !== '/end') || blocked || genie.locked || sending || dictation.locked || overBudget || !draft.text.trim() || app.activity.closing || (draft.text !== '/end' && (busy || unresolved))}><Icon name="send" /></button></div></div>
   </footer>;
 }
 function App() {
@@ -561,6 +564,7 @@ function App() {
     <div className="dialog-actions"><button disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button><button className="delete-confirm" disabled={deleting} onClick={() => void confirmDelete()}>{deleting ? 'Deleting…' : 'Delete chat'}</button></div>
   </Modal>
   <Modal open={details} onOpenChange={setDetails} title="Conversation details">{view && <>
+    <p>Reply style: {view.replyContext?.mode === 'one_point' ? 'Lighter' : 'Standard'}</p>
     <GrammarDetails key={view.session.id} view={view} act={act} />
     <MemoryDetails key={view.session.id} disabled={!!app.activity.storageError || app.activity.closing} view={view} act={act} initialOpen={detailsSection === 'memory'} openShared={() => { setDetails(false); setSettingsTab('memory'); setSettings(true); }} show={async id => { setDetails(false); await show(id); }} />
     <RequestDetails view={view} onToggle={() => undefined} />

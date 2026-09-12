@@ -1,3 +1,4 @@
+import { replyMode, replyPrefix } from './reply-context';
 import { coldContextVersion, coldRecallPolicy, renderCold, validateRecall } from './memory-recall';
 import { memoryControlVersion } from '../shared/memory-control';
 import { flattenMemory } from './memory-flat';
@@ -155,6 +156,7 @@ function runtimeForVersion(version: string) {
   throw new AppFailure('unsupported_conversation_settings');
 }
 function validateConversationSnapshot(snapshot: Json) {
+  replyMode(snapshot);
   openingKind(snapshot);
   if (snapshot.memory_control !== undefined && snapshot.memory_control !== memoryControlVersion) throw new AppFailure('unsupported_memory_settings');
   if (snapshot.memory_control === memoryControlVersion && (snapshot.memory_context !== undefined || snapshot.cold_recollections !== undefined)) throw new AppFailure('unsupported_memory_settings');
@@ -211,6 +213,7 @@ export function conversationBody(snapshot: Json, partnerId: string, question: st
       ? { cache_control: { type: 'ephemeral' } } : {}),
     ...(partner.reasoning ? { reasoning: partner.reasoning } : {}), messages: [
       { role: 'system', content: system },
+      ...replyPrefix(snapshot),
       ...(!direct ? [{ role: 'user', content: snapshot.seed_template.replaceAll('{{QUESTION}}', question) }] : []),
       ...messages.map(m => ({ role: m.role, content: m.content }))
     ] };
