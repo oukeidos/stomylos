@@ -37,12 +37,12 @@ export function selectAssociative(query: { id: string; vector: number[] }[], can
     .map(item => ({ item, score: Math.max(...query.map(current => dot(current.vector, item.vector))) }))
     .filter(entry => entry.score >= associativeSimilarityFloor)
     .sort((left, right) => right.score - left.score || left.item.source_order - right.item.source_order || lexical(left.item.id, right.item.id));
-  const seen = new Set<string>(), items: AssociativeItem[] = [];
+  const seen = new Set<string>(), seenHashes = new Set<string>(), items: AssociativeItem[] = [];
   for (const { item } of ranked) {
-    if (seen.has(item.id)) continue;
+    if (seen.has(item.id) || seenHashes.has(item.text_hash)) continue;
     const next = [...items, { id: item.id, text: item.text, text_hash: item.text_hash, source_order: item.source_order }];
     if (next.length > associativeItemLimit || codePoints(renderAssociative(next)) > associativeCharacterCap) continue;
-    items.push(next.at(-1)!); seen.add(item.id);
+    items.push(next.at(-1)!); seen.add(item.id); seenHashes.add(item.text_hash);
   }
   return { version: associativeRecallVersion, query_ids: queryIds, source_revision: sourceRevision, threshold: associativeSimilarityFloor,
     items, block: renderAssociative(items), reason: items.length ? 'selected' : 'empty' };

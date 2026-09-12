@@ -3,7 +3,8 @@ import { useReplyContext } from './reply-context';
 import { MemoryInputRecovery, memoryInputProgress } from './memory-input-recovery';
 import { MemoryAddRequests } from './memory-add-requests';
 import { orderedPartners, partnerDisplayName } from '../shared/partners';
-import { MemoryRecords } from './memory-records';
+import { UsedMemory } from './used-memory-details';
+import { usedMemory } from './used-memory';
 import { EndProcessingDialog } from './end-processing';
 import { Explainable, ExplainHistory, ExplainDialog } from './explain';
 import { SearchSources, SearchCost, SearchAttempts } from './search';
@@ -220,14 +221,12 @@ function MemoryDetails({ view, act, show, openShared, initialOpen, disabled }: {
   const memory = view.memory, policy = view.memoryPolicy;
   const jobs = memory.addJobs ?? [];
   const { summary, earlierChat } = memoryInputProgress(jobs, view.session.id, memory.blockedBy);
-  const memoryStatus = policy?.firstEnabled == null ? 'Not used yet' : policy.firstEnabled === false ? 'Not used in this chat' : policy.updatesDisabled ? 'Used in this chat · Updates disabled' : 'Used in this chat';
+  const usage = usedMemory(view.requests);
+  const memoryStatus = !usage.dispatched ? 'Not used yet' : !usage.used ? 'Not used in this chat' : policy?.updatesDisabled ? 'Used in this chat · Updates disabled' : 'Used in this chat';
   return <Disclosure initialOpen={initialOpen} title="Shared memory" subtitle={summary}>
     <p className="note">{memoryStatus}</p><button onClick={openShared}>Open shared memory</button>
     <Disclosure title="Used in this chat">
-      {!memory.snapshot || policy?.firstEnabled !== true ? <p className="note">{memoryStatus}</p> : <>
-        <p className="note">The memory snapshot saved for this chat stays fixed as new notes are added.</p>
-        <MemoryRecords document={memory.snapshot} />
-      </>}
+      <UsedMemory requests={view.requests} />
     </Disclosure>
     <Disclosure title="Changes from this chat" subtitle={summary}>
       {earlierChat && <><p className="note">Waiting for memory processing in an earlier chat.</p>

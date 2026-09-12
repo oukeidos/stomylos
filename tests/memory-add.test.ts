@@ -129,12 +129,15 @@ it('validates exact-job IPC and detects metadata membership corruption',()=>{
  for(const name of ['retryMemoryAdd','skipMemoryAdd']){expect(()=>validateCommand(name,{sessionId:'s',jobId:1})).not.toThrow();expect(()=>validateCommand(name,{sessionId:'s',jobId:0})).toThrow();}
  const {store,db}=fixture();db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,source_message_id,source_session_id,observed_at,origin) VALUES('orphan',0,0,NULL,NULL,NULL,'legacy')").run();expect(()=>store.currentMemory()).toThrow('memory_metadata_mismatch');
 });
-it('runs ADD in parallel with a held reply, sends one request per input, and drains End without Gemini or cleanup',async()=>{
- const f=fixture(),s=session(f.store);let release!:()=>void;const held=new Promise<void>(r=>release=r);const calls:Json[]=[];
+it('runs ADD before a held reply with a frozen baseline, sends one request per input, and drains End without Gemini or cleanup',async()=>{
+ const f=fixture(),s=session(f.store);let release!:()=>void;const held=new Promise<void>(r=>release=r);const calls:Json[]=[],replies:Json[]=[];
  const client={ready:Promise.resolve(),call:async(method:StoreMethod,...args:any[])=>(f.store[method] as Function).apply(f.store,args),close:async()=>f.store.close()} as unknown as DatabaseClient;
- const gateway:Gateway={async complete(body,identity){calls.push(body);expect(identity.allowed_models).toContain(body.model);return {content:'{"add":["Likes tea."]}',metadata:{usage:{cost:0.001}}};},async stream(_body,_signal,chunk){await held;chunk('Tell me more.');return {content:'Tell me more.',metadata:{}};}};
+ const gateway:Gateway={async complete(body,identity){calls.push(body);expect(identity.allowed_models).toContain(body.model);return {content:'{"add":["Likes tea."]}',metadata:{usage:{cost:0.001}}};},async stream(body,_signal,chunk){replies.push(body);await held;chunk('Tell me more.');return {content:'Tell me more.',metadata:{}};}};
  const c=new Coordinator(client,gateway,{keyPresent:true,keyPath:'',dataPath:f.dir,appVersion:'test',development:true},()=>{},()=>true);
- try{await c.command('sendMessage',{sessionId:s.id,text:'I like tea.',revision:0});await vi.waitFor(()=>expect(f.store.currentMemory().revision).toBe(1));expect(f.store.messages(s.id).at(-1)?.delivery).toBe('streaming');
+ try{await c.command('sendMessage',{sessionId:s.id,text:'I like tea.',revision:0});await vi.waitFor(()=>expect(f.store.currentMemory().revision).toBe(1));
+ expect(f.store.view(s.id).memoryPolicy?.firstEnabled).toBeNull();
+ await vi.waitFor(()=>expect(replies).toHaveLength(1),{timeout:3000});expect(f.store.messages(s.id).at(-1)?.delivery).toBe('streaming');
+ expect(JSON.stringify(replies[0])).not.toContain('Likes tea.');
  release();await vi.waitFor(()=>expect(f.store.messages(s.id).at(-1)?.delivery).toBe('complete'));await c.command('endSession',{sessionId:s.id});expect(f.store.endBlocker()).toBeNull();expect(calls.map(b=>b.model)).toEqual(['openai/gpt-5.6-luna']);
  expect(f.db.prepare('SELECT provider_request FROM memory_add_attempts').pluck().get()).toContain('"allow_fallbacks":true');
  }finally{release();await c.command('close',undefined);}

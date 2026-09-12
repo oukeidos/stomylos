@@ -647,7 +647,8 @@ export class Store {
       if (!hot) return null;
       const cold = JSON.parse(session.chat_config).memory_version === coldContextVersion ? this.recollections.snapshot(sessionId, flattenMemory(hot)) : null;
       const alreadySent = [...flattenMemory(hot).database_records.map(item => item.id), ...(cold?.items ?? []).map((item: { id: string }) => item.id)];
-      return this.associative.selectionFor(queryIds, job.ordinal, alreadySent);
+      const suppliedText = [...flattenMemory(hot).database_records, ...(cold?.items ?? [])].map(item => item.text);
+      return this.associative.selectionFor(queryIds, job.ordinal, alreadySent, suppliedText);
     });
   }
   admitAssociativeMemory(sessionId: string, messageId: string): boolean {
@@ -658,7 +659,11 @@ export class Store {
         JSON.parse(session.chat_config).associative_context_version !== 'stomylos_associative_recall_v1') return false;
       const policy = memoryPolicy(this.db, sessionId);
       if (policy.firstEnabled === false || policy.updatesDisabled) return false;
-      if (policy.firstEnabled === null) this.run('INSERT INTO session_memory_policy VALUES(?,?,?)', sessionId, 1, 0);
+      // Freeze both baseline contexts before the current ADD can change HOT/FIFO.
+      // Admission to extraction is not evidence of a conversation transmission.
+      const hot = this.memory.snapshot(session);
+      if (!hot) return false;
+      if (JSON.parse(session.chat_config).memory_version === coldContextVersion) this.recollections.snapshot(sessionId, flattenMemory(hot));
       return true;
     });
   }

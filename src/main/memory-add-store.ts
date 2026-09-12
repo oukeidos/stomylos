@@ -52,12 +52,20 @@ export class MemoryAddStore {
     this.run("UPDATE memory_add_attempts SET status='interrupted',failure=CASE WHEN status='queued' THEN 'queued_not_dispatched' ELSE 'interrupted_unknown_outcome' END WHERE status IN ('queued','dispatched')");
     if(!memoryPreference(this.db).enabled)this.cancel();
   }
+  private canExtract(session: string) {
+    if (memoryPolicy(this.db, session).firstEnabled === true) return true;
+    // A first associative query may run before chat dispatch, but only after
+    // the baseline was frozen independently of this input's new notes.
+    return !!this.row(`SELECT 1 FROM sessions s JOIN session_memories m ON m.session_id=s.id
+      WHERE s.id=? AND s.state='active'
+      AND json_extract(s.chat_config,'$.associative_context_version')='stomylos_associative_recall_v1'`, session);
+  }
   ready():Json|null {
     // A failed/unknown earlier source blocks later sources, never chat dispatch.
     const job=this.row("SELECT * FROM memory_add_jobs WHERE state NOT IN ('completed','skipped') ORDER BY ordinal LIMIT 1");
     if(!job)return null;
     if(!memoryWriteAllowed(this.db,job.session_id)){this.cancel(job.session_id);return this.ready();}
-    if(memoryPolicy(this.db,job.session_id).firstEnabled!==true || !['pending','received'].includes(job.state))return null;
+    if(!this.canExtract(job.session_id) || !['pending','received'].includes(job.state))return null;
     return job;
   }
   prepare(ordinal:number,id:string):Json {
@@ -77,7 +85,7 @@ export class MemoryAddStore {
   dispatch(id:string) {
     return this.db.transaction(()=>{
       const a=this.row('SELECT a.*,j.session_id FROM memory_add_attempts a JOIN memory_add_jobs j ON j.ordinal=a.job_id WHERE a.id=?',id);
-      if(!a||a.status!=='queued'||!memoryWriteAllowed(this.db,a.session_id)||memoryPolicy(this.db,a.session_id).firstEnabled!==true||memoryHash(a.body)!==a.body_hash)throw new AppFailure('memory_add_not_ready');
+      if(!a||a.status!=='queued'||!memoryWriteAllowed(this.db,a.session_id)||!this.canExtract(a.session_id)||memoryHash(a.body)!==a.body_hash)throw new AppFailure('memory_add_not_ready');
       this.run("UPDATE memory_add_attempts SET status='dispatched' WHERE id=?",id);
     })();
   }

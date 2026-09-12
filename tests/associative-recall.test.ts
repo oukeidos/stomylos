@@ -80,7 +80,7 @@ it('indexes accepted HOT ADD records and retrieves an earlier COLD record outsid
     const second = store.submit(session.id, 'I want to hike again.', 'second');
     const secondAttempt = receiveNotes(store, ['The user wants to hike again.']); store.acceptMemoryAdd(secondAttempt.id); index();
     const selection = store.associativeForMessage(session.id, second.id)!;
-    expect(selection.items.map(item => item.text)).toEqual(['The user enjoyed mountain hiking.']);
+    expect(selection.items.map(item => item.text)).toEqual(['The user enjoyed mountain hiking.', 'The user enjoyed a mountain hike.']);
   } finally { fixture.close(); }
 });
 

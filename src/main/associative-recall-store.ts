@@ -83,22 +83,26 @@ export class AssociativeRecallStore {
     return this.db.prepare("UPDATE associative_embeddings SET state='pending',lease=NULL,attempts=0,failure=NULL WHERE memory_id=? AND state='running' AND lease=?")
       .run(job.id, job.lease).changes === 1;
   }
-  selection(query: { id: string; vector: number[] }[], currentOrder: number, alreadySent: string[]): AssociativeSelection {
+  selection(query: { id: string; vector: number[] }[], currentOrder: number, alreadySent: string[], suppliedText: string[] = []): AssociativeSelection {
     if (!Number.isSafeInteger(currentOrder) || currentOrder < 0) throw new AppFailure('associative_source_order');
     const sent = new Set(alreadySent), source = new Map(this.sources().map(item => [item.id, item]));
+    const excludedHashes = new Set(suppliedText.map(coldHash));
+    for (const id of [...alreadySent, ...query.map(item => item.id)]) {
+      const item = source.get(id); if (item) excludedHashes.add(item.text_hash);
+    }
     const dimensions = this.db.prepare('SELECT dimensions FROM embedding_spaces WHERE id=?').pluck().get(embeddingSpaceId) as number | undefined;
     if (!dimensions) return { version: 'stomylos_associative_recall_v1', query_ids: query.map(item => item.id).sort(), source_revision: this.revision(), threshold: 0.78, items: [], block: '', reason: 'unavailable' };
     const rows = this.db.prepare("SELECT memory_id,vector,vector_hash FROM associative_embeddings WHERE space_id=? AND state='ready'").all(embeddingSpaceId) as { memory_id: string; vector: Uint8Array; vector_hash: string }[];
     try {
       const candidates = rows.flatMap(row => {
         const item = source.get(row.memory_id);
-        if (!item || item.source_order >= currentOrder || sent.has(item.id) || this.cold.revoked(item.id) || coldHash(row.vector) !== row.vector_hash) return [];
+        if (!item || item.source_order >= currentOrder || sent.has(item.id) || excludedHashes.has(item.text_hash) || this.cold.revoked(item.id) || coldHash(row.vector) !== row.vector_hash) return [];
         return [{ ...item, vector: Array.from(decodeVector(row.vector, dimensions)) }];
       });
       return selectAssociative(query, candidates, this.revision());
     } catch { return { version: 'stomylos_associative_recall_v1', query_ids: query.map(item => item.id).sort(), source_revision: this.revision(), threshold: 0.78, items: [], block: '', reason: 'integrity' }; }
   }
-  selectionFor(queryIds: string[], currentOrder: number, alreadySent: string[]): AssociativeSelection | null {
+  selectionFor(queryIds: string[], currentOrder: number, alreadySent: string[], suppliedText: string[] = []): AssociativeSelection | null {
     const dimensions = this.db.prepare('SELECT dimensions FROM embedding_spaces WHERE id=?').pluck().get(embeddingSpaceId) as number | undefined;
     if (!dimensions || !queryIds.length) return null;
     const query = queryIds.map(id => this.db.prepare("SELECT vector,vector_hash FROM associative_embeddings WHERE memory_id=? AND space_id=? AND state='ready'").get(id, embeddingSpaceId) as { vector: Uint8Array; vector_hash: string } | undefined);
@@ -108,7 +112,7 @@ export class AssociativeRecallStore {
         const row = query[index]!;
         if (coldHash(row.vector) !== row.vector_hash) throw new AppFailure('associative_vector_hash');
         return { id, vector: Array.from(decodeVector(row.vector, dimensions)) };
-      }), currentOrder, alreadySent);
+      }), currentOrder, alreadySent, suppliedText);
     } catch { return null; }
   }
   assertNotRevoked(selection: AssociativeSelection) {

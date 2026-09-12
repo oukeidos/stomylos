@@ -382,7 +382,6 @@ export class Coordinator {
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
         const message = await this.write('submit', id, args.text, randomUUID(), args.expectedReplyContextRevision)
           .catch(async error => { await this.publish(id); throw error; });
-        if (await this.write('admitAssociativeMemory', id, message.id)) this.enqueueMemory(id);
         // Publish the durable lock even if later dictation or dispatch work fails.
         await this.publish(id);
         await this.dictation?.submitted(id, args.dictationIds ?? [], message.id, message.content);
@@ -525,6 +524,8 @@ export class Coordinator {
       view = await this.db.call('view', id);
     }
     if (signal.aborted) return;
+    const learner = view.messages.findLast(isLearner);
+    if (kind === 'send' && learner && await this.write('admitAssociativeMemory', id, learner.id)) this.enqueueMemory(id);
     if (kind !== 'retry') {
       const route = await this.write('preparePartner', id, kind, randomUUID());
       if (route && JSON.parse(route.config).recovery_version === routerRecoveryVersion) {
@@ -556,7 +557,6 @@ export class Coordinator {
       finish: (attemptId, content, metadata, failure, interrupted) => this.write('searchFinish', attemptId, content, metadata, failure, interrupted)
     }, this.gateway, signal);
     if (signal.aborted) return;
-    const learner = view.messages.findLast(isLearner);
     const associative = kind === 'send' && learner ? await this.waitAssociativeRecall(id, learner.id, signal) : null;
     let request = await this.write('prepareChat', id, randomUUID(), kind === 'retry_selection' ? 'different_model' : kind, associative);
     let text = ''; let checkpoint = 0; let pendingCheckpoint: Promise<unknown> = Promise.resolve(); let searchEvidence: Json = {};

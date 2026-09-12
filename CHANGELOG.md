@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Freeze baseline memory before current-input extraction and use dispatched reply evidence for memory controls and unsent retries.
+- Exclude identical text from associative recall even when records have different IDs.
+- Group memory used by dispatched replies into recent memory, older recollections and associative recall in Conversation details.
 - Keep memory indexing notifications on the conversation event sequence so completed replies remain visible after memory updates.
 - Add local associative recall from current ADD notes to relevant earlier memory records, preserving the standard final-user request shape and schema-33 upgrades.
 - Use the selected merge-only memory prompt and local date with weekday for new ADD requests while preserving full source timestamps and frozen historical requests.
