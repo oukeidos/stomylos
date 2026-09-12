@@ -107,6 +107,9 @@ export class Coordinator {
     return { endBlocker: this.cachedEndBlockers[0]?.sessionId ?? null, endBlockers: this.cachedEndBlockers, revision, sessions: page.sessions, historyHasMore: page.hasMore, unfinished, activity, settings, characters };
   }
   databaseFailed() { if (this.exiting) return; this.patterns.databaseFailed(); this.speech?.stop(); this.emit({ type: 'dictation-interrupt' }); this.activity.storageError = 'database_worker_stopped'; this.backupReject?.(new AppFailure('save_required')); void this.publish().catch(() => undefined); }
+  memoryIndexChanged() {
+    this.emit({ type: 'memory-changed', characterId: 'shared', revision: ++this.revision });
+  }
   private async publish(id?: string) {
     if (this.exiting) return;
     this.revision++;

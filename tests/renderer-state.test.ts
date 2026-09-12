@@ -51,6 +51,24 @@ it('refreshes every cached model view after a shared memory update', async () =>
   expect(changed.mock.calls).toEqual([['a'], ['b']]);
 });
 
+it('refreshes a completed reply after a memory indexing notification', async () => {
+  const client = await import('../src/renderer/client'); await Promise.resolve();
+  const { Coordinator } = await import('../src/main/coordinator');
+  const controller = new Coordinator({} as any, {} as any, {} as any, receive, () => false);
+  const pending = { session: { id: 's' }, messages: [{ role: 'user', content: 'Hello' }] };
+  command.mockResolvedValueOnce(pending);
+  await client.loadView('s');
+  controller.memoryIndexChanged();
+  command.mockResolvedValueOnce(pending);
+  await client.loadView('s');
+  const revision = (controller as unknown as { revision: number }).revision;
+  receive({ type: 'session-changed', sessionId: 's', revision: revision + 1 });
+  const completed = { ...pending, messages: [...pending.messages, { role: 'assistant', content: 'Hello back' }] };
+  command.mockResolvedValueOnce(completed);
+  expect(await client.loadView('s')).toEqual(completed);
+  expect(revision).toBe(1);
+});
+
 it('discards a late view and draft acknowledgement after deleting their chat', async () => {
   const client = await import('../src/renderer/client'); const drafts = await import('../src/renderer/drafts'); await Promise.resolve();
   let finishView!: (value: unknown) => void, finishDraft!: (value: unknown) => void;

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep memory indexing notifications on the conversation event sequence so completed replies remain visible after memory updates.
 - Add local associative recall from current ADD notes to relevant earlier memory records, preserving the standard final-user request shape and schema-33 upgrades.
 - Use the selected merge-only memory prompt and local date with weekday for new ADD requests while preserving full source timestamps and frozen historical requests.
 

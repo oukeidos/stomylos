@@ -123,7 +123,7 @@ if (launch) {
     coordinator.patternViewer = new PatternReportViewer();
     coordinator.cold = new MemoryEmbeddingController(db, join(__dirname, 'memory-embedding-worker.js'),
       app.isPackaged ? join(process.resourcesPath, 'memory-model') : join(__dirname, '../../assets/memory-model'),
-      () => emit({type:'memory-changed', characterId:'shared', revision:Date.now()}));
+      () => coordinator!.memoryIndexChanged());
     await coordinator.initialize();
     coordinator.speech = new SpeechController(new SpeechStore(directory),
       new SpeechTransport(providerKey, endpoint ? new URL('/audio/speech', endpoint).href : undefined, undefined, undefined, undefined, usage),
