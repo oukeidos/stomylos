@@ -4,7 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { AppEvent, DesktopApi } from '../shared/types';
 import { genieCommands } from '../shared/genie';
 const allowed = new Set<string>([...explainCommands, ...patternCommands, ...genieCommands, 'exitOptions', 'exitPrepared', 'exitCopyText', 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'retryMemoryAdd', 'skipMemoryAdd', 'setMemoryPreference', 'coldPage','coldStatus','coldDelete','coldRetry','memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'loadSession', 'saveDraft', 'replaceStarter', 'setOpening', 'setReplyContext', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'sendMessage',
-  'searchMode', 'retryReply', 'endSession', 'newSession', 'retryAnalysis', 'retryStarterRenewal', 'continueEnd', 'cancelEnd', 'retryMemory', 'skipMemory', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'manageKey', 'close']);
+  'searchMode', 'retryReply', 'endSession', 'newSession', 'retryAnalysis', 'cancelAnalysis', 'retryStarterRenewal', 'continueEnd', 'cancelEnd', 'retryMemory', 'skipMemory', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'manageKey', 'close']);
 const api: DesktopApi = {
   async command(name, args) {
     if (!allowed.has(name)) throw new Error('invalid_command');

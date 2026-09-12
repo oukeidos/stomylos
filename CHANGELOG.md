@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore the Cancel grammar analysis button by forwarding its command through the desktop bridge.
+
 - Restore Explain generation, retries and saved history by admitting its database operations in the background worker.
 
 - Freeze baseline memory before current-input extraction and use dispatched reply evidence for memory controls and unsent retries.
