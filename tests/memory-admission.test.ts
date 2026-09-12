@@ -69,10 +69,11 @@ it('excludes duplicate query/supplied text and deduplicates recall across differ
     let job;
     while ((job = f.store.associativeClaim())) f.store.associativeComplete(job, { vector, inputHash: coldHash(job.text), chunkCount: 1 });
     const all = f.store.associativeSelection([{ id: 'future-query', vector }], 999, []);
-    expect(all.items.map(item => item.text)).toEqual(['Repeated hiking note', 'Different note']);
-    const duplicate = f.store.associativeSelection([{ id: 'future-query', vector }], 999, [all.items[0].id]);
+    expect(all.items.map(item => item.text).sort()).toEqual(['Different note', 'Repeated hiking note']);
+    const repeated = all.items.find(item => item.text === 'Repeated hiking note')!;
+    const duplicate = f.store.associativeSelection([{ id: 'future-query', vector }], 999, [repeated.id]);
     expect(duplicate.items.map(item => item.text)).toEqual(['Different note']);
-    const queryDuplicate = f.store.associativeSelection([{ id: all.items[0].id, vector }], 999, []);
+    const queryDuplicate = f.store.associativeSelection([{ id: repeated.id, vector }], 999, []);
     expect(queryDuplicate.items.map(item => item.text)).toEqual(['Different note']);
     f.store.startChat(f.store.prepareChat(session.id, 'first').id);
   } finally { f.close(); }

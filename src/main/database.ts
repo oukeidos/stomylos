@@ -648,7 +648,7 @@ export class Store {
       const cold = JSON.parse(session.chat_config).memory_version === coldContextVersion ? this.recollections.snapshot(sessionId, flattenMemory(hot)) : null;
       const alreadySent = [...flattenMemory(hot).database_records.map(item => item.id), ...(cold?.items ?? []).map((item: { id: string }) => item.id)];
       const suppliedText = [...flattenMemory(hot).database_records, ...(cold?.items ?? [])].map(item => item.text);
-      return this.associative.selectionFor(queryIds, job.ordinal, alreadySent, suppliedText);
+      return this.associative.selectionFor(sessionId, queryIds, job.ordinal, alreadySent, suppliedText);
     });
   }
   admitAssociativeMemory(sessionId: string, messageId: string): boolean {

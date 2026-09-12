@@ -57,7 +57,8 @@ it('keeps the standard system/alternating/final-user wire shape and places recal
   }
 });
 
-it('indexes accepted HOT ADD records and retrieves an earlier COLD record outside the frozen session snapshot', () => {
+it.each([['HOT', 'other-session'], ['COLD', 'other-session'], ['HOT', null], ['COLD', null]])(
+  'excludes same-session %s records while retaining earlier recall with source %s', (location, externalSession) => {
   const fixture = coldFixture();
   try {
     const store = fixture.store; store.coldInitialize();
@@ -72,15 +73,26 @@ it('indexes accepted HOT ADD records and retrieves an earlier COLD record outsid
     const firstAttempt = receiveNotes(store, ['The user enjoyed a mountain hike.']); store.acceptMemoryAdd(firstAttempt.id); index();
     const firstChat = store.startChat(store.prepareChat(session.id, 'first-chat').id); store.finishReply(firstChat.request.id, firstChat.bubble.id, 'That sounds lovely.', {});
     fixture.db.transaction(() => {
-      fixture.db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,origin) VALUES('cold-old',0,0,'legacy')").run();
+      fixture.db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,source_session_id,origin) VALUES('cold-old',0,0,?,'legacy')").run(externalSession);
       new ColdMemoryStore(fixture.db).archive([{ id: 'cold-old', text: 'The user enjoyed mountain hiking.' }]);
       fixture.db.prepare("DELETE FROM memory_item_metadata WHERE id='cold-old'").run();
     })();
     index();
+    if (location === 'COLD') {
+      fixture.db.transaction(() => {
+        const row = fixture.db.prepare('SELECT document FROM shared_memory').get() as { document: string };
+        const document = JSON.parse(row.document);
+        new ColdMemoryStore(fixture.db).archive(document.database_records);
+        fixture.db.prepare('DELETE FROM memory_item_metadata WHERE source_session_id=?').run(session.id);
+        document.database_records = [];
+        const encoded = JSON.stringify(document);
+        fixture.db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(encoded, coldHash(encoded));
+      })();
+    }
     const second = store.submit(session.id, 'I want to hike again.', 'second');
     const secondAttempt = receiveNotes(store, ['The user wants to hike again.']); store.acceptMemoryAdd(secondAttempt.id); index();
     const selection = store.associativeForMessage(session.id, second.id)!;
-    expect(selection.items.map(item => item.text)).toEqual(['The user enjoyed mountain hiking.', 'The user enjoyed a mountain hike.']);
+    expect(selection.items.map(item => item.text)).toEqual(['The user enjoyed mountain hiking.']);
   } finally { fixture.close(); }
 });
 

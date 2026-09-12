@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Exclude memory created in the current conversation from associative recall, whether stored in HOT or COLD memory.
 - Retain and display all returned distinct valid web sources without a ten-source storage cap.
 - Restore the Cancel grammar analysis button by forwarding its command through the desktop bridge.
 
