@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore Explain generation, retries and saved history by admitting its database operations in the background worker.
+
 - Freeze baseline memory before current-input extraction and use dispatched reply evidence for memory controls and unsent retries.
 - Exclude identical text from associative recall even when records have different IDs.
 - Group memory used by dispatched replies into recent memory, older recollections and associative recall in Conversation details.
