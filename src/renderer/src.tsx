@@ -497,8 +497,10 @@ function App() {
   </header><aside id="conversation-sidebar" hidden={!historyOpen} inert={!!genie.opening || !!genie.episode?.open}>
     <div className="library-tabs"><IconButton icon="chat" label="Chats" aria-pressed={!learning} onClick={backToChat} />
       <IconButton icon="book" className="learning-nav" label="Reports" tooltip={patternState.phase !== 'idle' ? 'Reports · Creating…' : patternState.reportId && !patternState.error ? 'Reports · Ready' : 'Reports'} aria-pressed={learning} onClick={() => act(openLearning)}>{(patternState.phase !== 'idle' || patternState.reportId) && <span className="report-indicator" aria-label={patternState.phase !== 'idle' ? 'Creating report' : patternState.error ? 'Report needs attention' : 'Report ready'} />}</IconButton>
-</div>
-    {!learning && <div className="history-filters" role="group" aria-label="Filter conversation history">{(['all', 'bookmarked'] as const).map(filter => <button key={filter} data-history-filter={filter} aria-pressed={library.filter === filter} onClick={() => library.choose(filter)}>{filter === 'all' ? 'All' : 'Bookmarked'}</button>)}</div>}
+      {!learning && <IconButton icon="bookmark" className="history-filter-switch" label="Show bookmarked chats only" role="switch" aria-checked={library.filter === 'bookmarked'} onClick={() => library.choose(library.filter === 'bookmarked' ? 'all' : 'bookmarked')}>
+        <span className="history-filter-track" aria-hidden="true"><span /></span>
+      </IconButton>}
+    </div>
     {!learning && library.failed && <div className="history-notice" role="alert">History could not be loaded. <button onClick={library.retry}>Try loading again</button></div>}
     {!learning && library.loading && <div className="history-notice" role="status">Loading conversations…</div>}
     {!learning && !library.loading && !library.failed && !history.length && library.filter === 'bookmarked' && <div className="history-notice">No bookmarked chats yet.</div>}

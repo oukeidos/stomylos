@@ -60,10 +60,10 @@ try {
   await page.keyboard.press('Escape'); assert.equal(await button('New chat').getByRole('tooltip').isVisible(), false);
   assert.equal(await button('Chat options').count(), 0);
   assert.equal(await button('Conversation details').count(), 1);
-  await page.locator('[data-history-filter=bookmarked]').click(); await page.getByText('No bookmarked chats yet.', { exact: true }).waitFor();
+  await page.getByRole('switch', { name: 'Show bookmarked chats only' }).click(); await page.getByText('No bookmarked chats yet.', { exact: true }).waitFor();
   assert.equal(await button('Show all chats').count(), 0); await capture('empty-bookmarks');
   await button('New chat').click(); await page.getByRole('dialog', { name: 'Start a new chat?' }).waitFor(); await page.keyboard.press('Escape');
-  assert.equal(await composer.inputValue(), draft); assert.equal(await page.locator('[data-history-filter=bookmarked]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await composer.inputValue(), draft); assert.equal(await page.getByRole('switch', { name: 'Show bookmarked chats only' }).getAttribute('aria-checked'), 'true');
   report.checks.push('Wide/narrow, open/collapsed navigation, directly visible icon actions, tooltips, no duplicate menu routes, empty bookmarks and cancel preserve the same composer');
 
   await button('Settings').click(); await tab('Voice').click(); await tab('Voice').focus(); await page.keyboard.press('ArrowDown');

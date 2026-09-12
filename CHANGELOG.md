@@ -1,21 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-09-12
 
+- Replace the separate All and Bookmarked filter row with a bookmark switch beside Chats and Reports, preserving the filter when returning from Reports.
 - Show the last submitted user input instead of Ended in conversation history while preserving actionable status labels.
 - Remember Web search and Lighter replies immediately when selected, including unsent drafts, and use them only as defaults for new chats with a preserving schema-32 upgrade.
 - Add a start-only Lighter replies feather icon with a shorter-replies tooltip, a remembered starting choice, immutable per-chat behavior and a preserving schema-31 upgrade.
 - Group closely related memory facts and their supporting references into a single note for new ADD requests.
 - Show chat-local user input numbers in memory history, recovery and request details, and distinguish moves to Older from historical capacity deletions.
-
 - Preserve FIFO memory evictions as original Older notes, group them with local embeddings and recall up to three notes per new eligible chat, with schema 30 migration, explicit deletion and resumable indexing.
 - Fetch the memory model from a pinned upstream revision with verified checksums while keeping downloaded model files out of Git.
 - Fix End and start new to open a new chat automatically after blocking end processing resolves.
 - Consolidate conversation memory details into the fixed snapshot and per-input changes with exact-input recovery.
 - Fix startup for existing schema-28 databases by removing the previous-memory archive through a backed-up schema-29 migration.
-
 - Add Luna memory notes after each eligible message, retaining up to 4,000 characters by oldest-first removal; schema 29 uses the standard pre-upgrade backup and offers per-input recovery without automatic paid retries.
-
 - Add in-app exit recovery with text copying and explicit unsaved-exit confirmation when saving or shutdown is blocked.
 - Unify text routing with no provider pin, fallback enabled and data collection denied, preserving history and voice caches through schema 27 and documenting audio policy limitations.
 - Fix Auto partner selection getting stuck with a save error when recording routing results or preparing its fallback attempt.

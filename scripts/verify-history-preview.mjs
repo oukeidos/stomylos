@@ -38,12 +38,30 @@ try {
   assert.equal(await subtitle().locator('b').count(), 0);
   assert.equal((await command('snapshot')).sessions.find(s => s.id === id).lastUserInput, text);
   await button('Bookmark chat').click(); await button('Remove bookmark').waitFor();
-  await button('Bookmarked').click();
+  const filterSwitch = page.getByRole('switch', { name: 'Show bookmarked chats only' });
+  assert.equal(await page.locator('.history-filters').count(), 0);
+  await filterSwitch.focus(); await page.keyboard.press('Space');
+  assert.equal(await filterSwitch.getAttribute('aria-checked'), 'true');
   await wait(async () => await subtitle().textContent() === normalized);
   assert.equal((await command('listSessions', { offset: 0, filter: 'bookmarked' })).sessions[0].lastUserInput, text);
-  await button('All').click();
+  await button('Reports').click();
+  await wait(async () => await filterSwitch.count() === 0);
+  await button('Chats').click();
+  assert.equal(await filterSwitch.getAttribute('aria-checked'), 'true');
+  await wait(async () => await subtitle().textContent() === normalized);
+  await button('Remove bookmark').click();
+  await page.getByText('No bookmarked chats yet.', { exact: true }).waitFor();
+  await filterSwitch.focus(); await page.keyboard.press('Enter');
+  assert.equal(await filterSwitch.getAttribute('aria-checked'), 'false');
+  await wait(async () => await subtitle().textContent() === normalized);
   for (const width of [1180, 760]) {
     await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setContentSize(width, 720), width);
+    const switchLayout = await filterSwitch.evaluate(node => {
+      const tabs = node.closest('.library-tabs'), reports = tabs.querySelector('.learning-nav');
+      const a = node.getBoundingClientRect(), b = reports.getBoundingClientRect(), c = tabs.getBoundingClientRect();
+      return { sameRow: Math.abs(a.top - b.top) < 1, separated: a.left >= b.right, fits: a.right <= c.right, noOverflow: tabs.scrollWidth <= tabs.clientWidth };
+    });
+    assert.deepEqual(switchLayout, { sameRow: true, separated: true, fits: true, noOverflow: true });
     const layout = await subtitle().evaluate(node => {
       const row = node.closest('.history-row'), date = row.querySelector('time'), menu = row.querySelector('.history-more');
       const rect = element => element.getBoundingClientRect();
@@ -54,7 +72,7 @@ try {
     assert.deepEqual(layout, { clipped: true, ellipsis: 'ellipsis', nowrap: 'nowrap', dateVisible: true, noOverflow: true, focusable: false });
     await page.screenshot({ path: `${output}/${width}.png` });
   }
-  report.checks.push('Draft → active → ended subtitle refresh', 'Snapshot and filtered IPC retain exact source input', 'Bookmark/All filter refresh', 'Literal multiline Korean/emoji and long text, ellipsis, date/menu visibility, no added tab stop at 1180 and 760 widths');
+  report.checks.push('Draft → active → ended subtitle refresh', 'Snapshot and filtered IPC retain exact source input', 'Bookmark switch: Space/Enter, Reports hide/Chats retain, empty bookmarks and All recovery, single toolbar row', 'Literal multiline Korean/emoji and long text, ellipsis, date/menu visibility, no added tab stop at 1180 and 760 widths');
   assert.deepEqual(report.errors, []); report.status = 'passed';
 } catch (error) { report.status = 'failed'; report.errors.push(error.stack); process.exitCode = 1; }
 finally { if (app) await app.close(); mock.server.closeAllConnections(); await new Promise(resolve => mock.server.close(resolve)); writeFileSync(`${output}/report.json`, JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2)); }

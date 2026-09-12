@@ -69,7 +69,8 @@ let app, page;
 const report = { status: 'running', directory, packaged, checks: [], errors: [], measurements: {}, paidRequests: 0 };
 const command = (name, args) => page.evaluate(([name, args]) => window.stomylos.command(name, args), [name, args]);
 const button = name => page.getByRole('button', { name, exact: true });
-const filter = name => page.locator(`[data-history-filter="${name}"]`);
+const filterSwitch = () => page.getByRole('switch', { name: 'Show bookmarked chats only' });
+async function setFilter(name) { await filterSwitch().setChecked(name === 'bookmarked'); }
 const settled = async () => page.locator('nav[aria-label="Conversation history"][aria-busy="false"]').waitFor();
 const header = () => page.locator('.bookmark-toggle');
 function inject(flag) {
@@ -90,7 +91,7 @@ async function launch() {
 async function close() {
   const exited = new Promise(done => app.process().once('exit', done)); await command('close'); await exited; app = null;
 }
-async function choose(name) { await filter(name).click(); await settled(); }
+async function choose(name) { await setFilter(name); await settled(); }
 async function rowAction(index, action) {
   await page.locator('.history-row').nth(index).locator('.history-more').click();
   await page.getByRole('menuitem', { name: action, exact: true }).click(); await settled();
@@ -113,7 +114,7 @@ try {
   assert.ok(await textarea.evaluate(n => n === document.querySelector('.composer textarea')));
   await button('Older').click(); await settled(); assert.equal(await page.locator('.history-row').count(), 2);
   await button('Hide history').click(); await button('Show history').click();
-  assert.equal(await filter('bookmarked').getAttribute('aria-pressed'), 'true'); assert.equal(await page.locator('.history-row').count(), 2);
+  assert.equal(await filterSwitch().getAttribute('aria-checked'), 'true'); assert.equal(await page.locator('.history-row').count(), 2);
   await button('Reports').click(); await button('Chats').click();
   assert.equal(await page.locator('.history-row').count(), 2); assert.equal(await page.locator('.composer textarea').inputValue(), draft);
   report.checks.push('84-chat library: 42 marks across both entry modes; full-history filtering, paging and library/Learning state preserve selected draft and composer node');
@@ -158,7 +159,7 @@ try {
     await page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => undefined))));
     await page.screenshot({ path: `${output}/${width}x${height}.png` });
     const geometry = await page.evaluate(() => {
-      const nodes = [...document.querySelectorAll('header button, .history-filters button, .composer textarea')];
+      const nodes = [...document.querySelectorAll('header button, .history-filter-switch, .composer textarea')];
       return { width: innerWidth, height: innerHeight, overflow: document.documentElement.scrollWidth > innerWidth,
         outside: nodes.filter(n => { const r = n.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth || r.bottom > innerHeight; }).map(n => n.getAttribute('aria-label') ?? n.textContent) };
     });
@@ -175,13 +176,13 @@ try {
   await button('Undo').click(); await wait(async () => (await command('loadSession', { sessionId: active })).bookmarked);
   report.checks.push('Actual SQLite write failure keeps the committed icon, disables duplicate action and recovers through save-only Retry saving');
 
-  await choose('all'); inject('--fail-read'); await filter('bookmarked').click();
+  await choose('all'); inject('--fail-read'); await setFilter('bookmarked');
   await button('Try loading again').waitFor();
   assert.equal(await page.getByText('No bookmarked chats yet.', { exact: false }).count(), 0);
   inject('--restore-read'); await button('Try loading again').click(); await settled();
   await wait(async () => await button('Try loading again').count() === 0);
   assert.ok(await page.locator('.history-row').count() > 0);
-  for (let i = 0; i < 5; i++) { await filter('all').click(); await filter('bookmarked').click(); }
+  for (let i = 0; i < 5; i++) { await setFilter('all'); await setFilter('bookmarked'); }
   await settled(); assert.equal(await page.locator('.history-row').count(), await page.locator('.history-bookmark').count());
   assert.equal(await page.locator('.composer textarea').inputValue(), draft); assert.equal(conversationCalls, 1);
   report.checks.push('Read failure is distinct from an empty library; retry and rapid filter changes return matching rows without changing the current draft');
@@ -190,12 +191,12 @@ try {
   const lock = spawn('python3', ['-u', '-c', 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("BEGIN EXCLUSIVE"); print("ready",flush=True); sys.stdin.readline(); c.rollback(); c.close()', join(directory, 'stomylos.sqlite3')]);
   try {
     await new Promise((done, reject) => { lock.stdout.once('data', done); lock.once('error', reject); });
-    await filter('bookmarked').click();
+    await setFilter('bookmarked');
     await page.locator('nav[aria-busy="true"]').waitFor();
-    await filter('all').click(); await settled();
+    await setFilter('all'); await settled();
   } finally { lock.stdin.end('\n'); await new Promise(done => lock.once('exit', done)); }
   await command('listSessions', { offset: 0, filter: 'all' });
-  assert.equal(await filter('all').getAttribute('aria-pressed'), 'true');
+  assert.equal(await filterSwitch().getAttribute('aria-checked'), 'false');
   assert.ok(await page.locator('.history-bookmark').count() < await page.locator('.history-row').count());
   await choose('bookmarked');
   report.checks.push('A database-delayed obsolete Bookmarked response cannot replace the later All selection');
@@ -219,7 +220,7 @@ try {
 
   // All-filter startup and durable marks; no request is sent by a restart.
   await choose('bookmarked'); await close(); await launch(); await settled();
-  assert.equal(await filter('all').getAttribute('aria-pressed'), 'true');
+  assert.equal(await filterSwitch().getAttribute('aria-checked'), 'false');
   assert.equal(await header().getAttribute('aria-pressed'), 'true'); assert.equal(await page.locator('.composer textarea').inputValue(), draft);
   assert.equal(conversationCalls, 1);
   // Remove all marks through the public setter to exercise the real empty/filter UI.
@@ -229,16 +230,16 @@ try {
     marks = (await command('listSessions', { offset: 0, filter: 'bookmarked' })).sessions;
   }
   await choose('bookmarked'); await page.getByText('No bookmarked chats yet.', { exact: false }).waitFor();
-  assert.equal(await button('Show all chats').count(), 0); await filter('all').click(); await settled(); assert.equal(await filter('all').getAttribute('aria-pressed'), 'true');
+  assert.equal(await button('Show all chats').count(), 0); await setFilter('all'); await settled(); assert.equal(await filterSwitch().getAttribute('aria-checked'), 'false');
   report.checks.push('Restart retains marks and exact draft, starts All, sends no inference; empty state returns to All');
   await header().click(); await wait(async () => (await command('loadSession', { sessionId: active })).bookmarked);
   await choose('bookmarked'); await button('New chat').click(); await button('Keep current chat').click();
-  assert.equal(await filter('bookmarked').getAttribute('aria-pressed'), 'true');
+  assert.equal(await filterSwitch().getAttribute('aria-checked'), 'true');
   assert.equal(await page.locator('.composer textarea').inputValue(), draft);
   await button('New chat').click(); await button('End and start new').click();
   await wait(async () => (await command('snapshot')).unfinished?.id !== active);
   await page.locator('.composer textarea').waitFor();
-  assert.equal(await filter('all').getAttribute('aria-pressed'), 'true'); assert.equal(await header().count(), 0);
+  assert.equal(await filterSwitch().getAttribute('aria-checked'), 'false'); assert.equal(await header().count(), 0);
   assert.equal((await command('loadSession', { sessionId: active })).session.draft, draft);
   report.checks.push('New-chat cancellation preserves the filter and draft; successful New chat resets All/page zero and retains the ended unsent draft');
   assert.deepEqual(report.errors, []); await close(); report.status = 'passed';

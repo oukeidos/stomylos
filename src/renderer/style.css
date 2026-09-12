@@ -253,9 +253,13 @@ footer.help-open { max-height: calc(100dvh - 150px); overflow-y: auto; }
 .latest-message { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 20px; box-shadow: 0 2px 10px #243e2420; font-size: 13px; white-space: nowrap; }
 
 /* Bookmarks are navigation metadata; retain the conversation workspace geometry. */
-.history-filters { display: flex; gap: 4px; padding: 6px 0 10px; }
-.history-filters button { flex: 1; border: 0; background: transparent; padding: 6px; font-size: 12px; color: var(--muted); }
-.history-filters button[aria-pressed=true] { color: var(--ink); background: var(--surface); }
+.library-tabs .history-filter-switch { margin-left: auto; width: auto; gap: 7px; padding: 4px; }
+.history-filter-switch > svg { width: 16px; height: 16px; }
+.history-filter-track { display: block; width: 32px; height: 19px; padding: 3px; border-radius: 12px; background: #bac7bf; }
+.history-filter-track > span { display: block; width: 13px; height: 13px; border-radius: 50%; background: var(--surface); }
+.history-filter-switch[aria-checked=true] { color: var(--accent); }
+.history-filter-switch[aria-checked=true] .history-filter-track { background: var(--accent); }
+.history-filter-switch[aria-checked=true] .history-filter-track > span { transform: translateX(13px); }
 .history-row .history-item strong { display: flex; align-items: center; gap: 5px; }
 .history-row .history-item strong span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .history-bookmark.ui-icon { width: 12px; height: 14px; flex-shrink: 0; fill: currentColor; color: #49654e; }
