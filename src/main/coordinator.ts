@@ -379,6 +379,7 @@ export class Coordinator {
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
         const message = await this.write('submit', id, args.text, randomUUID(), args.expectedReplyContextRevision)
           .catch(async error => { await this.publish(id); throw error; });
+        if (await this.write('admitAssociativeMemory', id, message.id)) this.enqueueMemory(id);
         // Publish the durable lock even if later dictation or dispatch work fails.
         await this.publish(id);
         await this.dictation?.submitted(id, args.dictationIds ?? [], message.id, message.content);
@@ -552,7 +553,9 @@ export class Coordinator {
       finish: (attemptId, content, metadata, failure, interrupted) => this.write('searchFinish', attemptId, content, metadata, failure, interrupted)
     }, this.gateway, signal);
     if (signal.aborted) return;
-    let request = await this.write('prepareChat', id, randomUUID(), kind === 'retry_selection' ? 'different_model' : kind);
+    const learner = view.messages.findLast(isLearner);
+    const associative = kind === 'send' && learner ? await this.waitAssociativeRecall(id, learner.id, signal) : null;
+    let request = await this.write('prepareChat', id, randomUUID(), kind === 'retry_selection' ? 'different_model' : kind, associative);
     let text = ''; let checkpoint = 0; let pendingCheckpoint: Promise<unknown> = Promise.resolve(); let searchEvidence: Json = {};
     let firstAnswerAt: number | null = null;
     try {
@@ -684,6 +687,15 @@ export class Coordinator {
   }
   private enqueueMemory(sessionId: string) {
     this.memoryWake++; this.pumpMemory();
+  }
+  private async waitAssociativeRecall(sessionId: string, messageId: string, signal: AbortSignal) {
+    const deadline = Date.now() + 1500;
+    while (!signal.aborted && Date.now() < deadline) {
+      const selection = await this.db.call('associativeForMessage', sessionId, messageId);
+      if (selection) return selection;
+      await new Promise<void>(resolve => setTimeout(resolve, 25));
+    }
+    return null;
   }
   private async memoryChanged(sessionId: string) {
     const session = await this.db.call('session', sessionId);

@@ -1,13 +1,14 @@
 import type { DatabaseClient } from './db-client';
 import { EmbeddingWorkerClient } from './memory-embedding-client';
 import type { EmbeddingJob } from './memory-clusters';
+import type { AssociativeEmbeddingJob } from './associative-recall-store';
 import { failureCode } from './errors';
 
 /** Local indexing never joins the paid ADD/end-processing pipeline. */
 export class MemoryEmbeddingController {
   private engine: EmbeddingWorkerClient | null = null;
   private running: Promise<void> | null = null;
-  private current: EmbeddingJob | null = null;
+  private current: { kind: 'cold'; job: EmbeddingJob } | { kind: 'associative'; job: AssociativeEmbeddingJob } | null = null;
   private stopped = false;
   private suspended = false;
   private epoch = 0;
@@ -30,18 +31,27 @@ export class MemoryEmbeddingController {
   private async invalidate(reason: string) {
     this.epoch++;
     if (this.current) {
-      if (reason === 'cold_worker_stopped') await this.db.call('coldRelease', this.current);
-      else await this.db.call('coldFail', this.current, reason, true);
+      if (this.current.kind === 'cold') {
+        if (reason === 'cold_worker_stopped') await this.db.call('coldRelease', this.current.job);
+        else await this.db.call('coldFail', this.current.job, reason, true);
+      } else if (reason === 'cold_worker_stopped') await this.db.call('associativeRelease', this.current.job);
+      else await this.db.call('associativeFail', this.current.job, reason, true);
     }
   }
   private async run() {
     try {
       while (!this.stopped && !this.suspended && !this.paused) {
         if (!(await this.db.call('memoryPreference')).enabled) return;
-        const changed = await this.db.call('coldTick');
+        let changed = await this.db.call('coldTick');
         if (changed) this.changed();
-        if (!(await this.db.call('coldStatus')).pending) { if (changed) continue; return; }
-        let job: EmbeddingJob | null = null;
+        const coldPending = (await this.db.call('coldStatus')).pending;
+        changed += await this.db.call('associativeTick');
+        const associativePending = await this.db.call('associativePending');
+        if (!coldPending && !associativePending) { if (changed) continue; return; }
+        let job: EmbeddingJob | AssociativeEmbeddingJob | null = null;
+        // Current and active HOT records are time-sensitive for reply recall;
+        // COLD grouping remains resumable and must not starve them.
+        let kind: 'cold' | 'associative' = associativePending ? 'associative' : 'cold';
         const epoch = this.epoch;
         try {
           if (!this.engine) {
@@ -49,20 +59,26 @@ export class MemoryEmbeddingController {
             await this.engine.initialize(this.directory);
           }
           if (this.stopped || this.suspended || epoch !== this.epoch || !(await this.db.call('memoryPreference')).enabled) return;
-          job = await this.db.call('coldClaim');
-          if (!job) { if (await this.db.call('coldTick')) continue; return; }
-          this.current = job;
+          job = kind === 'cold' ? await this.db.call('coldClaim') : await this.db.call('associativeClaim');
+          if (!job) { if (kind === 'cold' ? await this.db.call('coldTick') : await this.db.call('associativeTick')) continue; return; }
+          this.current = { kind, job };
           if (this.stopped || this.suspended || epoch !== this.epoch || !(await this.db.call('memoryPreference')).enabled) {
-            await this.db.call('coldRelease', job); return;
+            if (kind === 'cold') await this.db.call('coldRelease', job as EmbeddingJob); else await this.db.call('associativeRelease', job as AssociativeEmbeddingJob); return;
           }
           const result = await this.engine.embed(job.text);
-          if (!this.stopped && epoch === this.epoch) await this.db.call('coldComplete', job, result);
+          if (!this.stopped && epoch === this.epoch) {
+            if (kind === 'cold') await this.db.call('coldComplete', job as EmbeddingJob, result);
+            else await this.db.call('associativeComplete', job as AssociativeEmbeddingJob, result);
+          }
           this.recoveries = 0;
           await this.db.call('coldIndexFailure', null);
           this.changed();
         } catch (error) {
           const reason = failureCode(error);
-          if (job) await this.db.call('coldFail', job, reason, true);
+          if (job) {
+            if (kind === 'cold') await this.db.call('coldFail', job as EmbeddingJob, reason, true);
+            else await this.db.call('associativeFail', job as AssociativeEmbeddingJob, reason, true);
+          }
           if (this.engine) {
             try { await this.engine.stop(reason); }
             catch { this.paused = true; await this.db.call('coldIndexFailure', 'cold_worker_termination'); this.changed(); return; }
@@ -90,7 +106,10 @@ export class MemoryEmbeddingController {
     if (enabled) { this.wake(); return; }
     this.epoch++;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
-    if (this.current) await this.db.call('coldRelease', this.current);
+    if (this.current) {
+      if (this.current.kind === 'cold') await this.db.call('coldRelease', this.current.job);
+      else await this.db.call('associativeRelease', this.current.job);
+    }
     if (this.engine) { await this.engine.stop(); this.engine = null; }
   }
   async retry() {

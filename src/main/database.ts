@@ -7,6 +7,8 @@ import { memoryPreference, memoryPolicy, memoryReadAllowed } from './memory-cont
 import { ColdMemoryStore } from './cold-memory-store';
 import { MemoryClusters, type EmbeddingJob } from './memory-clusters';
 import { MemoryRecallStore } from './memory-recall-store';
+import { AssociativeRecallStore, type AssociativeEmbeddingJob } from './associative-recall-store';
+import type { AssociativeSelection } from './associative-recall';
 import { coldContextVersion, coldRecallPolicy, coldSingleItemCap } from './memory-recall';
 import { embeddingManifest, embeddingManifestJson, embeddingSpaceId } from './memory-embedding';
 import type { ColdStatus } from '../shared/cold-memory';
@@ -61,6 +63,7 @@ export class Store {
   private cold!: ColdMemoryStore;
   private clusters!: MemoryClusters;
   private recollections!: MemoryRecallStore;
+  private associative!: AssociativeRecallStore;
   private coldFailure: string | null = null;
   private intentions!: IntentionQuestionStore;
   private patterns!: PatternReportStore;
@@ -115,6 +118,7 @@ export class Store {
       this.cold = new ColdMemoryStore(this.db);
       this.clusters = new MemoryClusters(this.db);
       this.recollections = new MemoryRecallStore(this.db);
+      this.associative = new AssociativeRecallStore(this.db);
       this.recover();
       this.starter.verify();
     } catch (e) { this.db?.close(); this.unlock(); throw e; }
@@ -496,7 +500,7 @@ export class Store {
       this.finishRequest(requestId, content, metadata);
     });
   }
-  prepareChat(id: string, operationId: string, kind: 'send' | 'retry' | 'different_model' | 'automatic' = 'automatic'): RequestRecord {
+  prepareChat(id: string, operationId: string, kind: 'send' | 'retry' | 'different_model' | 'automatic' = 'automatic', associative: AssociativeSelection | null = null): RequestRecord {
     return this.transaction(() => {
       const previous = this.all<RequestRecord>('SELECT * FROM model_requests WHERE id=?', operationId)[0];
       if (previous) {
@@ -535,6 +539,11 @@ export class Store {
         snapshot.memory_context = memory;
         if (snapshot.memory_version === coldContextVersion) snapshot.cold_recollections = this.recollections.snapshot(id, flattenMemory(memory));
       } else snapshot.memory_control = memoryControlVersion;
+      if (associative) {
+        if (!memory || snapshot.associative_context_version !== 'stomylos_associative_recall_v1') throw new AppFailure('associative_memory_disabled');
+        this.associative.assertNotRevoked(associative);
+        snapshot.associative_recall = associative;
+      }
       let target = pending?.selected_character ?? this.partners.state(session).current_character ?? session.character;
       if (parent) {
         if (parent.source_hash !== hash(transcriptJson(source)) || hash(parent.config) !== parent.config_hash) throw new AppFailure('retry_source_changed');
@@ -594,10 +603,12 @@ export class Store {
   memoryPreference() { return memoryPreference(this.db); }
   private memoryHasRevoked(snapshot: Json): boolean {
     const hot = snapshot.memory_context ? flattenMemory(snapshot.memory_context).database_records : [];
-    return hot.some(item => this.cold.revoked(item.id)) || (snapshot.cold_recollections?.items ?? []).some((item: { id: string }) => this.cold.revoked(item.id));
+    return hot.some(item => this.cold.revoked(item.id)) || (snapshot.cold_recollections?.items ?? []).some((item: { id: string }) => this.cold.revoked(item.id)) ||
+      (snapshot.associative_recall?.items ?? []).some((item: { id: string }) => this.cold.revoked(item.id));
   }
   private assertMemoryNotRevoked(snapshot: Json) {
     if (snapshot.cold_recollections) this.recollections.assertNotRevoked(snapshot.cold_recollections);
+    if (snapshot.associative_recall) this.associative.assertNotRevoked(snapshot.associative_recall);
     if (this.memoryHasRevoked(snapshot)) throw new AppFailure('memory_retry_revoked');
   }
   coldInitialize() {
@@ -617,6 +628,41 @@ export class Store {
     }
     return changed;
   }
+  associativeTick() { return this.associative.reconcile(32); }
+  associativeClaim() { return this.associative.claim(); }
+  associativeComplete(job: AssociativeEmbeddingJob, result: { vector: number[]; inputHash: string; chunkCount: number }) { return this.associative.complete(job, result); }
+  associativeRelease(job: AssociativeEmbeddingJob) { return this.associative.release(job); }
+  associativeFail(job: AssociativeEmbeddingJob, failure: string, retry = false) { return this.associative.fail(job, failure, retry); }
+  associativePending() { return this.associative.pending(); }
+  associativeSelection(query: { id: string; vector: number[] }[], currentOrder: number, alreadySent: string[]) { return this.associative.selection(query, currentOrder, alreadySent); }
+  associativeForMessage(sessionId: string, messageId: string): AssociativeSelection | null {
+    return this.transaction(() => {
+      const session = this.session(sessionId);
+      if (!memoryReadAllowed(this.db, sessionId) || JSON.parse(session.chat_config).associative_context_version !== 'stomylos_associative_recall_v1') return null;
+      const job = this.all<{ ordinal: number; changes: string }>("SELECT ordinal,changes FROM memory_add_jobs WHERE session_id=? AND message_id=? AND state='completed'", sessionId, messageId)[0];
+      if (!job || !job.changes) return null;
+      const queryIds = (JSON.parse(job.changes).added as { id: string }[]).map(item => item.id);
+      if (!queryIds.length) return null;
+      const hot = this.memory.snapshot(session);
+      if (!hot) return null;
+      const cold = JSON.parse(session.chat_config).memory_version === coldContextVersion ? this.recollections.snapshot(sessionId, flattenMemory(hot)) : null;
+      const alreadySent = [...flattenMemory(hot).database_records.map(item => item.id), ...(cold?.items ?? []).map((item: { id: string }) => item.id)];
+      return this.associative.selectionFor(queryIds, job.ordinal, alreadySent);
+    });
+  }
+  admitAssociativeMemory(sessionId: string, messageId: string): boolean {
+    return this.transaction(() => {
+      const session = this.session(sessionId);
+      const message = this.all<Message>('SELECT * FROM messages WHERE id=? AND session_id=?', messageId, sessionId)[0];
+      if (!message || !isLearner(message) || session.state !== 'active' || !memoryPreference(this.db).enabled ||
+        JSON.parse(session.chat_config).associative_context_version !== 'stomylos_associative_recall_v1') return false;
+      const policy = memoryPolicy(this.db, sessionId);
+      if (policy.firstEnabled === false || policy.updatesDisabled) return false;
+      if (policy.firstEnabled === null) this.run('INSERT INTO session_memory_policy VALUES(?,?,?)', sessionId, 1, 0);
+      return true;
+    });
+  }
+  associativeAssertNotRevoked(selection: AssociativeSelection) { return this.associative.assertNotRevoked(selection); }
   coldClaim() { return this.clusters.claim(embeddingSpaceId); }
   coldComplete(job: EmbeddingJob, result: { vector: number[]; inputHash: string; chunkCount: number }) { return this.clusters.complete(job, result); }
   coldRelease(job: EmbeddingJob) { return this.clusters.release(job); }
@@ -672,7 +718,7 @@ export class Store {
       if (exactRetry && snapshot.memory_context && !allowed) throw new AppFailure('memory_retry_disabled');
       if (!exactRetry && (!!snapshot.memory_context !== allowed || revoked)) {
         const session = this.session(request.session_id);
-        delete snapshot.memory_context; delete snapshot.memory_control; delete snapshot.cold_recollections;
+        delete snapshot.memory_context; delete snapshot.memory_control; delete snapshot.cold_recollections; delete snapshot.associative_recall;
         if (allowed) {
           snapshot.memory_context = this.memory.snapshot(session);
           if (snapshot.memory_version === coldContextVersion) snapshot.cold_recollections = this.recollections.snapshot(session.id, flattenMemory(snapshot.memory_context));
