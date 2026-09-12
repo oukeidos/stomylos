@@ -23,6 +23,21 @@ import { voices, previewSource } from '../src/shared/voice';
 import type { Json } from '../src/shared/types';
 
 afterEach(() => vi.unstubAllGlobals());
+it('sends selected L ADD through the actual gateway with date-only input and unchanged settings', async () => {
+  const source = memoryAddBody({timezone:'Asia/Seoul',previous_assistant:null,current_user:{content:'Yesterday.',sent_at:'2026-09-11T15:30:00.000Z'}},
+    {utc:'2026-09-11T15:30:00.000Z',timezone:'Asia/Seoul',utc_offset_minutes:540,local_date:'2026-09-12'});
+  const routed = prepareProviderRequest(source,{allowed_models:['openai/gpt-5.6-luna'],provider:null});
+  const fetch = vi.fn(async () => new Response(JSON.stringify({model:source.model,provider:'Alternate',choices:[{message:{content:'{"add":[]}'},finish_reason:'stop'}]})));
+  vi.stubGlobal('fetch',fetch);
+  await new OpenRouter(()=>'synthetic').complete(routed.body,routed.identity!,new AbortController().signal,1000);
+  const sent=JSON.parse((fetch.mock.calls[0] as unknown as [unknown,RequestInit])[1].body as string);
+  expect(sent).toEqual(routed.body);
+  expect(sent.messages[0].content).toBe(readFileSync('tests/fixtures/memory-add/merge-only-l-prompt.txt','utf8'));
+  expect(JSON.parse(sent.messages[1].content)).toEqual({previous_assistant:null,current_user:{content:'Yesterday.',sent_at:'2026-09-12 (Saturday)'}});
+  expect(sent.provider).toEqual({require_parameters:true,allow_fallbacks:true,data_collection:'deny'});
+  expect(sent.model).toBe('openai/gpt-5.6-luna');expect(sent.reasoning).toEqual({effort:'none',exclude:true});expect(sent.max_tokens).toBe(2048);
+  expect(sent.response_format).toEqual(source.response_format);expect(sent.response_format.json_schema.strict).toBe(true);
+});
 it('freezes a separate wire snapshot, preserves generation evidence, rejects tampering and endpoint confusion', () => {
   const original = { model: 'm', provider: { only: ['old'], order: ['old'], ignore: ['other'], require_parameters: true, sort: 'latency', allow_fallbacks: false }, messages: [] };
   const before = structuredClone(original), identity = { allowed_models: ['m'], provider: 'Old' };

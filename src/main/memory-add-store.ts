@@ -5,7 +5,7 @@ import type { Json, Message } from '../shared/types';
 import type { RecordedTime } from '../shared/time';
 import { memoryPreference, memoryPolicy, memoryWriteAllowed } from './memory-control';
 import { memoryHash, memoryJson } from './memory-updater';
-import { addAndFifo, memoryAddBody, memoryAddVersion } from './memory-add';
+import { addAndFifo, memoryAddBody, memoryAddRequestVersion } from './memory-add';
 import { AppFailure } from './errors';
 const now=()=>new Date().toISOString();
 // Display order is derived from the transcript, independently of global job identity.
@@ -38,7 +38,7 @@ export class MemoryAddStore {
     if (!memoryWriteAllowed(this.db,message.session_id)) return;
     const input=JSON.stringify({timezone:sent.timezone,current_user:{content:message.content,sent_at:sent.utc},
       previous_assistant:previous?.role==='assistant'&&previous.delivery==='complete'?{content:previous.content}:null});
-    const config=JSON.stringify({version:memoryAddVersion,body:memoryAddBody(JSON.parse(input)),identity:{allowed_models:['openai/gpt-5.6-luna','openai/gpt-5.6-luna-20260709'],provider:null},timeout_ms:120000});
+    const config=JSON.stringify({version:memoryAddRequestVersion,body:memoryAddBody(JSON.parse(input),sent),identity:{allowed_models:['openai/gpt-5.6-luna','openai/gpt-5.6-luna-20260709'],provider:null},timeout_ms:120000});
     this.run("INSERT INTO memory_add_jobs(session_id,message_id,input_json,input_hash,config,config_hash,created_at,state) VALUES(?,?,?,?,?,?,?,'pending')",message.session_id,message.id,input,memoryHash(input),config,memoryHash(config),sent.utc);
   }
   cancel(session?:string, reason='memory_disabled') {

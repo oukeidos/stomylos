@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Use the selected merge-only memory prompt and local date with weekday for new ADD requests while preserving full source timestamps and frozen historical requests.
+
 ## 0.5.0 — 2026-09-12
 
 - Replace the separate All and Bookmarked filter row with a bookmark switch beside Chats and Reports, preserving the filter when returning from Reports.

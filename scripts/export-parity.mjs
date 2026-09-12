@@ -154,5 +154,6 @@ assert.deepEqual(previousSeven.conversation.characters.map(({model,reasoning})=>
   JSON.parse(readFileSync(selectionArea+'selected-seven-conversation-models-2026-09-07.json','utf8')).models.map(({model,reasoning})=>({model,reasoning})));
 console.log('Eight adopted cards, display/schema order, model settings and preserved seven-model selection agree.');
 
-assert.equal(readFileSync('src/main/memory-add-prompt.txt','utf8'),readFileSync('tests/fixtures/memory-add/grouping-prompt.txt','utf8'));
+assert.equal(readFileSync('src/main/memory-add-prompt.txt','utf8'),readFileSync('tests/fixtures/memory-add/merge-only-l-prompt.txt','utf8'));
+assert.equal(readFileSync('src/main/memory-add-prompt.txt','utf8'),readFileSync('../experiments/EXP-033-add-only-memory/paragraph-l-prompt.txt','utf8'));
 console.log('Luna ADD prompt matches the selected EXP-033 bytes.');

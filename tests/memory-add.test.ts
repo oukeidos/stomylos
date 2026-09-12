@@ -6,6 +6,7 @@ import {join,resolve} from 'node:path';
 import {Store,type StoreMethod} from '../src/main/database';
 import {addAndFifo,memoryAddBody} from '../src/main/memory-add';
 import * as memoryAdd from '../src/main/memory-add';
+import {recordedTime} from '../src/main/time-context';
 import {memoryCharacters,renderMemoryBody} from '../src/main/memory-render';
 import {memoryHash,memoryJson} from '../src/main/memory-updater';
 import {Coordinator} from '../src/main/coordinator';
@@ -21,12 +22,47 @@ function send(store:Store,id:string,text='I like green tea.'){store.submit(id,te
 function prepare(store:Store){const j=store.memoryAddReady()!;const a=store.prepareMemoryAdd(j.ordinal,crypto.randomUUID());store.prepareProvider('memory_add',a.id,JSON.parse(a.body),JSON.parse(j.config).identity);store.dispatchMemoryAdd(a.id);return a;}
 function finish(store:Store,texts:string[]){const a=prepare(store);store.receiveMemoryAdd(a.id,JSON.stringify({add:texts}),{usage:{cost:0.001}});store.acceptMemoryAdd(a.id);return a;}
 it('uses the tested prompt/schema without old memory, counts rendered Unicode and rejects a single oversized note atomically',()=>{
- const body=memoryAddBody({current_user:{content:'Tea.'}});expect(body.messages[0].content).toBe(readFileSync('tests/fixtures/memory-add/grouping-prompt.txt','utf8'));expect(body.max_tokens).toBe(2048);expect(body.reasoning).toEqual({effort:'none',exclude:true});
+ const body=memoryAddBody({current_user:{content:'Tea.'}});expect(body.messages[0].content).toBe(readFileSync('tests/fixtures/memory-add/merge-only-l-prompt.txt','utf8'));expect(body.max_tokens).toBe(2048);expect(body.reasoning).toEqual({effort:'none',exclude:true});
  const empty={character_id:'shared',revision:0,database_records:[]};
  const first=addAndFifo(empty,JSON.stringify({add:['🙂'.repeat(3998)]}),'m1');expect(memoryCharacters(first.document)).toBe(4000);
+ expect(first.changes.added[0].id).toBe('add_'+memoryHash(JSON.stringify(['stomylos_memory_add_v1','m1',0])).slice(0,24));
  const second=addAndFifo(first.document,JSON.stringify({add:['한글','Again','Again']}),'m2');expect(second.changes.evicted).toEqual(first.document.database_records);expect(second.document.database_records).toHaveLength(3);
  expect(addAndFifo(second.document,'{"add":[]}','m3').document).toEqual(second.document);
  expect(()=>addAndFifo(first.document,JSON.stringify({add:['x'.repeat(3999)]}),'m4')).toThrow('memory_add_item_capacity');expect(memoryCharacters(first.document)).toBe(4000);
+});
+it.each([
+ ['2026-09-11T15:30:00.000Z',540,'2026-09-12 (Saturday)'],
+ ['2026-09-12T01:30:00.000Z',-420,'2026-09-11 (Friday)'],
+ ['2024-02-29T12:00:00.000Z',0,'2024-02-29 (Thursday)'],
+])('projects ADD local dates without changing recorded time: %s', (utc,offset,expected)=>{
+ const sent=recordedTime(utc,null,offset),input={timezone:null,current_user:{content:'Yesterday, it worked.',sent_at:utc},previous_assistant:{content:'The switch?'}};
+ const before=JSON.stringify({sent,input});
+ expect(JSON.parse(memoryAddBody(input,sent).messages[1].content)).toEqual({current_user:{content:input.current_user.content,sent_at:expected},previous_assistant:input.previous_assistant});
+ expect(JSON.stringify({sent,input})).toBe(before);
+});
+it('uses null for unknown or invalid ADD calendar dates without guessing from UTC',()=>{
+ for(const local_date of ['', '2026-02-30', 'not-a-date', '2026-9-11']){
+  expect(memoryAdd.memoryAddDate({...recordedTime('2026-09-11T12:00:00.000Z',null,0),local_date})).toBeNull();
+ }
+ expect(memoryAdd.memoryAddDate(null)).toBeNull();expect(memoryAdd.memoryAddDate()).toBeNull();
+ expect(JSON.parse(memoryAddBody({timezone:'UTC',current_user:{content:'Tomorrow.',sent_at:'2026-09-11T12:00:00Z'}}).messages[1].content)).toEqual({current_user:{content:'Tomorrow.',sent_at:null}});
+});
+it('freezes L wire dates while retaining full source times and effective provider policy',()=>{
+ const f=fixture(),sent=recordedTime('2026-09-11T15:30:00.000Z','Asia/Seoul',540);
+ f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'),undefined,()=>sent);
+ const s=session(f.store);send(f.store,s.id,'Yesterday, I fixed it.');
+ const job=f.store.memoryAddReady()!,savedInput=job.input_json,savedConfig=job.config;
+ expect(JSON.parse(savedInput)).toMatchObject({timezone:'Asia/Seoul',current_user:{sent_at:sent.utc}});
+ expect(JSON.parse(savedConfig).version).toBe('stomylos_memory_add_v2');
+ const a=prepare(f.store),body=JSON.parse(a.body),wire=JSON.parse(body.messages[1].content);
+ expect(wire).not.toHaveProperty('timezone');expect(wire.current_user).toEqual({content:'Yesterday, I fixed it.',sent_at:'2026-09-12 (Saturday)'});
+ expect(body.messages[0].content).toBe(readFileSync('tests/fixtures/memory-add/merge-only-l-prompt.txt','utf8'));
+ const effective=JSON.parse(f.db.prepare('SELECT provider_request FROM memory_add_attempts WHERE id=?').pluck().get(a.id) as string);
+ expect(JSON.stringify(effective)).toContain('Saturday');
+ expect(JSON.stringify(effective)).toContain('"data_collection":"deny"');
+ expect(JSON.stringify(effective)).toContain('"allow_fallbacks":true');
+ expect(f.db.prepare('SELECT sent_at_utc,timezone,utc_offset_minutes FROM message_times WHERE message_id=?').get(job.message_id)).toEqual({sent_at_utc:sent.utc,timezone:sent.timezone,utc_offset_minutes:540});
+ expect(f.db.prepare('SELECT input_json,config,created_at FROM memory_add_jobs WHERE ordinal=?').get(job.ordinal)).toEqual({input_json:savedInput,config:savedConfig,created_at:sent.utc});
 });
 it('captures only accepted source and preceding delivered reply, waits for dispatch policy, and keeps snapshot/date metadata separate',()=>{
  const {store,db}=fixture(),s=session(store);const starter=store.messages(s.id).at(-1)!;
@@ -62,20 +98,26 @@ it('persists response before atomic apply, recovers save-only after restart, pre
 it('does not auto-retry unknown calls, blocks later sources, and rejects stale attempt commits after exact-job retry/skip',()=>{
  const f=fixture(),s=session(f.store);
  // A job prepared by an older app must retain its exact prompt through retry.
- const oldPrompt=readFileSync('../experiments/EXP-033-add-only-memory/add-prompt.txt','utf8'),currentBuilder=memoryAddBody;
- const legacy=vi.spyOn(memoryAdd,'memoryAddBody').mockImplementationOnce(input=>{const body=currentBuilder(input);body.messages[0].content=oldPrompt;return body;});
+ const oldPrompt=readFileSync('tests/fixtures/memory-add/grouping-prompt.txt','utf8'),currentBuilder=memoryAddBody;
+ const legacy=vi.spyOn(memoryAdd,'memoryAddBody').mockImplementationOnce(input=>{const body=currentBuilder(input);body.messages[0].content=oldPrompt;body.messages[1].content=JSON.stringify(input);return body;});
+ const legacyVersion=vi.spyOn(memoryAdd,'memoryAddRequestVersion','get').mockReturnValue('stomylos_memory_add_v1' as typeof memoryAdd.memoryAddRequestVersion);
  let start:ReturnType<typeof send>;
- try{start=send(f.store,s.id);}finally{legacy.mockRestore();}
+ try{start=send(f.store,s.id);}finally{legacy.mockRestore();legacyVersion.mockRestore();}
+ expect(JSON.parse(f.store.memoryAddReady()!.config).version).toBe('stomylos_memory_add_v1');
  const a=prepare(f.store);expect(f.store.prepareMemoryAdd(a.job_id,a.id).id).toBe(a.id);
  f.store.finishReply(start.request.id,start.bubble.id,'Tell me more.',{});f.store.submit(s.id,'I also like mint tea.');
  f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));expect(f.store.memoryAddReady()).toBeNull();
  expect(()=>f.store.retryMemoryAdd(s.id,999)).toThrow('memory_add_not_retryable');f.store.retryMemoryAdd(s.id,a.job_id);const b=prepare(f.store);
  expect(b.body).toBe(a.body);expect(JSON.parse(b.body).messages[0].content).toBe(oldPrompt);
+ expect(JSON.parse(JSON.parse(b.body).messages[1].content)).toHaveProperty('timezone');
+ expect(JSON.parse(JSON.parse(b.body).messages[1].content).current_user.sent_at).toContain('T');
  f.store.failMemoryAdd(a.id,'late failure');expect(()=>f.store.receiveMemoryAdd(a.id,'{"add":["Late"]}',{})).toThrow();
  f.store.receiveMemoryAdd(b.id,'{"add":["Fresh"]}',{});f.store.acceptMemoryAdd(b.id);const attempts=f.store.view(s.id).memory.addAttempts!;
  expect(attempts.map(a=>a.id)).toEqual([a.id,b.id]);expect(attempts.map(a=>a.status)).toEqual(['interrupted','succeeded']);expect(attempts[1].model).toBe('openai/gpt-5.6-luna');expect(attempts[1]).not.toHaveProperty('body');expect(attempts[1]).not.toHaveProperty('response_content');
 expect(f.store.memoryAddReady()?.ordinal).toBe(2);
  const c=prepare(f.store);expect(JSON.parse(c.body).messages[0].content).toBe(memoryAddBody({}).messages[0].content);f.store.failMemoryAdd(c.id,'bad_output');f.store.skipMemoryAdd(s.id,2);expect(f.store.memoryAddReady()).toBeNull();expect(renderMemoryBody(f.store.currentMemory())).toBe('- Fresh');
+ expect(JSON.parse(JSON.parse(c.body).messages[1].content)).not.toHaveProperty('timezone');
+ expect(JSON.parse(JSON.parse(c.body).messages[1].content).current_user.sent_at).toMatch(/^\d{4}-\d{2}-\d{2} \([A-Za-z]+\)$/);
 });
 it('Off cancels waiting and in-flight inputs, On never backfills, and malformed results cannot mutate active memory',()=>{
  const {store,db}=fixture(),s=session(store);const start=send(store,s.id);const a=prepare(store);
