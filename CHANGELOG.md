@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Retain and display all returned distinct valid web sources without a ten-source storage cap.
 - Restore the Cancel grammar analysis button by forwarding its command through the desktop bridge.
 
 - Restore Explain generation, retries and saved history by admitting its database operations in the background worker.

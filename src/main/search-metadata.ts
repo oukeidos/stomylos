@@ -13,7 +13,6 @@ export function searchMetadata(raw: Json, previous: Json = {}): Json {
     const url = markdownWebUrl(source.url);
     if (!url) { result.sources_omitted = true; continue; }
     if (sources.some(s => s.url === url)) continue;
-    if (sources.length >= 10) { result.sources_omitted = true; continue; }
     sources.push({ url, title: typeof source.title === 'string' ? source.title.slice(0, 300) : url });
     if (source.title?.length > 300) result.sources_omitted = true;
   }

@@ -156,10 +156,14 @@ it('retains sources and terminal search usage without inventing live tool calls 
   const event = (delta: object, finish: string | null = null, extra = {}) => `data: ${JSON.stringify({ id: 'one', model: 'xiaomi/mimo-v2.5-pro', provider: 'OpenAI', choices: [{ delta, finish_reason: finish }], ...extra })}\n\n`;
   stream.feed(event({ content: 'A short answer.' }));
   stream.feed(event({ annotations: [{ type: 'url_citation', url_citation: { url: 'https://example.org/source', title: 'Public source', start_index: 0, end_index: 0, content: 'Do not retain this fetched page' } }, { type: 'url_citation', url_citation: { url: 'javascript:alert(1)' } }] }));
+  const extraSources = Array.from({ length: 12 }, (_, i) => ({ url: `https://example.org/source/${i}`, title: `Source ${i}` }));
+  const annotations = extraSources.map(url_citation => ({ type: 'url_citation', url_citation }));
+  stream.feed(event({ annotations: annotations.slice(0, 6) }));
+  stream.feed(event({ annotations }));
   const end = event({}, 'stop', { usage: { cost: 0.003, server_tool_use_details: { web_search_requests: 2 } }, openrouter_metadata: { endpoints: { available: [{ selected: true, provider: 'Xiaomi', model: 'xiaomi/mimo-v2.5-pro-20260422' }] } } });
   stream.feed(end + end + 'data: [DONE]\n\n'); const result = stream.feed('', true)!;
   expect(result.metadata.usage.cost).toBe(0.003); expect(result.metadata.search.web_search_requests).toBe(2);
-  expect(result.metadata.search.sources).toEqual([{ url: 'https://example.org/source', title: 'Public source' }]);
+  expect(result.metadata.search.sources).toEqual([{ url: 'https://example.org/source', title: 'Public source' }, ...extraSources]);
   expect(JSON.stringify(result.metadata)).not.toContain('fetched page'); expect(result.metadata.search.endpoints[0].provider).toBe('Xiaomi');
 });
 
