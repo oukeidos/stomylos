@@ -1,3 +1,4 @@
+import { historySubtitle } from './history-subtitle';
 import { useReplyContext } from './reply-context';
 import { MemoryInputRecovery, memoryInputProgress } from './memory-input-recovery';
 import { MemoryAddRequests } from './memory-add-requests';
@@ -367,7 +368,7 @@ function App() {
   const settingsGuard = useRef<SettingsHandle>(null);
   const app = useApp(); const [selected, setSelected] = useState<string | null>(null); const [view, setView] = useState<SessionView | null>(null);
   const [error, setError] = useState<string | null>(null); const [settings, setSettings] = useState(false); const [newDialog, setNewDialog] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Pick<SessionSummary, 'id' | 'title' | 'created_at'> | null>(null);
   useEffect(() => {
     setRelatedReports(null); if (!deleteTarget) return; let current = true;
     void window.stomylos.command('patternRelated', { id: deleteTarget.id }).then(result => { if (current) setRelatedReports(result); }).catch(() => undefined);
@@ -453,7 +454,7 @@ function App() {
   const startNew = async () => { if (app.endBlocker) { setNewDialog(false); await show(app.endBlocker); return; } if (!await beforeDictationNavigation()) return; await flushAllDrafts();
     const id = unfinished ? await endAndStartSession(unfinished.id) : await window.stomylos.command('newSession', undefined);
     setNewDialog(false); library.reset(); await show(id); };
-  const requestDelete = (session: SessionSummary) => { setDeleteError(null); setDeleteTarget(session); };
+  const requestDelete = (session: Pick<SessionSummary, 'id' | 'title' | 'created_at'>) => { setDeleteError(null); setDeleteTarget(session); };
   const confirmDelete = async () => {
     if (!deleteTarget || deleting) return;
     setDeleting(true); setDeleteError(null);
@@ -502,7 +503,7 @@ function App() {
     {!learning && library.loading && <div className="history-notice" role="status">Loading conversations…</div>}
     {!learning && !library.loading && !library.failed && !history.length && library.filter === 'bookmarked' && <div className="history-notice">No bookmarked chats yet.</div>}
     <nav aria-label="Conversation history" aria-busy={library.loading} hidden={learning}>{history.filter(session => !isDeleted(session.id)).map(session => <div className="history-row" key={session.id}><button title={session.title} aria-current={!learning && session.id === selected ? 'page' : undefined} className={`history-item ${!learning && session.id === selected ? 'selected' : ''}`} onClick={() => act(() => show(session.id))}>
-      <strong>{session.bookmarked && <Icon name="bookmark" className="history-bookmark" />}<span>{session.title}</span></strong><div className="history-meta"><small>{session.state === 'ended' ? ({ completed: 'Ended', skipped: 'Ended', pending: 'Analysis pending', failed: 'Analysis failed', none: 'Ended', running: 'Analyzing' }[session.analysis_state] ?? labels[session.analysis_state]) : session.state === 'draft' ? 'New chat' : 'In progress'}</small>
+      <strong>{session.bookmarked && <Icon name="bookmark" className="history-bookmark" />}<span>{session.title}</span></strong><div className="history-meta"><small>{historySubtitle(session)}</small>
       <time>{new Date(session.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time></div>
     </button><Menu.Root><Menu.Trigger className="history-more" disabled={library.loading} aria-label={`Options for ${session.title}`} title="Chat options"><Icon name="more" /></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" sideOffset={4}>
       <Menu.Item className="partner-option" disabled={!session.canBookmark || bookmarkDisabled(session.id)} onSelect={() => mark(session, true)}>{session.bookmarked ? 'Remove bookmark' : 'Bookmark chat'}</Menu.Item>

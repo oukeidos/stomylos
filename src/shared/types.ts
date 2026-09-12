@@ -54,7 +54,7 @@ export interface RenewalView {
   attempts: Omit<RenewalAttempt, 'response_content'>[];
 }
 export interface SessionView { replyContext?: ReplyContextView; memoryPolicy?: import('./memory-control').MemoryPolicy; endProcessing?: Json | null; partner: PartnerView; bookmarked: boolean; canBookmark: boolean; session: Session; messages: Message[]; requests: RequestRecord[]; units: GrammarUnit[]; renewal: RenewalView | null; intentions?: import('./intention').IntentionView; outdatedOpening?: boolean; memory: import('./memory').MemoryView; search?: import('./search').SearchView | null; searches?: import('./search').SearchView[] }
-export type SessionSummary = Pick<Session, 'id' | 'state' | 'starter_text' | 'created_at' | 'analysis_state'> & { title: string; bookmarked: boolean; canBookmark: boolean };
+export type SessionSummary = Pick<Session, 'id' | 'state' | 'starter_text' | 'created_at' | 'analysis_state'> & { title: string; lastUserInput: string | null; bookmarked: boolean; canBookmark: boolean };
 export type HistoryFilter = 'all' | 'bookmarked';
 export interface SessionPage { sessions: SessionSummary[]; hasMore: boolean; offset: number; filter: HistoryFilter }
 export interface DeletionAssets { speechKeys: string[]; dictationIds: string[] }

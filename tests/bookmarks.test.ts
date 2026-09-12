@@ -37,6 +37,8 @@ it('filters the complete library before paging and preserves deterministic creat
   expect(first).toMatchObject({ hasMore: true, offset: 0, filter: 'bookmarked' });
   expect(second.sessions.map(s => s.id)).toEqual(expected.slice(40));
   expect(second.hasMore).toBe(false);
+  for (const summary of [...first.sessions, ...second.sessions, ...store.sessionPage(40).sessions])
+    expect(summary.lastUserInput).toBe(store.messages(summary.id).find(m => m.origin === 'learner')!.content);
   expect([...first.sessions, ...second.sessions].every(s => s.bookmarked === true && s.canBookmark === true)).toBe(true);
   expect(store.sessionPage().sessions.map(s => s.id)).toEqual(ids.sort().reverse().slice(0, 40));
   expect(store.sessionPage(80).sessions).toHaveLength(3);
@@ -120,4 +122,30 @@ it('validates filter, offset, desired state and IDs at the IPC boundary', () => 
     expect(() => validateCommand('listSessions', args)).toThrow('invalid_command');
   for (const args of [{ sessionId: 'id', bookmarked: 1 }, { sessionId: 'id' }, { sessionId: '../id', bookmarked: true }, { sessionId: 'id', bookmarked: true, sql: 'x' }])
     expect(() => validateCommand('setSessionBookmark', args)).toThrow('invalid_command');
+});
+
+
+it('projects the latest committed learner input across openings, empty sessions and restart', () => {
+  const empty = store.createSession();
+  store.saveDraft(empty.id, 'Unsent draft');
+  expect(store.unfinished()?.lastUserInput).toBeNull();
+  store.end(empty.id);
+  const ids: string[] = [];
+  const latest = '  Latest input\n안녕 👋 <b>literal</b>  ';
+  for (const index of [0, 1]) {
+    const id = chat(index, false); ids.push(id);
+    const sequence = Math.max(...store.messages(id).map(m => m.sequence)) + 1;
+    const insert = raw.prepare('INSERT INTO messages(id,session_id,sequence,role,content,origin,delivery) VALUES(?,?,?,?,?,?,?)');
+    insert.run(randomUUID(), id, sequence, 'user', latest, 'learner', 'complete');
+    insert.run(randomUUID(), id, sequence + 1, 'assistant', 'Interrupted answer', 'model', 'interrupted');
+    raw.prepare('UPDATE sessions SET draft=? WHERE id=?').run('Later unsent draft', id);
+    store.setSessionBookmark(id, true);
+    store.end(id);
+  }
+  store.close(); store = new Store(directory, native);
+  for (const filter of ['all', 'bookmarked'] as const) {
+    const summaries = store.sessionPage(0, filter).sessions;
+    for (const id of ids) expect(summaries.find(s => s.id === id)?.lastUserInput).toBe(latest);
+  }
+  expect(store.sessionPage().sessions.find(s => s.id === empty.id)?.lastUserInput).toBeNull();
 });

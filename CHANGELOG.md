@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show the last submitted user input instead of Ended in conversation history while preserving actionable status labels.
 - Remember Web search and Lighter replies immediately when selected, including unsent drafts, and use them only as defaults for new chats with a preserving schema-32 upgrade.
 - Add a start-only Lighter replies feather icon with a shorter-replies tooltip, a remembered starting choice, immutable per-chat behavior and a preserving schema-31 upgrade.
 - Group closely related memory facts and their supporting references into a single note for new ADD requests.

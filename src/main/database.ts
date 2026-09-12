@@ -175,6 +175,8 @@ export class Store {
   }
   private summaryQuery() {
     return `SELECT id,state,starter_text,created_at,analysis_state,
+      (SELECT content FROM messages WHERE session_id=sessions.id AND role='user' AND origin='learner'
+        AND delivery='complete' ORDER BY sequence DESC LIMIT 1) lastUserInput,
       EXISTS(SELECT 1 FROM session_bookmarks WHERE session_id=sessions.id) bookmarked,
       EXISTS(SELECT 1 FROM messages WHERE session_id=sessions.id AND origin='learner') canBookmark,
       CASE WHEN opening_kind='starter' THEN starter_text ELSE COALESCE(
