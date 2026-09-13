@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Highlight Web search when Auto is selected, matching the other composer toggles.
+
 - Unify button tooltips and dismiss them after activation, focus return, Escape and owner hiding; prevent overlapping tooltips while preserving keyboard discovery.
 
 - Group associative recall by learner turn in Conversation details and omit capacity moves to Older from the chat memory changes.
