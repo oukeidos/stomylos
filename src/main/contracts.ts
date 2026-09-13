@@ -84,7 +84,7 @@ function directPrompt(selected: ReturnType<typeof sessionRuntime>) {
   return selected.conversation.version === conversationV6.conversation.version ? directSixPrompt : directRouterPrompt;
 }
 function routingPrompt(snapshot: Json | undefined, direct: boolean, selected: ReturnType<typeof sessionRuntime>) {
-  if (!snapshot || snapshot.router_prompt_version === eightRouterVersion) return direct ? eightRouterPrompts.direct : eightRouterPrompts.starter;
+  if (!snapshot || snapshot.router_prompt_version === eightRouterVersion) return direct ? eightRouterPrompts.direct : snapshot?.opener_version === openerVersion ? eightRouterPrompts.opener : eightRouterPrompts.starter;
   if (snapshot.router_prompt_version === compactRouterVersion) return direct ? compactRouterPrompts.direct : compactRouterPrompts.starter;
   return direct ? directPrompt(selected) : selected.routerPrompt;
 }
@@ -94,7 +94,7 @@ export function routerBody(question: string | null, answer: string, snapshot?: J
   if (direct ? question !== null : typeof question !== 'string') throw new AppFailure('opening_source_changed');
   return { model: r.model.requested_model, messages: [
     { role: 'system', content: routingPrompt(snapshot, !!direct, selected) },
-    { role: 'user', content: JSON.stringify(direct ? { opening_kind: 'user', first_message: answer } : { starter_question: question, learner_answer: answer }) }
+    { role: 'user', content: JSON.stringify(direct ? { opening_kind: 'user', first_message: answer } : snapshot?.opener_version === openerVersion ? { assistant_opening: question, user_reply: answer } : { starter_question: question, learner_answer: answer }) }
   ], stream: false, max_tokens: r.generation.max_tokens, reasoning: r.model.reasoning,
   provider: { only: r.provider.only, require_parameters: r.provider.require_parameters,
     data_collection: r.provider.data_collection, allow_fallbacks: r.provider.allow_fallbacks },
@@ -106,10 +106,11 @@ export function routerSnapshot(snapshot?: Json): Json {
   const prompt = routingPrompt(snapshot, !!direct, selected);
   const compact = !snapshot || [compactRouterVersion, eightRouterVersion].includes(snapshot.router_prompt_version);
   const promptVersion = !snapshot ? eightRouterVersion : snapshot.router_prompt_version;
+  const inputKind = direct ? 'direct' : snapshot?.opener_version === openerVersion ? 'opener' : 'starter';
   const directVersion = selected.conversation.version === conversationV7.conversation.version ? 'v7' : selected.conversation.version === conversationV6.conversation.version ? 'v5' : 'v3';
   const { messages: _, ...parameters } = routerBody(direct ? null : '', '', snapshot);
-  return { version: compact ? `${promptVersion}_${direct ? 'direct' : 'starter'}` : direct ? `stomylos_character_router_${directVersion}` : selected.router.version, app_version: appVersion, parameters,
-    prompt, prompt_id: compact ? `${promptVersion}_${direct ? 'direct' : 'starter'}` : direct ? `stomylos_character_router_prompt_${directVersion}` : selected.router.prompt.id, prompt_sha256: hash(prompt),
+  return { version: compact ? `${promptVersion}_${inputKind}` : direct ? `stomylos_character_router_${directVersion}` : selected.router.version, app_version: appVersion, parameters,
+    prompt, prompt_id: compact ? `${promptVersion}_${inputKind}` : direct ? `stomylos_character_router_prompt_${directVersion}` : selected.router.prompt.id, prompt_sha256: hash(prompt),
     response_identity: { allowed_models: selected.router.model.accepted_response_models, provider: selected.router.provider.expected_response_provider }, timeout_seconds: selected === runtime ? 3 : 10,
     ...(selected === runtime ? { recovery_version: 'stomylos_router_recovery_v1', recovery_attempt: 0 } : {}) };
 }

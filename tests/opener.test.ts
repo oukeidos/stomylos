@@ -1,3 +1,5 @@
+import { conversationSnapshot, routerBody, routerSnapshot } from '../src/main/contracts';
+import { validateRecovery, recoverySnapshot } from '../src/main/router-recovery';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -105,4 +107,20 @@ it('deletes private retry evidence and renews eligibility only in a new conversa
   const next=store.createSession();expect(next.id).not.toBe(s.id);
   expect(store.openerView(next.id)).toMatchObject({generated:false,status:'empty'});
   expect(store.integrity().foreignKeys).toEqual([]);
+});
+
+it('routes visible openers as assistant openings while retaining direct and legacy starter contracts',()=>{
+  const legacy=conversationSnapshot('starter'), saved={...legacy,opener_version:openerVersion};
+  const old=routerBody('An old question?','An answer.',legacy);
+  const body=routerBody('I made bread.','I like bread.',saved);
+  expect(body.messages[0].content).toBe(old.messages[0].content.replace("Use the starter question and the user's first answer.","Use the assistant's opening and the user's first reply."));
+  expect(JSON.parse(body.messages[1].content)).toEqual({assistant_opening:'I made bread.',user_reply:'I like bread.'});
+  expect(JSON.parse(old.messages[1].content)).toEqual({starter_question:'An old question?',learner_answer:'An answer.'});
+  const direct=conversationSnapshot('user');
+  expect(routerBody(null,'Hello',{...direct,opener_version:openerVersion})).toEqual(routerBody(null,'Hello',direct));
+  expect(routerSnapshot(saved).version).toBe('stomylos_compact_router_v2_opener');
+  expect(routerSnapshot(legacy).version).toBe('stomylos_compact_router_v2_starter');
+  validateRecovery(routerSnapshot(saved));validateRecovery(recoverySnapshot(routerSnapshot(saved)));
+  const {messages:_,...settings}=body, {messages:__,...oldSettings}=old;
+  expect(settings).toEqual(oldSettings);
 });
