@@ -1,3 +1,4 @@
+import { TooltipButton } from './tooltip-button';
 import { historySubtitle } from './history-subtitle';
 import { useReplyContext } from './reply-context';
 import { MemoryInputRecovery, memoryInputProgress } from './memory-input-recovery';
@@ -120,7 +121,7 @@ function errorText(error: unknown): string {
 function Chevron({ open }: { open: boolean }) { return <svg className={`chevron ${open ? 'rotated' : ''}`} viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>; }
 function Modal({ open, onOpenChange, title, children }: { open: boolean; onOpenChange: (value: boolean) => void; title: string; children: ReactNode }) {
   return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal><Dialog.Overlay className="modal-overlay" /><Dialog.Content className="dialog" aria-describedby={undefined}>
-    <div className="dialog-heading"><Dialog.Title>{title}</Dialog.Title><Dialog.Close className="icon-button" aria-label="Close dialog" title="Close"><Icon name="close" /></Dialog.Close></div>{children}
+    <div className="dialog-heading"><Dialog.Title>{title}</Dialog.Title><Dialog.Close asChild><TooltipButton className="icon-button" aria-label="Close dialog" tooltip="Close"><Icon name="close" /></TooltipButton></Dialog.Close></div>{children}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
 const Partner = memo(function Partner({ view, characters, act, blocked }: { view: SessionView; characters: Character[]; blocked: boolean; act: (fn: () => Promise<unknown>) => void }) {
@@ -131,8 +132,8 @@ const Partner = memo(function Partner({ view, characters, act, blocked }: { view
   const locked = genie.locked || dictationBusy() || blocked;
   const label = partnerDisplayName(characters.find(c => c.id === selected));
   if (session.state === 'ended') return <span className="current-partner" title={label}>{selected ? label : 'No partner selected'}</span>;
-  return <Menu.Root open={open} onOpenChange={setOpen}><Menu.Trigger className="partner" aria-label={`Partner: ${label}`} title={`Choose a conversation partner · ${label}`} disabled={locked || (session.state === 'active' && !session.character)}>
-    <strong className="partner-label">{label}</strong><Chevron open={open} />{view.partner.pending && <span className="partner-pending" role="status">{view.partner.pending.state === 'failed' ? 'Selection incomplete' : 'Next reply'}</span>}</Menu.Trigger>
+  return <Menu.Root open={open} onOpenChange={setOpen}><Menu.Trigger asChild><TooltipButton className="partner" aria-label={`Partner: ${label}`} tooltip={`Choose a conversation partner · ${label}`} disabled={locked || (session.state === 'active' && !session.character)}>
+    <strong className="partner-label">{label}</strong><Chevron open={open} />{view.partner.pending && <span className="partner-pending" role="status">{view.partner.pending.state === 'failed' ? 'Selection incomplete' : 'Next reply'}</span>}</TooltipButton></Menu.Trigger>
     <Menu.Portal><Menu.Content className="partner-menu" sideOffset={8} align="start" collisionPadding={12}>
       <Menu.RadioGroup value={selected ?? 'automatic'} onValueChange={value => act(() => session.state === 'draft'
         ? window.stomylos.command('selectPartner', { sessionId: session.id, character: value === 'automatic' ? null : value })
@@ -283,7 +284,7 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
     {view.outdatedOpening && <p className="limit-note" role="status">This question is outdated. Choose another question or start with your own message. Your draft is preserved.</p>}
     {near && <p className="limit-note">This chat is nearing its size limit. You can end it and continue in a new chat.</p>}
     {unresolved && !busy && <div className="reply-recovery"><span>{view.partner.pending?.state === 'failed' ? 'Auto selection is incomplete.' : 'The last reply is incomplete.'}{view.partner.pending && view.partner.canRetryReply ? ` Retry reply uses ${retryLabel}.` : ''}</span>
-      {view.partner.canRetryReply && <button title={view.partner.retryModel ? `Retry with ${view.partner.retryModel}` : undefined} onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('retryReply', { sessionId: id }); accepted(); })}>Retry reply</button>}
+      {view.partner.canRetryReply && <TooltipButton tooltip={view.partner.retryModel ? `Retry with ${view.partner.retryModel}` : undefined} onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('retryReply', { sessionId: id }); accepted(); })}>Retry reply</TooltipButton>}
       {view.partner.canUseSelected && <button onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('useSelectedPartner', { sessionId: id }); accepted(); })}>Use selected partner</button>}
       {view.partner.pending?.state === 'failed' && <button onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('retryPartnerSelection', { sessionId: id }); accepted(); })}>Retry selection</button>}
     </div>}
@@ -297,16 +298,16 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
       onKeyDown={event => { if (event.key === 'Enter' && !event.repeat && !dictationBusy() && !event.shiftKey && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) {
         event.preventDefault(); if (draft.text === '/end' || (!busy && !unresolved)) send();
       } }} />
-      <div className="composer-actions"><button className="icon-button genie-help" data-explain-return aria-label="Genie" title="Genie · Help with wording" disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length >= 24 || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing}
+      <div className="composer-actions"><TooltipButton className="icon-button genie-help" data-explain-return aria-label="Genie" tooltip="Genie · Help with wording" disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length >= 24 || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing}
         onPointerDown={() => { if (textarea.current) selection.current = captureGenieRange(textarea.current, currentDraft(id).text); }}
-        onClick={() => { if (!composing.current && textarea.current) act(() => openGenie(id, selection.current ?? captureGenieRange(textarea.current!, currentDraft(id).text))); }}><Icon name="help" /></button><button className="icon-button search-toggle" aria-pressed={view.session.search_mode === 'auto'}
+        onClick={() => { if (!composing.current && textarea.current) act(() => openGenie(id, selection.current ?? captureGenieRange(textarea.current!, currentDraft(id).text))); }}><Icon name="help" /></TooltipButton><TooltipButton className="icon-button search-toggle" aria-pressed={view.session.search_mode === 'auto'}
           aria-label={`Web search: ${view.session.search_mode === 'auto' ? 'Auto' : 'Off'}`}
-          title={view.session.search_mode === 'auto' ? 'Web search: Auto — Search when helpful' : 'Web search: Off — No web search'}
+          tooltip={view.session.search_mode === 'auto' ? 'Web search: Auto — Search when helpful' : 'Web search: Off — No web search'}
           disabled={blocked || sending || busy || unresolved || genie.locked || dictation.locked || !!app.activity.storageError || app.activity.closing}
           onClick={() => act(() => window.stomylos.command('searchMode', { sessionId: id, mode: view.session.search_mode === 'auto' ? 'off' : 'auto' }))}>
-          <Icon name={view.session.search_mode === 'auto' ? 'globe' : 'globeOff'} /></button>{replyChoice.control(blocked || sending || busy || unresolved || genie.locked || dictation.locked || composing.current || !!app.activity.storageError || app.activity.closing)}{openingAction}<UndoGenie sessionId={id} textarea={textarea} /><span className="composer-spacer" /><RecordButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} />
+          <Icon name={view.session.search_mode === 'auto' ? 'globe' : 'globeOff'} /></TooltipButton>{replyChoice.control(blocked || sending || busy || unresolved || genie.locked || dictation.locked || composing.current || !!app.activity.storageError || app.activity.closing)}{openingAction}<UndoGenie sessionId={id} textarea={textarea} /><span className="composer-spacer" /><RecordButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} />
         <span className={draft.error ? 'draft-error' : 'sr-only'} role="status">{draft.error ? 'Draft not saved' : draft.revision !== draft.saved ? 'Saving draft…' : 'Draft saved'}</span>
-        <button className="primary icon-button send" aria-label="Send" title="Send · Enter" onClick={send} disabled={replyChoice.saving || replyChoice.failed || (view.outdatedOpening && draft.text !== '/end') || blocked || genie.locked || sending || dictation.locked || overBudget || !draft.text.trim() || app.activity.closing || (draft.text !== '/end' && (busy || unresolved))}><Icon name="send" /></button></div></div>
+        <TooltipButton className="primary icon-button send" aria-label="Send" tooltip="Send · Enter" onClick={send} disabled={replyChoice.saving || replyChoice.failed || (view.outdatedOpening && draft.text !== '/end') || blocked || genie.locked || sending || dictation.locked || overBudget || !draft.text.trim() || app.activity.closing || (draft.text !== '/end' && (busy || unresolved))}><Icon name="send" /></TooltipButton></div></div>
   </footer>;
 }
 function App() {
@@ -418,7 +419,7 @@ function App() {
     finally { setDeleting(false); }
   };
   const canChangeOpening = view?.session.state === 'draft' && JSON.parse(view.session.chat_config).opening?.version === 'stomylos_opening_v1';
-  const openingAction = canChangeOpening && <button className="icon-button opening-action" aria-label={view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} title={view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} aria-pressed={view?.session.opening_kind === 'starter'}
+  const openingAction = canChangeOpening && <TooltipButton className="icon-button opening-action" aria-label={view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} tooltip={view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} aria-pressed={view?.session.opening_kind === 'starter'}
     disabled={openingBusy || composing || dictation.locked || !!app.activity.storageError || app.activity.closing}
     onClick={() => act(async () => {
       if (!view || openingBusy || composing || dictationBusy()) return;
@@ -428,12 +429,12 @@ function App() {
         await window.stomylos.command('setOpening', { sessionId: session.id, operationId: crypto.randomUUID(),
           expectedRevision: session.opening_revision, kind: session.opening_kind === 'starter' ? 'user' : 'starter' });
       } finally { setOpeningBusy(false); }
-    })}><Icon name="starter" /></button>;
+    })}><Icon name="starter" /></TooltipButton>;
   const starter = view?.messages.find(message => message.origin === 'starter');
-  const starterAction = starter && view?.session.state === 'draft' && <button className="icon-button another-question" aria-label="Another question" title="Another question" disabled={openingBusy || composing || dictation.locked} onClick={() => {
+  const starterAction = starter && view?.session.state === 'draft' && <TooltipButton className="icon-button another-question" aria-label="Another question" tooltip="Another question" disabled={openingBusy || composing || dictation.locked} onClick={() => {
     const args = { sessionId: view.session.id, operationId: crypto.randomUUID(), expectedQuestionId: view.session.starter_id!, expectedRevision: view.session.opening_revision };
     act(async () => { if (await beforeDictationNavigation()) { await flushDraft(args.sessionId); await window.stomylos.command('replaceStarter', args); } });
-  }}><Icon name="refresh" /></button>;
+  }}><Icon name="refresh" /></TooltipButton>;
   return <div inert={!!app.endBlocker} className={`app ${historyOpen ? '' : 'history-collapsed'}`}><header className="app-header" inert={genie.locked}>
     <div className="app-navigation" aria-label="App navigation">
       <IconButton className="new-chat lifecycle-action" label="New chat" icon="plus" disabled={!!app.endBlocker} onClick={() => unfinished ? setNewDialog(true) : act(startNew)} />
@@ -443,7 +444,7 @@ function App() {
     <div className="chat-navigation">
       <div className="header-partner">{view && <Partner view={view} characters={app.characters} act={act} blocked={app.activity.phase !== 'idle' || !!app.activity.storageError || app.activity.closing} />}</div>
       {(app.settings.simulation || app.settings.development) && <span className="build-label">{app.settings.simulation ? 'Preview' : 'Development'}</span>}
-      {view?.canBookmark && <IconButton icon="bookmark" className="bookmark-toggle" label={view.bookmarked ? 'Remove bookmark' : 'Bookmark chat'} title={view.bookmarked ? 'Remove bookmark' : 'Bookmark chat'} aria-pressed={view.bookmarked} aria-busy={bookmarks.pending.has(view.session.id)} disabled={bookmarkDisabled(view.session.id)} onClick={() => mark({ id: view.session.id, bookmarked: view.bookmarked })} />}
+      {view?.canBookmark && <IconButton icon="bookmark" className="bookmark-toggle" label={view.bookmarked ? 'Remove bookmark' : 'Bookmark chat'}  aria-pressed={view.bookmarked} aria-busy={bookmarks.pending.has(view.session.id)} disabled={bookmarkDisabled(view.session.id)} onClick={() => mark({ id: view.session.id, bookmarked: view.bookmarked })} />}
       <IconButton label="Conversation details" icon="info" disabled={!view} onClick={() => { setDetailsSection(null); setDetails(true); }} />
       {view?.session.state === 'ended' && <IconButton className="delete-chat" label="Delete chat" icon="trash" disabled={deleting || !!app.activity.storageError} onClick={() => currentSummary && requestDelete(currentSummary)} />}
 
@@ -459,10 +460,10 @@ function App() {
     {!learning && library.failed && <div className="history-notice" role="alert">History could not be loaded. <button onClick={library.retry}>Try loading again</button></div>}
     {!learning && library.loading && <div className="history-notice" role="status">Loading conversations…</div>}
     {!learning && !library.loading && !library.failed && !history.length && library.filter === 'bookmarked' && <div className="history-notice">No bookmarked chats yet.</div>}
-    <nav aria-label="Conversation history" aria-busy={library.loading} hidden={learning}>{history.filter(session => !isDeleted(session.id)).map(session => <div className="history-row" key={session.id}><button title={session.title} aria-current={!learning && session.id === selected ? 'page' : undefined} className={`history-item ${!learning && session.id === selected ? 'selected' : ''}`} onClick={() => act(() => show(session.id))}>
+    <nav aria-label="Conversation history" aria-busy={library.loading} hidden={learning}>{history.filter(session => !isDeleted(session.id)).map(session => <div className="history-row" key={session.id}><TooltipButton tooltip={session.title} aria-current={!learning && session.id === selected ? 'page' : undefined} className={`history-item ${!learning && session.id === selected ? 'selected' : ''}`} onClick={() => act(() => show(session.id))}>
       <strong>{session.bookmarked && <Icon name="bookmark" className="history-bookmark" />}<span>{session.title}</span></strong><div className="history-meta"><small>{historySubtitle(session)}</small>
       <time>{new Date(session.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time></div>
-    </button><Menu.Root><Menu.Trigger className="history-more" disabled={library.loading} aria-label={`Options for ${session.title}`} title="Chat options"><Icon name="more" /></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" sideOffset={4}>
+    </TooltipButton><Menu.Root><Menu.Trigger asChild><TooltipButton className="history-more" disabled={library.loading} aria-label={`Options for ${session.title}`} tooltip="Chat options"><Icon name="more" /></TooltipButton></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" sideOffset={4}>
       <Menu.Item className="partner-option" disabled={!session.canBookmark || bookmarkDisabled(session.id)} onSelect={() => mark(session, true)}>{session.bookmarked ? 'Remove bookmark' : 'Bookmark chat'}</Menu.Item>
       {!session.canBookmark && <div className="menu-hint">Send a message before bookmarking.</div>}
       <Menu.Separator className="menu-separator" />
@@ -475,7 +476,7 @@ function App() {
 
     <span className="bookmark-announcement" role="status" aria-live="polite">{bookmarks.announcement}</span>
     {bookmarks.undo && <BookmarkUndo key={bookmarks.undo.serial} undo={bookmarks.undo} disabled={bookmarkDisabled(bookmarks.undo.sessionId)} restore={() => act(() => bookmarks.set(bookmarks.undo!.sessionId, true))} dismiss={bookmarks.dismiss} />}
-    {error && <div className="notice" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError(null)} aria-label="Dismiss message" title="Dismiss"><Icon name="close" /></button></div>}
+    {error && <div className="notice" role="alert"><span>{error}</span><TooltipButton className="icon-button" onClick={() => setError(null)} aria-label="Dismiss message" tooltip="Dismiss"><Icon name="close" /></TooltipButton></div>}
     {app.activity.storageError && <div className="notice danger" role="alert"><span>{app.activity.storageError.startsWith('database_worker_') ? 'Storage stopped. Copy any unsaved text before restarting the app. Saved history will recover on restart.' : 'Your latest changes could not be saved. Use Exit options to copy available text or close without saving.'}</span>{!app.activity.storageError.startsWith('database_worker_') && <button onClick={() => act(() => window.stomylos.command('retrySaving', undefined))}>Retry saving</button>}<button onClick={() => act(() => window.stomylos.command('exitOptions', undefined))}>Exit options</button></div>}
     {app.activity.deletionCleanupPending && <div className="notice danger" role="alert"><span>The chat was deleted, but some voice files still need cleanup.</span><button onClick={() => act(() => window.stomylos.command('retryDeletionCleanup', undefined))}>Retry cleanup</button></div>}
     {view && !view.endProcessing && maintenanceNotices(view).length > 0 && <div className="maintenance-summary" role="status">
@@ -494,16 +495,16 @@ function App() {
             <span role="status">{memoryInputProgress(view.memory.addJobs ?? [], view.session.id, view.memory.blockedBy).summary}</span>
           </section>}
 
-          <div className="ended-marker">{!view.endProcessing && labels[view.session.analysis_state]}{view.session.draft && <button className="icon-button retained-draft-link" aria-label="View unsent draft" title="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></button>}</div>
+          <div className="ended-marker">{!view.endProcessing && labels[view.session.analysis_state]}{view.session.draft && <TooltipButton className="icon-button retained-draft-link" aria-label="View unsent draft" tooltip="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></TooltipButton>}</div>
 
         </>}
       </> : <p className="note">{selected ? 'Loading conversation…' : 'No conversation selected. Start a new chat when you are ready.'}</p>}</div>
     </main>
-    {scroll.away && !genie.locked && <div className="latest-position"><button className="latest-message" aria-label="Go to latest message" title="Go to latest message" onClick={() => {
+    {scroll.away && !genie.locked && <div className="latest-position"><TooltipButton className="latest-message" aria-label="Go to latest message" tooltip="Go to latest message" onClick={() => {
       scroll.resume();
       const target = document.querySelector<HTMLTextAreaElement>('.composer textarea') ?? scroll.scroller.current;
       target?.focus({ preventScroll: true });
-    }}><Icon name="down" /><span aria-live="polite">{scroll.unread ? 'New reply' : 'Latest message'}</span></button></div>}
+    }}><Icon name="down" /><span aria-live="polite">{scroll.unread ? 'New reply' : 'Latest message'}</span></TooltipButton></div>}
     <div className="conversation-footer">{view && view.session.state !== 'ended' ? <Composer key={view.session.id} view={view} app={app} act={act} blocked={openingBusy} onComposition={setComposing} afterAcceptedAction={scroll.afterAcceptedAction} openingAction={<>{openingAction}{starterAction}</>} starter={canChangeOpening && starter && <Bubble message={starter} partner="Partner" />} /> : <footer className="ended-footer">
       <>{unfinished && <IconButton label="Return to current chat" icon="back" onClick={() => act(() => show(unfinished.id))} />}</></footer>}</div>
   </div>

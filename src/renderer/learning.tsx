@@ -1,3 +1,4 @@
+import { TooltipButton } from './tooltip-button';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './icons';
 import { IconButton } from './icon-button';
@@ -98,11 +99,11 @@ export function Learning({ active, revision, state, disabled, keyPresent, back, 
           <details className="report-scope-details"><summary>Scope details</summary><p className="note">Approximately {preview.scope.estimate.toLocaleString()} / {preview.scope.limit.toLocaleString()} input tokens.</p><p className="note">Complete original learner messages from ended conversations, across all partners. Individual grammar analysis is not required. Patterns need examples in at least three conversations.</p>
             <p className="note">Weeks count back from now. Custom dates include both selected dates in your local timezone. No conversations are automatically removed to fit the input allowance.</p>
             <p className="note">Exclusion uses saved successful reports, including older reports. Deleting the last report covering a conversation makes it eligible again.</p></details>
-          <div className="learning-actions"><button className="primary report-create" aria-label={preview.existingId ? 'View existing report' : 'Create report'} title={preview.existingId ? 'View existing report' : 'Create report'} disabled={busy || disabled || !!preview.blocked || state.phase !== 'idle' || (!keyPresent && !preview.existingId)} onClick={() => void act(async () => {
+          <div className="learning-actions"><TooltipButton className="primary report-create" aria-label={preview.existingId ? 'View existing report' : 'Create report'} tooltip={preview.existingId ? 'View existing report' : 'Create report'} disabled={busy || disabled || !!preview.blocked || state.phase !== 'idle' || (!keyPresent && !preview.existingId)} onClick={() => void act(async () => {
             if (preview.existingId) { await openExisting(preview.existingId); return; }
             const r = await window.stomylos.command('patternCreate', { fingerprint: preview.fingerprint, operationId: crypto.randomUUID(), selection: preview.scope.selection });
             if (r.reused) await openExisting(r.id); setOffset(0);
-          })}><Icon name={preview.existingId ? 'book' : 'plus'} /><span>{preview.existingId ? 'Open existing report' : 'Create report'}</span></button>
+          })}><Icon name={preview.existingId ? 'book' : 'plus'} /><span>{preview.existingId ? 'Open existing report' : 'Create report'}</span></TooltipButton>
             {!keyPresent && !preview.existingId && <span className="note">An API key is needed to create a report. Saved reports work offline.</span>}</div>
         </> : <p role="status">Choose a date range or wait for the scope preview…</p>}
       </section>
@@ -116,8 +117,8 @@ export function Learning({ active, revision, state, disabled, keyPresent, back, 
       <div className="learning-reports">{cards.map(card => <article className="learning-card" key={card.id}>
         <div><h3>{date(card.created_at)}</h3><p>{card.scope.count} conversations</p>
           <span className="note">{card.status === 'succeeded' ? 'Ready to explore' : card.status === 'dispatched' ? 'Generating' : card.status === 'queued' ? 'Waiting' : message(card.failure ?? card.status)}</span>{card.status === 'succeeded' && <p className="note">Generation cost: {typeof card.cost === 'number' ? '$' + card.cost.toFixed(4) : 'Unavailable'}</p>}</div>
-        <div className="learning-actions"><button className="icon-button" aria-label="Open report" title="Open report" disabled={!card.selected_attempt_id || busy} onClick={() => void act(() => window.stomylos.command('patternOpen', { id: card.id }))}><Icon name="book" /></button>
-          <Menu.Root><Menu.Trigger className="icon-button" aria-label="Report options" title="Report options"><Icon name="more" /></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" align="end" sideOffset={6}>
+        <div className="learning-actions"><TooltipButton className="icon-button" aria-label="Open report" tooltip="Open report" disabled={!card.selected_attempt_id || busy} onClick={() => void act(() => window.stomylos.command('patternOpen', { id: card.id }))}><Icon name="book" /></TooltipButton>
+          <Menu.Root><Menu.Trigger asChild><TooltipButton className="icon-button" aria-label="Report options" tooltip="Report options"><Icon name="more" /></TooltipButton></Menu.Trigger><Menu.Portal><Menu.Content className="partner-menu more-menu" align="end" sideOffset={6}>
             <Menu.Item className="partner-option" onSelect={() => void act(() => inspect(card.id))}>Report details</Menu.Item>
             <Menu.Separator className="menu-separator" />
             <Menu.Item className="partner-option destructive" disabled={busy || disabled} onSelect={() => setRemove(card)}>Delete report</Menu.Item>
@@ -126,7 +127,7 @@ export function Learning({ active, revision, state, disabled, keyPresent, back, 
       {(more || offset > 0) && <div className="learning-actions"><button disabled={offset === 0} onClick={() => setOffset(n => Math.max(0, n - 20))}>Newer reports</button><button disabled={!more} onClick={() => setOffset(n => n + 20)}>Older reports</button></div>}
     </div>
     <Dialog.Root open={!!detail} onOpenChange={open => { if (!open) setDetail(null); }}><Dialog.Portal><Dialog.Overlay className="modal-overlay" /><Dialog.Content className="dialog pattern-details" aria-describedby={undefined}>
-      <div className="dialog-heading"><Dialog.Title>Report details</Dialog.Title><Dialog.Close className="icon-button" aria-label="Close report details" title="Close"><Icon name="close" /></Dialog.Close></div>
+      <div className="dialog-heading"><Dialog.Title>Report details</Dialog.Title><Dialog.Close asChild><TooltipButton className="icon-button" aria-label="Close report details" tooltip="Close"><Icon name="close" /></TooltipButton></Dialog.Close></div>
       {error && <p className="notice danger" role="alert">{error}</p>}
       {detail && <><p>{detail.scope.count} conversations · {date(detail.scope.from)} – {date(detail.scope.to)}</p><p className="note">{detail.model} · medium · Created {new Date(detail.created_at).toLocaleString()}</p>
         {detail.selected_attempt_id && <button className="primary" onClick={() => void act(() => window.stomylos.command('patternOpen', { id: detail.id }))}>Open report</button>}

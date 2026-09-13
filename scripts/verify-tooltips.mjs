@@ -55,6 +55,7 @@ try {
   await button('Settings').evaluate(node => { node.style.left = 'auto'; node.style.right = '0'; });
   await check('Settings');
   await button('Settings').focus();
+  await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Tab');
   const id = await button('Settings').getAttribute('aria-describedby'); const tip = page.locator(`[id="${id}"]`);
   await tip.waitFor({ state: 'visible' });
   await page.mouse.move(400, 300); await tip.waitFor({ state: 'visible' });

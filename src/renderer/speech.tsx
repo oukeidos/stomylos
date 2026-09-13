@@ -1,3 +1,4 @@
+import { TooltipButton } from './tooltip-button';
 import { voices, type VoiceId } from '../shared/voice';
 import { Icon } from './icons';
 import { useSyncExternalStore, useState, useEffect } from 'react';
@@ -99,9 +100,9 @@ export function SpeechControl({ message }: { message: Message }) {
   const actionLabel = active && player.state === 'playing' ? 'Pause speech' : busy ? 'Generating speech' : item?.state === 'save_pending' ? 'Retry saving speech' : retry ? 'Retry speech' : item?.state === 'ready' ? 'Play speech' : 'Listen';
   const needsRecovery = item?.state === 'save_pending' || retry;
   return <div className="speech-controls" data-speech-message={message.id}>
-    <button className={needsRecovery ? "quiet" : "icon-button"} title={actionLabel} disabled={busy || muted} onClick={() => void invoke()} aria-label={actionLabel}>
-      {needsRecovery ? actionLabel : <Icon name={active && player.state === 'playing' ? 'pause' : busy ? 'refresh' : item?.state === 'ready' ? 'play' : 'speaker'} className={busy ? 'spinning' : ''} />}</button>
-    {(active || busy) && <button className="icon-button" onClick={stopSpeech} aria-label="Stop speech" title="Stop speech"><Icon name="stop" /></button>}
+    <TooltipButton className={needsRecovery ? "quiet" : "icon-button"} tooltip={actionLabel} disabled={busy || muted} onClick={() => void invoke()} aria-label={actionLabel}>
+      {needsRecovery ? actionLabel : <Icon name={active && player.state === 'playing' ? 'pause' : busy ? 'refresh' : item?.state === 'ready' ? 'play' : 'speaker'} className={busy ? 'spinning' : ''} />}</TooltipButton>
+    {(active || busy) && <TooltipButton className="icon-button" onClick={stopSpeech} aria-label="Stop speech" tooltip="Stop speech"><Icon name="stop" /></TooltipButton>}
     {active && player.duration > 0 && <><input type="range" aria-label="Speech position" min={0} max={player.duration} step={0.1} value={player.time} onChange={e => { audio.currentTime = Number(e.target.value); }} /><small>{Math.floor(player.time)} / {Math.floor(player.duration)}s</small></>}
     {(error || item?.error || (active && player.error)) && <small className="speech-error" role="status">{error || (active && player.error) || explain(item?.error)}</small>}
   </div>;
@@ -126,7 +127,7 @@ export function SpeechSettings({ section = 'voice', active = true }: { section?:
         <select id="speech-voice" value={speech.voice} disabled={busy} onChange={e => void act(() => window.stomylos.command('speechVoice', { voice: e.target.value as VoiceId }))}>
           {voices.map(voice => <option key={voice} value={voice}>{voice[0].toUpperCase() + voice.slice(1)}</option>)}
         </select>
-        <button className="icon-button" aria-label={previewLabel} title={previewLabel}
+        <TooltipButton className="icon-button" aria-label={previewLabel} tooltip={previewLabel}
           disabled={muted || !active || (!previewCanStop && (busy || speech.preview?.state === 'save_pending'))}
           onClick={() => {
             if (previewCanStop) {
@@ -138,7 +139,7 @@ export function SpeechSettings({ section = 'voice', active = true }: { section?:
             });
           }}>
           <Icon name={previewGenerating ? 'refresh' : previewPlaying ? 'stop' : 'play'} className={previewGenerating ? 'spinning' : ''} />
-        </button>
+        </TooltipButton>
       </div>
       <p className="note">Applies to the next Listen or new automatic reply. Preview generation uses API credits; saved samples replay for free.</p>
       {(speech.preview?.error || (player.messageId === 'preview' && player.error)) && <p role="status" className="speech-error">{player.messageId === 'preview' && player.error || explain(speech.preview?.error)}</p>}

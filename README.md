@@ -53,6 +53,9 @@ npm run build
 npm start
 ```
 
+Button tips appear on hover or keyboard navigation. Activating a button or pressing
+Escape dismisses its tip; returning from a dialog keeps focus without reopening it.
+
 ## Provider data policy
 
 Text requests ask OpenRouter to exclude providers that collect data by setting

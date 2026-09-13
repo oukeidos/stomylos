@@ -1,3 +1,4 @@
+import { TooltipButton } from './tooltip-button';
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { Icon } from './icons';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -110,16 +111,16 @@ export function GenieDock({ sessionId, textarea, storageError }: { sessionId: st
       onOpenAutoFocus={event => { event.preventDefault(); followup.current?.focus(); }}
       onCloseAutoFocus={event => { event.preventDefault(); restoreFocus(); }}>
       <div className="dialog-heading"><Dialog.Title><Icon name="help" />Genie</Dialog.Title>
-        <button className="icon-button" aria-label="Start over" title="Start over" disabled={!e || saving || pending || !!storageError} onClick={() => run(async () => {
+        <TooltipButton className="icon-button" aria-label="Start over" tooltip="Start over" disabled={!e || saving || pending || !!storageError} onClick={() => run(async () => {
           if (!e) return; pending = true; notify();
           try { receive(await window.stomylos.command('genieTarget', { episodeId: e.id, range: e.range, operationId: crypto.randomUUID() })); }
           finally { pending = false; notify(); }
-        })}><Icon name="refresh" /></button>
-        <button className="icon-button" aria-label="Close Genie" title="Back to writing" disabled={saving || pending} onClick={() => run(close)}><Icon name="close" /></button></div>
+        })}><Icon name="refresh" /></TooltipButton>
+        <TooltipButton className="icon-button" aria-label="Close Genie" tooltip="Back to writing" disabled={saving || pending} onClick={() => run(close)}><Icon name="close" /></TooltipButton></div>
       <p className="sr-only" id="genie-description">Help with your unsent draft. Apply a suggestion to your draft, then send it separately. Close or press Escape to return to writing.</p>
       <div className="genie-columns"><section className={`genie-original ${changing ? 'changing-target' : ''}`} aria-label="Original draft">
         <div className="genie-target-heading"><strong>{target?.scope === 'selection' ? 'Selected text' : 'Entire draft'}</strong>
-          <button className="icon-button" aria-label="Change target" title="Change target" disabled={!e || saving || pending} onClick={() => { setChanging(true); setRange(null); }}> <Icon name="target" /></button></div>
+          <TooltipButton className="icon-button" aria-label="Change target" tooltip="Change target" disabled={!e || saving || pending} onClick={() => { setChanging(true); setRange(null); }}> <Icon name="target" /></TooltipButton></div>
         {changing ? <><label htmlFor="genie-source">Select a new target in your original draft</label><textarea id="genie-source" ref={original} value={text} readOnly
           onSelect={event => setRange(captureGenieRange(event.currentTarget, text))}
           onKeyDown={event => {
@@ -145,12 +146,12 @@ export function GenieDock({ sessionId, textarea, storageError }: { sessionId: st
           {turn.user && <p className="genie-learner">{turn.user}</p>}
           {turn.reply?.reply && <p>{turn.reply.reply}</p>}
           {turn.reply?.suggested_text !== null && turn.reply?.suggested_text !== undefined && <div className="genie-suggestion"><p>{turn.reply.suggested_text}</p>
-            {e.candidateId === turn.id && e.phase === 'ready' && <button className="icon-button primary" aria-label={e.range.scope === 'selection' ? 'Replace selection' : 'Use in draft'} title={e.range.scope === 'selection' ? 'Replace selection in draft' : 'Use in draft'} disabled={pending || !!storageError || changing} onClick={() => run(async () => {
+            {e.candidateId === turn.id && e.phase === 'ready' && <TooltipButton className="icon-button primary" aria-label={e.range.scope === 'selection' ? 'Replace selection' : 'Use in draft'} tooltip={e.range.scope === 'selection' ? 'Replace selection in draft' : 'Use in draft'} disabled={pending || !!storageError || changing} onClick={() => run(async () => {
               pending = true; notify();
               try { const result = await window.stomylos.command('genieApply', { episodeId: e.id, candidateId: turn.id,
                 revision: nextDraftRevision(), operationId: crypto.randomUUID() }); caret.current = result.range; acceptSavedDraft(sessionId, result.text, result.revision); }
               finally { pending = false; notify(); }
-            })}><Icon name="apply" /></button>}
+            })}><Icon name="apply" /></TooltipButton>}
           </div>}
         </div>)}</div>
         <div role="status" className="genie-status">{boot && !e?.open ? 'Saving your draft…' : saving ? 'Saving replacement…' : e?.phase === 'waiting' ? 'Genie is thinking…' : e?.phase === 'ready' && !current?.reply?.reply && !e.candidateId ? 'No replacement suggested.' : ''}</div>
@@ -169,18 +170,18 @@ export function GenieDock({ sessionId, textarea, storageError }: { sessionId: st
             run(() => window.stomylos.command('genieDraft', { episodeId: e.id, text, revision }));
           }} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
           onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.repeat && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); run(submit); } }} />
-        <button className="primary icon-button" aria-label="Ask Genie" title="Ask Genie · Enter" disabled={!e?.followup.trim() || e.phase !== 'ready' || pending || changing || !!storageError} onClick={() => run(submit)}><Icon name="send" /></button></div>
+        <TooltipButton className="primary icon-button" aria-label="Ask Genie" tooltip="Ask Genie · Enter" disabled={!e?.followup.trim() || e.phase !== 'ready' || pending || changing || !!storageError} onClick={() => run(submit)}><Icon name="send" /></TooltipButton></div>
       </section></div>
     </Dialog.Content></Dialog.Root>;
 }
 export function UndoGenie({ sessionId, textarea }: { sessionId: string; textarea: RefObject<HTMLTextAreaElement | null> }) {
   const { undo } = useGenie(), [error, setError] = useState<string | null>(null), draft = currentDraft(sessionId);
   if (!undo || undo.sessionId !== sessionId || draft.text !== undo.text || draft.revision !== undo.revision) return null;
-  return <div className="genie-undo"><span className="sr-only" role="status">Suggestion added to your draft.</span><button className="icon-button" aria-label="Undo replacement" title="Undo replacement" disabled={pending} onClick={() => {
+  return <div className="genie-undo"><span className="sr-only" role="status">Suggestion added to your draft.</span><TooltipButton className="icon-button" aria-label="Undo replacement" tooltip="Undo replacement" disabled={pending} onClick={() => {
     pending = true; notify(); setError(null);
     void window.stomylos.command('genieUndo', { undoId: undo.id, revision: nextDraftRevision(), operationId: crypto.randomUUID() }).then(result => {
       acceptSavedDraft(sessionId, result.text, result.revision); const node = textarea.current;
       node?.focus(); node?.setSelectionRange(displayOffset(result.text, result.range.start), displayOffset(result.text, result.range.end), result.range.direction);
     }).catch(cause => setError(genieError(cause))).finally(() => { pending = false; notify(); });
-  }}><Icon name="undo" /></button>{error && <span role="alert">{error}</span>}</div>;
+  }}><Icon name="undo" /></TooltipButton>{error && <span role="alert">{error}</span>}</div>;
 }

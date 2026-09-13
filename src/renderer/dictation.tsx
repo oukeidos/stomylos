@@ -1,3 +1,4 @@
+import { TooltipButton } from './tooltip-button';
 import { Icon } from './icons';
 import { useSyncExternalStore, useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -307,9 +308,9 @@ export function DictationNavigationDialog() {
 }
 export function RecordButton({ sessionId, disabled }: { sessionId: string; disabled: boolean }) {
   const value = useDictation();
-  return <button className="icon-button record-button" aria-label="Record" aria-keyshortcuts="F8" title="Record voice input · F8" disabled={disabled || value.locked} onClick={() => void act(() => start(sessionId))}>
+  return <TooltipButton className="icon-button record-button" aria-label="Record" aria-keyshortcuts="F8" tooltip="Record voice input · F8" disabled={disabled || value.locked} onClick={() => void act(() => start(sessionId))}>
     <Icon name="mic" />
-  </button>;
+  </TooltipButton>;
 }
 export function DictationPanel({ sessionId, disabled = false }: { sessionId: string; disabled?: boolean }) {
   const value = useDictation(); const [copied, setCopied] = useState('');

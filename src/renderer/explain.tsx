@@ -1,3 +1,4 @@
+import { TooltipButton } from './tooltip-button';
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { ExplainRecord, ExplainTarget } from '../shared/explain';
@@ -37,8 +38,8 @@ async function open(target: ExplainTarget | { sessionId: string; messageId: stri
 export function ExplainHistory({ message }: { message: Message }) {
   useExplain(); const genie = useGenie();
   const found = [...records.values()].some(r => r.message_id === message.id);
-  return found ? <button className="icon-button" aria-label="Past explanations" title="Past explanations" disabled={genie.locked}
-    onClick={e => void open({ sessionId: message.session_id, messageId: message.id }, e.currentTarget)}><Icon name="explain" /></button> : null;
+  return found ? <TooltipButton className="icon-button" aria-label="Past explanations" tooltip="Past explanations" disabled={genie.locked}
+    onClick={e => void open({ sessionId: message.session_id, messageId: message.id }, e.currentTarget)}><Icon name="explain" /></TooltipButton> : null;
 }
 export function Explainable({ message, children }: { message: Message; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null), button = useRef<HTMLButtonElement>(null);
@@ -69,9 +70,9 @@ export function Explainable({ message, children }: { message: Message; children:
       const direction = ['ArrowLeft', 'ArrowUp', 'Home'].includes(event.key) ? 'backward' : 'forward';
       const unit = ['Home','End'].includes(event.key) ? 'lineboundary' : ['ArrowUp','ArrowDown'].includes(event.key) ? 'line' : event.ctrlKey || event.metaKey ? 'word' : 'character';
       (sel as Selection & { modify(a: string, b: string, c: string): void }).modify(event.shiftKey ? 'extend' : 'move', direction, unit);
-    }}>{children}{selection && enabled && <button ref={button} className="icon-button explain-selection" aria-label="Explain" title="Explain · Alt+E"
+    }}>{children}{selection && enabled && <TooltipButton ref={button} className="icon-button explain-selection" aria-label="Explain" tooltip="Explain · Alt+E"
     style={{ left: Math.max(8, Math.min(window.innerWidth - 44, selection.rect.right + 4)), top: Math.max(8, Math.min(window.innerHeight - 44, selection.rect.bottom + 4)) }}
-    onPointerDown={event => event.preventDefault()} onClick={event => activate(ref.current)}><Icon name="explain" /></button>}</div>;
+    onPointerDown={event => event.preventDefault()} onClick={event => activate(ref.current)}><Icon name="explain" /></TooltipButton>}</div>;
 }
 export function ExplainDialog({ sessionId }: { sessionId: string | null }) {
   useExplain(); const fallback = useRef<HTMLButtonElement>(null);
@@ -91,7 +92,7 @@ export function ExplainDialog({ sessionId }: { sessionId: string | null }) {
   };
   return <Dialog.Root open={!!opened} onOpenChange={value => { if (!value) close(); }}><Dialog.Portal><Dialog.Overlay className="modal-overlay" />
     <Dialog.Content className="dialog explain-dialog" aria-describedby="explain-description" onCloseAutoFocus={e => e.preventDefault()}>
-      <div className="dialog-heading"><Dialog.Title>Explain</Dialog.Title><button ref={fallback} className="icon-button" aria-label="Close explanation" title="Close" onClick={close}><Icon name="close" /></button></div>
+      <div className="dialog-heading"><Dialog.Title>Explain</Dialog.Title><TooltipButton ref={fallback} className="icon-button" aria-label="Close explanation" tooltip="Close" onClick={close}><Icon name="close" /></TooltipButton></div>
       <Dialog.Description id="explain-description" className="sr-only">The selected text in easy English.</Dialog.Description>
       {record || opened?.selected ? <>
         {choices.length > 1 && <button className="explain-back" onClick={() => { if (opened) { opened.id = null; opened.selected = ''; notify(); } }}>Past explanations</button>}
@@ -99,8 +100,8 @@ export function ExplainDialog({ sessionId }: { sessionId: string | null }) {
         {record?.content && <div className="explain-meaning">{record.content}</div>}
         {(busy || record?.state === 'pending') && <p role="status" className="note">Thinking…</p>}
         {(record?.state === 'failed' || record?.state === 'interrupted' || record?.state === 'unsaved') && <div className="explain-error"><p role="alert">{record.state === 'unsaved' ? "Couldn't save this explanation." : record.state === 'interrupted' ? 'This explanation was interrupted.' : 'Could not get the explanation.'}</p>
-          <button disabled={busy} className="icon-button" aria-label={record.state === 'unsaved' ? 'Retry saving explanation' : 'Retry explanation'} title={record.state === 'unsaved' ? 'Retry saving' : 'Try again'} onClick={() => void retry()}><Icon name="refresh" /></button></div>}
+          <TooltipButton disabled={busy} className="icon-button" aria-label={record.state === 'unsaved' ? 'Retry saving explanation' : 'Retry explanation'} tooltip={record.state === 'unsaved' ? 'Retry saving' : 'Try again'} onClick={() => void retry()}><Icon name="refresh" /></TooltipButton></div>}
       </> : <div className="explain-list">{busy ? <p role="status">Loading…</p> : choices.length ? choices.map(r => <button key={r.id} onClick={() => { if (opened) { opened.id = r.id; notify(); } }}><span>{r.source.selected_text}</span>{r.state === 'pending' && <small>Thinking…</small>}</button>) : <p>No explanations yet.</p>}</div>}
-      {error && <div className="explain-error"><p role="alert" className="draft-error">{error}</p>{!record && <button className="icon-button" aria-label="Retry explanation" title="Try again" disabled={busy} onClick={() => { if (opened) void open(opened.target, opened.origin); }}><Icon name="refresh" /></button>}</div>}
+      {error && <div className="explain-error"><p role="alert" className="draft-error">{error}</p>{!record && <TooltipButton className="icon-button" aria-label="Retry explanation" tooltip="Try again" disabled={busy} onClick={() => { if (opened) void open(opened.target, opened.origin); }}><Icon name="refresh" /></TooltipButton>}</div>}
     </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
