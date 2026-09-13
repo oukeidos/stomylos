@@ -606,7 +606,10 @@ export class Coordinator {
       finish: (attemptId, content, metadata, failure, interrupted) => this.write('searchFinish', attemptId, content, metadata, failure, interrupted)
     }, this.gateway, signal);
     if (signal.aborted) return;
-    const associative = kind === 'send' && learner ? await this.recallFromInput(id, learner.id, signal) : null;
+    // Recovery before request creation has no frozen recall to reuse.
+    const hasReplyRequest = learner && view.requests.some(request => request.role === 'chat' && request.source_sequence === learner.sequence);
+    const needsRecall = kind === 'send' || (kind === 'retry' && !hasReplyRequest);
+    const associative = needsRecall && learner ? await this.recallFromInput(id, learner.id, signal) : null;
     let request = await this.write('prepareChat', id, randomUUID(), kind === 'retry_selection' ? 'different_model' : kind, associative);
     let text = ''; let checkpoint = 0; let pendingCheckpoint: Promise<unknown> = Promise.resolve(); let searchEvidence: Json = {};
     let firstAnswerAt: number | null = null;
@@ -740,19 +743,27 @@ export class Coordinator {
   private enqueueMemory(sessionId: string) {
     this.memoryWake++; this.pumpMemory();
   }
-  private async recallFromInput(sessionId:string,messageId:string,signal:AbortSignal) {
-    if(!this.cold)return null;
-    const source=await this.db.call('associativeInput',sessionId,messageId);
-    if(!source||signal.aborted)return null;
-    const bounded=AbortSignal.any([signal,AbortSignal.timeout(1500)]);
-    let stop!:()=>void;
-    const expired=new Promise<null>(resolve=>{stop=()=>resolve(null);bounded.addEventListener('abort',stop,{once:true});});
+  private async recallFromInput(sessionId: string, messageId: string, signal: AbortSignal) {
+    if (!this.cold || signal.aborted) return null;
+    const bounded = AbortSignal.any([signal, AbortSignal.timeout(1500)]);
+    let stop!: () => void;
+    const expired = new Promise<null>(resolve => {
+      stop = () => resolve(null);
+      bounded.addEventListener('abort', stop, { once: true });
+    });
     try {
-      const vector=await Promise.race([this.cold.query(source.text,bounded),expired]);
-      if(!vector||bounded.aborted)return null;
-      return await this.db.call('associativeFromInput',sessionId,messageId,vector);
-    } catch {return null;}
-    finally{bounded.removeEventListener('abort',stop);}
+      const source = await Promise.race([this.db.call('associativeInput', sessionId, messageId), expired]);
+      if (!source || bounded.aborted) return null;
+      const vector = await Promise.race([this.cold.query(source.text, bounded), expired]);
+      if (!vector || bounded.aborted) return null;
+      return await Promise.race([this.db.call('associativeFromInput', sessionId, messageId, vector), expired]);
+    } catch (error) {
+      // Recall is optional, but failed DB admission must remain diagnosable.
+      console.warn('Associative recall unavailable:', failureCode(error));
+      return null;
+    } finally {
+      bounded.removeEventListener('abort', stop);
+    }
   }
   private async memoryChanged(sessionId: string) {
     const session = await this.db.call('session', sessionId);
