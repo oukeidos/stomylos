@@ -53,7 +53,7 @@ export interface RenewalView {
   id: string; state: RenewalJob['state']; model: string; created_at: string; accepted_count: number;
   attempts: Omit<RenewalAttempt, 'response_content'>[];
 }
-export interface SessionView { replyContext?: ReplyContextView; memoryPolicy?: import('./memory-control').MemoryPolicy; endProcessing?: Json | null; partner: PartnerView; bookmarked: boolean; canBookmark: boolean; session: Session; messages: Message[]; requests: RequestRecord[]; units: GrammarUnit[]; renewal: RenewalView | null; intentions?: import('./intention').IntentionView; outdatedOpening?: boolean; memory: import('./memory').MemoryView; search?: import('./search').SearchView | null; searches?: import('./search').SearchView[] }
+export interface SessionView { opener?: { generated: boolean; status: string; failure: string | null }; replyContext?: ReplyContextView; memoryPolicy?: import('./memory-control').MemoryPolicy; endProcessing?: Json | null; partner: PartnerView; bookmarked: boolean; canBookmark: boolean; session: Session; messages: Message[]; requests: RequestRecord[]; units: GrammarUnit[]; renewal: RenewalView | null; intentions?: import('./intention').IntentionView; outdatedOpening?: boolean; memory: import('./memory').MemoryView; search?: import('./search').SearchView | null; searches?: import('./search').SearchView[] }
 export type SessionSummary = Pick<Session, 'id' | 'state' | 'starter_text' | 'created_at' | 'analysis_state'> & { title: string; lastUserInput: string | null; bookmarked: boolean; canBookmark: boolean };
 export type HistoryFilter = 'all' | 'bookmarked';
 export interface SessionPage { sessions: SessionSummary[]; hasMore: boolean; offset: number; filter: HistoryFilter }
@@ -124,6 +124,7 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   saveDraft: { sessionId: string; text: string; revision: number; dictationIds?: string[] };
   replaceStarter: { sessionId: string; operationId: string; expectedQuestionId: string; expectedRevision?: number };
   setReplyContext: { sessionId: string; operationId: string; expectedRevision: number; mode: ReplyMode };
+  generateOpener: {sessionId: string; operationId: string; expectedRevision: number};
   setOpening: { sessionId: string; operationId: string; expectedRevision: number; kind: OpeningKind };
   changePartner: { sessionId: string; character: string | null; operationId: string; expectedRevision: number };
   useSelectedPartner: { sessionId: string };
@@ -177,6 +178,7 @@ export interface CommandResults extends ExplainCommandResults, GenieCommandResul
   changePartner: void; useSelectedPartner: void; retryPartnerSelection: void;
   saveDraft: { revision: number }; replaceStarter: void; selectPartner: void; searchMode: void;
   setReplyContext: ReplyContextView;
+  generateOpener: void;
   setOpening: { revision: number };
   sendMessage: void; retryReply: void; endSession: void; newSession: string;
   setSessionBookmark: { sessionId: string; bookmarked: boolean; revision: number };

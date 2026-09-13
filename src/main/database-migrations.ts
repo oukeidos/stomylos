@@ -1,3 +1,4 @@
+import step36 from './migrations/036.sql?raw';
 import step32 from './migrations/032.sql?raw';
 import step33 from './migrations/033.sql?raw';
 import step34 from './migrations/034.sql?raw';
@@ -47,7 +48,8 @@ import { AppFailure } from './errors';
 
 // v0.1.0 ships schema 13. Keep published source schemas and steps immutable.
 export const minimumPublicSchema = 13;
-export const currentSchema = 35;
+export const currentSchema = 36;
+const source35 = current.replace(/\n-- Public schema 35 -> 36:[\s\S]*$/, '');
 const source33 = current.replace(/\n-- Public schema 33 -> 34:[\s\S]*$/, '');
 // Schema 32 is the exact pre-associative source definition. Keep this removal
 // bounded to the immutable adjacent 32->33 tail; later schema additions append
@@ -77,11 +79,11 @@ function dataFingerprint(db: Database.Database): string {
   }
   return digest.digest('hex');
 }
-const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }, { from: 21, to: 22, sql: step22 }, { from: 22, to: 23, sql: step23 }, { from: 23, to: 24, sql: step24 }, { from: 24, to: 25, sql: step25 }, { from: 25, to: 26, sql: step26 }, { from: 26, to: 27, sql: step27 }, { from: 27, to: 28, sql: step28 }, { from: 28, to: 29, sql: step29 }, { from: 29, to: 30, sql: step30 }, { from: 30, to: 31, sql: step31 }, { from: 31, to: 32, sql: step32 }, { from: 32, to: 33, sql: step33 }, { from: 33, to: 34, sql: step34 }, { from: 34, to: 35, sql: step35 }];
+const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }, { from: 21, to: 22, sql: step22 }, { from: 22, to: 23, sql: step23 }, { from: 23, to: 24, sql: step24 }, { from: 24, to: 25, sql: step25 }, { from: 25, to: 26, sql: step26 }, { from: 26, to: 27, sql: step27 }, { from: 27, to: 28, sql: step28 }, { from: 28, to: 29, sql: step29 }, { from: 29, to: 30, sql: step30 }, { from: 30, to: 31, sql: step31 }, { from: 31, to: 32, sql: step32 }, { from: 32, to: 33, sql: step33 }, { from: 33, to: 34, sql: step34 }, { from: 34, to: 35, sql: step35 }, { from: 35, to: 36, sql: step36 }];
 export function inspectMigration(db: Database.Database): number {
   const version = Number(db.pragma('user_version', { simple: true }));
   if (version < minimumPublicSchema || version > currentSchema) throw new AppFailure('unsupported_schema_version');
-  validateSchema(db, version === 13 ? source13 : version < 19 ? source18 : version === 19 ? source19 : version < 22 ? source21 : version < 24 ? source23 : version < 26 ? source25 : version === 26 ? source26 : version === 27 ? source27 : version === 28 ? source28 : version === 29 ? source29 : version === 30 ? source30 : version === 31 ? source31 : version === 32 ? source32 : version === 33 ? source33 : current);
+  validateSchema(db, version === 13 ? source13 : version < 19 ? source18 : version === 19 ? source19 : version < 22 ? source21 : version < 24 ? source23 : version < 26 ? source25 : version === 26 ? source26 : version === 27 ? source27 : version === 28 ? source28 : version === 29 ? source29 : version === 30 ? source30 : version === 31 ? source31 : version === 32 ? source32 : version === 33 ? source33 : version < 36 ? source35 : current);
   integrity(db);
   return version;
 }

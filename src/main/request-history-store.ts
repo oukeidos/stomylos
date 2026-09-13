@@ -46,6 +46,7 @@ export function requestHistory(db: Database.Database, sessionId: string): Reques
   }
   for (const row of rows('SELECT a.*,e.request_body,e.message_id,LAG(a.id) OVER (PARTITION BY a.explanation_id ORDER BY a.rowid) parent_id FROM explanation_attempts a JOIN explanations e ON e.id=a.explanation_id WHERE e.session_id=?'))
     add(row, 'Explain', parse(row.request_body));
+  for (const row of rows('SELECT a.*,o.body,o.body_hash FROM opener_attempts a JOIN conversation_openers o ON o.session_id=a.session_id WHERE a.session_id=?')) add(row, 'Conversation opener', parse(row.body));
   for (const row of rows('SELECT * FROM genie_request_attempts WHERE session_id=?')) add(row, 'Genie', parse(row.settings));
   return result;
 }

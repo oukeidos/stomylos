@@ -1,3 +1,4 @@
+import { openerBody, openerVersion } from './opener';
 import { requestHistory } from './request-history-store';
 import { requestSettings } from '../shared/request-history';
 import { replyContext, replyMode, retainReplyContext } from './reply-context';
@@ -143,9 +144,112 @@ export class Store {
       this.search.recover();
       this.partners.recover();
       this.explanations.recover();
+      this.run("UPDATE opener_attempts SET status='interrupted',failure='interrupted_unknown_outcome',finished_at=? WHERE status IN ('queued','dispatched')", now());
+      for (const a of this.all<{id:string}>("SELECT id FROM opener_attempts WHERE status='received'")) this.acceptOpener(a.id);
       this.run("UPDATE genie_request_attempts SET status='interrupted',failure='interrupted_unknown_outcome',finished_at=? WHERE status='dispatched'", now());
     });
   }
+  openerView(id: string) {
+    const row = this.all<Json>('SELECT * FROM conversation_openers WHERE session_id=?', id)[0];
+    if (!row) return undefined;
+    const attempt = this.all<Json>('SELECT id,status,failure FROM opener_attempts WHERE session_id=? ORDER BY rowid DESC LIMIT 1', id)[0];
+    return { generated: !!row.selected_attempt_id, status: attempt?.status ?? 'empty', failure: attempt?.failure ?? null };
+  }
+  private assertOpenerDraft(id: string) {
+    const s = this.session(id);
+    if (s.state !== 'draft' || JSON.parse(s.chat_config).opener_version !== openerVersion || this.requests(id).length) throw new AppFailure('opening_is_frozen');
+    return s;
+  }
+  private assertOpenerIdle(id: string) {
+    if (this.all("SELECT id FROM opener_attempts WHERE session_id=? AND status IN ('queued','dispatched','received')", id).length) throw new AppFailure('reply_in_progress');
+  }
+  prepareOpener(id: string, operationId: string, revision: number): Json | null {
+    return this.transaction(() => {
+      const s = this.assertOpenerDraft(id);
+      const prior = this.all<Json>('SELECT * FROM opener_attempts WHERE id=?', operationId)[0];
+      if (prior) { if (prior.session_id !== id) throw new AppFailure('opening_operation_conflict'); return null; }
+      const row = this.all<Json>('SELECT * FROM conversation_openers WHERE session_id=?', id)[0];
+      if (!row || row.selected_attempt_id) throw new AppFailure('opener_already_generated');
+      this.assertOpenerIdle(id);
+      if (s.opening_revision !== revision) throw new AppFailure('opening_changed');
+      if (row.body && hash(row.body) !== row.body_hash) throw new AppFailure('opener_source_changed');
+      let body = row.body;
+      if (!body) {
+        const choice = this.starter.select(undefined, id), question = { id: choice.question.id, version: choice.question.version, text: choice.question.text };
+        body = JSON.stringify(openerBody(question.text));
+        this.run('UPDATE conversation_openers SET question=?,body=?,body_hash=? WHERE session_id=?', JSON.stringify(question), body, hash(body), id);
+        this.starter.event(this.event(id, 'presented', question), { slot: choice.question.slot, fallback: choice.fallback, relaxed: choice.relaxed });
+      }
+      const parent = this.all<{id:string}>('SELECT id FROM opener_attempts WHERE session_id=? ORDER BY rowid DESC LIMIT 1', id)[0]?.id ?? null;
+      this.run("INSERT INTO opener_attempts(id,session_id,parent_id,status,created_at) VALUES(?,?,?,'queued',?)", operationId, id, parent, now());
+      this.run('UPDATE sessions SET opening_revision=opening_revision+1 WHERE id=?', id);
+      return { id: operationId, body: JSON.parse(body) };
+    });
+  }
+  dispatchOpener(attemptId: string) {
+    return this.transaction(() => {
+      const a = this.all<Json>('SELECT * FROM opener_attempts WHERE id=?', attemptId)[0];
+      if (!a || a.status !== 'queued') throw new AppFailure('opener_not_dispatchable');
+      this.assertOpenerDraft(a.session_id);
+      this.run("UPDATE opener_attempts SET status='dispatched',dispatched_at=? WHERE id=?", now(), attemptId);
+    });
+  }
+  receiveOpener(attemptId: string, content: string, metadata: Json) {
+    this.transaction(() => {
+      const a = this.all<Json>('SELECT * FROM opener_attempts WHERE id=?', attemptId)[0];
+      if (a && ['received','succeeded'].includes(a.status) && a.response_content === content) return;
+      if (!a || a.status !== 'dispatched' || !content.trim()) throw new AppFailure('opener_stale');
+      this.assertOpenerDraft(a.session_id);
+      this.run("UPDATE opener_attempts SET status='received',response_content=?,metadata=? WHERE id=?", content, JSON.stringify(metadata), attemptId);
+    });
+  }
+  acceptOpener(attemptId: string) {
+    this.transaction(() => {
+      const a = this.all<Json>('SELECT * FROM opener_attempts WHERE id=?', attemptId)[0];
+      if (a?.status === 'succeeded') return;
+      if (!a || a.status !== 'received') throw new AppFailure('opener_stale');
+      const s = this.assertOpenerDraft(a.session_id), row = this.all<Json>('SELECT * FROM conversation_openers WHERE session_id=?', s.id)[0];
+      if (row.selected_attempt_id) throw new AppFailure('opener_already_generated');
+      const question = JSON.parse(row.question), saved = JSON.parse(s.chat_config);
+      saved.opening = { version: openingVersion, kind: 'starter' };
+      this.run("UPDATE sessions SET opening_kind='starter',starter_id=?,starter_version=?,starter_text=?,chat_config=?,opening_revision=opening_revision+1 WHERE id=?",
+        question.id, question.version, a.response_content, JSON.stringify(saved), s.id);
+      this.insertStarter(s.id, { ...question, text: a.response_content }, row.message_id);
+      this.run("UPDATE opener_attempts SET status='succeeded',finished_at=? WHERE id=?", now(), attemptId);
+      this.run('UPDATE conversation_openers SET selected_attempt_id=? WHERE session_id=?', attemptId, s.id);
+    });
+  }
+  failOpener(attemptId: string, failure: string, metadata: Json) {
+    this.run("UPDATE opener_attempts SET status='failed',failure=?,metadata=?,finished_at=? WHERE id=? AND status IN ('queued','dispatched')", failure, JSON.stringify(metadata), now(), attemptId);
+  }
+  private setOpenerVisibility(id: string, operationId: string, revision: number, kind: OpeningKind) {
+    const s = this.assertOpenerDraft(id), receipt = s.last_opening_operation ? JSON.parse(s.last_opening_operation) : null;
+    if (receipt?.operationId === operationId) {
+      if (receipt.expectedRevision !== revision || receipt.kind !== kind) throw new AppFailure('opening_operation_conflict');
+      if (receipt.revision !== s.opening_revision) throw new AppFailure('opening_changed');
+      return { revision: receipt.revision };
+    }
+    this.assertOpenerIdle(id);
+    if (s.opening_revision !== revision) throw new AppFailure('opening_changed');
+    const row = this.all<Json>('SELECT * FROM conversation_openers WHERE session_id=?', id)[0];
+    if (!row?.selected_attempt_id) {
+      if (kind === 'user' && s.opening_kind === 'user') return {revision};
+      throw new AppFailure('opener_not_ready');
+    }
+    const a = this.all<Json>("SELECT * FROM opener_attempts WHERE id=? AND status='succeeded'", row.selected_attempt_id)[0];
+    const source = JSON.parse(row.question), saved = JSON.parse(s.chat_config);
+    if (kind !== s.opening_kind) {
+      if (kind === 'user') this.run("DELETE FROM messages WHERE session_id=? AND origin='starter'", id);
+      else this.insertStarter(id, { ...source, text: a.response_content }, row.message_id);
+    }
+    saved.opening = { version: openingVersion, kind };
+    const next = revision + 1;
+    this.run('UPDATE sessions SET opening_kind=?,starter_id=?,starter_version=?,starter_text=?,chat_config=?,opening_revision=?,last_opening_operation=? WHERE id=?',
+      kind, kind === 'starter' ? source.id : null, kind === 'starter' ? source.version : null, kind === 'starter' ? a.response_content : null,
+      JSON.stringify(saved), next, JSON.stringify({operationId,expectedRevision:revision,kind,revision:next}), id);
+    validateOpeningSource(this.session(id), this.messages(id)); return {revision:next};
+  }
+
   requestHistory(id: string) { this.session(id); return requestHistory(this.db, id); }
   genieRequestStart(id: string, sessionId: string, parentId: string | null, settings: Json) {
     this.session(sessionId);
@@ -250,12 +354,12 @@ export class Store {
   units(id: string): GrammarUnit[] {
     return this.all('SELECT u.* FROM grammar_units u JOIN sessions s ON s.selected_analysis_id=u.analysis_attempt_id WHERE s.id=? ORDER BY u.ordinal', id);
   }
-  view(id: string): SessionView { const session = this.session(id); return { session, replyContext: this.replyContextView(id), memoryPolicy: memoryPolicy(this.db,id), endProcessing: this.endStatus(id), partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: undefined, outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && this.starter.outdated(session.starter_id), memory: this.memoryView(session), search: this.search.view(id), searches: this.search.history(id) }; }
+  view(id: string): SessionView { const session = this.session(id); return { session, opener: this.openerView(id), replyContext: this.replyContextView(id), memoryPolicy: memoryPolicy(this.db,id), endProcessing: this.endStatus(id), partner: this.partners.view(session, this.messages(id), this.requests(id)), bookmarked: !!this.all('SELECT 1 FROM session_bookmarks WHERE session_id=?', id).length, canBookmark: !!this.all("SELECT 1 FROM messages WHERE session_id=? AND origin='learner' LIMIT 1", id).length, messages: this.messages(id), requests: this.requests(id), units: this.units(id), renewal: this.starter.view(id), intentions: undefined, outdatedOpening: session.state === 'draft' && session.opening_kind === 'starter' && !this.openerView(id) && this.starter.outdated(session.starter_id), memory: this.memoryView(session), search: this.search.view(id), searches: this.search.history(id) }; }
   searchMode(id: string, mode: SearchMode) { this.transaction(() => this.search.setMode(this.session(id), this.messages(id), mode)); }
   searchView(id: string) { this.session(id); return this.search.view(id); }
   searchPrepare(id: string) { return this.search.prepare(id); }
   prepareProvider(owner: ProviderOwner, id: string, body: Json, identity: Json | null): ProviderRequest {
-    const tables = { model: 'model_requests', search: 'search_router_attempts', pattern: 'pattern_report_attempts',
+    const tables = { opener: 'opener_attempts', model: 'model_requests', search: 'search_router_attempts', pattern: 'pattern_report_attempts',
       memory_add: 'memory_add_attempts', memory: 'memory_attempts', cleanup: 'memory_cleanup_attempts', explain: 'explanation_attempts' } as const;
     if (!Object.hasOwn(tables, owner)) throw new AppFailure('provider_owner_invalid');
     const table = tables[owner], state = owner === 'explain' ? 'state' : 'status';
@@ -283,16 +387,11 @@ export class Store {
       const active = this.all<Session>("SELECT * FROM sessions WHERE state!='ended'")[0];
       if (active) return active;
       if (this.endBlocker()) throw new AppFailure('end_processing_pending');
-      const kind = this.all<{ kind: OpeningKind }>('SELECT kind FROM opening_preferences WHERE id=1')[0]?.kind;
-      if (kind !== 'starter' && kind !== 'user') throw new AppFailure('unsupported_opening');
-      const choice = kind === 'starter' ? this.starter.select() : null;
-      const question = choice?.question; const id = randomUUID();
+      const kind: OpeningKind = 'user';
+      const id = randomUUID();
       this.run("INSERT INTO sessions(id,state,starter_id,starter_version,starter_text,created_at,chat_config,opening_kind,search_mode) VALUES(?,'draft',?,?,?,?,?,?,?)",
-        id, question?.id ?? null, question?.version ?? null, question?.text ?? null, now(), JSON.stringify({ ...conversationSnapshot(kind), reply_context: replyContext(this.all<{mode: ReplyMode}>('SELECT mode FROM reply_preferences WHERE id=1')[0].mode) }), kind, this.all<{mode: SearchMode}>('SELECT mode FROM search_preferences WHERE id=1')[0].mode);
-      if (question && choice) {
-        this.insertStarter(id, question);
-        this.starter.event(this.event(id, 'presented', question), { slot: question.slot, fallback: choice.fallback, relaxed: choice.relaxed });
-      }
+        id, null, null, null, now(), JSON.stringify({ ...conversationSnapshot(kind), opener_version: openerVersion, reply_context: replyContext(this.all<{mode: ReplyMode}>('SELECT mode FROM reply_preferences WHERE id=1')[0].mode) }), kind, this.all<{mode: SearchMode}>('SELECT mode FROM search_preferences WHERE id=1')[0].mode);
+      this.run('INSERT INTO conversation_openers(session_id,message_id) VALUES(?,?)', id, randomUUID());
       return this.session(id);
     });
   }
@@ -326,6 +425,8 @@ export class Store {
   setOpening(id: string, operationId: string, expectedRevision: number, kind: OpeningKind): { revision: number } {
     return this.transaction(() => {
       const current = this.session(id); const saved = JSON.parse(current.chat_config);
+      if (!operationId || !['starter', 'user'].includes(kind) || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new AppFailure('unsupported_opening');
+      if (saved.opener_version === openerVersion) return this.setOpenerVisibility(id, operationId, expectedRevision, kind);
       if (!saved.opening || !['starter', 'user'].includes(kind) || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new AppFailure('unsupported_opening');
       const receipt = current.last_opening_operation ? JSON.parse(current.last_opening_operation) : null;
       if (receipt?.operationId === operationId) {
@@ -364,6 +465,7 @@ export class Store {
     });
   }
   replaceQuestion(id: string, operationId: string, expectedQuestionId: string, expectedRevision?: number) {
+    if (this.openerView(id)) throw new AppFailure('opener_already_generated');
     this.transaction(() => {
       const previous = this.starter.previousSkip(operationId);
       if (previous) {
@@ -398,10 +500,11 @@ export class Store {
         if (!readMessageTime(this.db, messageId)) throw new AppFailure('message_time_missing');
         return previous;
       }
+      this.assertOpenerIdle(id);
       const current = this.session(id); const messages = this.messages(id);
       const saved = JSON.parse(current.chat_config); replyMode(saved);
       if (current.state === 'draft' && current.reply_context_revision !== (expectedReplyContextRevision ?? 0)) throw new AppFailure('reply_context_changed');
-      if (current.state === 'draft' && current.opening_kind === 'starter' && this.starter.outdated(current.starter_id)) throw new AppFailure('starter_outdated');
+      if (current.state === 'draft' && current.opening_kind === 'starter' && !this.openerView(id) && this.starter.outdated(current.starter_id)) throw new AppFailure('starter_outdated');
       if (current.state === 'ended' || !text.trim() || text === '/end') throw new AppFailure('invalid_submission');
       validateOpeningSource(current, messages);
       if (messages.length && (messages.at(-1)?.role === 'user' || messages.at(-1)?.delivery !== 'complete')) throw new AppFailure('reply_unresolved');
@@ -415,7 +518,9 @@ export class Store {
       this.additions.freeze(message, messages.at(-1), sent);
       if (current.state === 'draft' && current.opening_kind === 'starter') {
         const consumed = this.starter.consume(current.starter_id!, 'answered');
-        this.starter.event(this.event(id, 'answered', { id: current.starter_id!, version: current.starter_version!, text: current.starter_text! }), consumed);
+        const openerSource = this.all<{question:string}>('SELECT question FROM conversation_openers WHERE session_id=?', id)[0];
+        const source = openerSource ? JSON.parse(openerSource.question) : { id: current.starter_id!, version: current.starter_version!, text: current.starter_text! };
+        this.starter.event(this.event(id, 'answered', source), consumed);
       }
       this.run("UPDATE sessions SET state='active',draft='',parked_starter=NULL WHERE id=?", id);
       this.starter.refill();

@@ -23,13 +23,24 @@ function change(id: string, kind: OpeningKind, operation = randomUUID()) {
   return store.setOpening(id, operation, store.session(id).opening_revision, kind);
 }
 function newSession() {
+  raw = (store as any).db;
   // Complete unrelated end stages in this opening-only fixture before moving on.
   const blocker = store.endBlocker();
   if (blocker) {
     raw.prepare("UPDATE sessions SET analysis_state='skipped' WHERE id=?").run(blocker);
     if (store.endBlocker()) store.cancelEnd(blocker);
   }
-  return store.createSession();
+  const session = store.createSession(), saved = JSON.parse(session.chat_config);
+  // These fixtures represent pre-opener drafts, whose original controls remain supported.
+  if (saved.opener_version) {
+    delete saved.opener_version;
+    raw.prepare('DELETE FROM conversation_openers WHERE session_id=?').run(session.id);
+    raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(saved),session.id);
+    const kind = raw.prepare('SELECT kind FROM opening_preferences').pluck().get() as OpeningKind;
+    change(session.id,kind);
+    raw.prepare('UPDATE sessions SET opening_revision=0,last_opening_operation=NULL WHERE id=?').run(session.id);
+  }
+  return store.session(session.id);
 }
 function direct() { const session = newSession(); change(session.id, 'user'); return store.session(session.id); }
 function counts(id: string) { return raw.prepare('SELECT kind,COUNT(*) n FROM starter_events WHERE session_id=? GROUP BY kind ORDER BY kind').all(id); }

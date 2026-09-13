@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add an optional “Give me something” opener powered by Gemini and Lighter replies, with one saved result per new conversation, reusable show/hide controls and no memory input.
 - Rebalance memory to 3,000 Recent characters, four Older recollections within 2,000 characters and five associative notes within 1,500 characters, preserving overflow in Older and existing conversation snapshots during automatic upgrade.
 - Blend the Memory editing-lock notice into Settings with a neutral status row and a quiet chat-return action.
 - Simplify Voice, Usage & budget and Connection & data with expandable details, visible Grok API attribution and the existing sample playback icon.

@@ -419,19 +419,22 @@ function App() {
     finally { setDeleting(false); }
   };
   const canChangeOpening = view?.session.state === 'draft' && JSON.parse(view.session.chat_config).opening?.version === 'stomylos_opening_v1';
-  const openingAction = canChangeOpening && <TooltipButton className="icon-button opening-action" aria-label={view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} tooltip={view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} aria-pressed={view?.session.opening_kind === 'starter'}
-    disabled={openingBusy || composing || dictation.locked || !!app.activity.storageError || app.activity.closing}
+  const openerBusy = !!view?.opener && app.activity.sessionId === view.session.id && app.activity.phase !== 'idle';
+  const openerLabel = openerBusy ? 'Thinking…' : view?.opener?.generated ? (view.session.opening_kind === 'starter' ? 'Hide opener' : 'Show opener') : 'Give me something';
+  const openingAction = canChangeOpening && <TooltipButton className="icon-button opening-action" aria-label={view?.opener ? openerLabel : view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} tooltip={view?.opener ? openerLabel : view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} aria-pressed={view?.session.opening_kind === 'starter'}
+    disabled={openerBusy || openingBusy || composing || dictation.locked || !!app.activity.storageError || app.activity.closing}
     onClick={() => act(async () => {
       if (!view || openingBusy || composing || dictationBusy()) return;
       const session = view.session; setOpeningBusy(true);
       try {
         await flushDraft(session.id);
-        await window.stomylos.command('setOpening', { sessionId: session.id, operationId: crypto.randomUUID(),
+        if (view.opener && !view.opener.generated) await window.stomylos.command('generateOpener', { sessionId: session.id, operationId: crypto.randomUUID(), expectedRevision: session.opening_revision });
+        else await window.stomylos.command('setOpening', { sessionId: session.id, operationId: crypto.randomUUID(),
           expectedRevision: session.opening_revision, kind: session.opening_kind === 'starter' ? 'user' : 'starter' });
       } finally { setOpeningBusy(false); }
-    })}><Icon name="starter" /></TooltipButton>;
+    })}><Icon name={view?.opener ? "opener" : "starter"} /></TooltipButton>;
   const starter = view?.messages.find(message => message.origin === 'starter');
-  const starterAction = starter && view?.session.state === 'draft' && <TooltipButton className="icon-button another-question" aria-label="Another question" tooltip="Another question" disabled={openingBusy || composing || dictation.locked} onClick={() => {
+  const starterAction = !view?.opener && starter && view?.session.state === 'draft' && <TooltipButton className="icon-button another-question" aria-label="Another question" tooltip="Another question" disabled={openingBusy || composing || dictation.locked} onClick={() => {
     const args = { sessionId: view.session.id, operationId: crypto.randomUUID(), expectedQuestionId: view.session.starter_id!, expectedRevision: view.session.opening_revision };
     act(async () => { if (await beforeDictationNavigation()) { await flushDraft(args.sessionId); await window.stomylos.command('replaceStarter', args); } });
   }}><Icon name="refresh" /></TooltipButton>;
@@ -489,7 +492,7 @@ function App() {
         <div className="transcript">{view.messages.filter(message => !(canChangeOpening && message.origin === 'starter')).map(message => <Bubble key={message.id} message={message} metadata={view.requests.find(r => r.id === message.request_id) ? JSON.parse(view.requests.find(r => r.id === message.request_id)!.metadata) : undefined} partner="Partner" />)}</div>
 
         {app.activity.sessionId === view.session.id && app.activity.phase === 'routing' && <p className="note" role="status">Choosing your conversation partner…</p>}
-        {app.activity.sessionId === view.session.id && app.activity.phase === 'preparing' && <p className="note" role="status">Preparing your reply…</p>}
+        {app.activity.sessionId === view.session.id && app.activity.phase === 'preparing' && <p className="note" role="status">{openerBusy ? 'Thinking…' : 'Preparing your reply…'}</p>}
         {view.session.state === 'ended' && <>
           {memoryInputProgress(view.memory.addJobs ?? [], view.session.id, view.memory.blockedBy).summary && <section className="end-summary" aria-label="Memory processing">
             <span role="status">{memoryInputProgress(view.memory.addJobs ?? [], view.session.id, view.memory.blockedBy).summary}</span>
@@ -505,6 +508,7 @@ function App() {
       const target = document.querySelector<HTMLTextAreaElement>('.composer textarea') ?? scroll.scroller.current;
       target?.focus({ preventScroll: true });
     }}><Icon name="down" /><span aria-live="polite">{scroll.unread ? 'New reply' : 'Latest message'}</span></TooltipButton></div>}
+    {canChangeOpening && view?.opener?.failure && !openerBusy && <p className="note" role="alert">Could not prepare an opener. Use “Give me something” to try again.</p>}
     <div className="conversation-footer">{view && view.session.state !== 'ended' ? <Composer key={view.session.id} view={view} app={app} act={act} blocked={openingBusy} onComposition={setComposing} afterAcceptedAction={scroll.afterAcceptedAction} openingAction={<>{openingAction}{starterAction}</>} starter={canChangeOpening && starter && <Bubble message={starter} partner="Partner" />} /> : <footer className="ended-footer">
       <>{unfinished && <IconButton label="Return to current chat" icon="back" onClick={() => act(() => show(unfinished.id))} />}</></footer>}</div>
   </div>

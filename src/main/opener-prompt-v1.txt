@@ -1,0 +1,10 @@
+Generate an opening for small talk.
+
+Do not answer the supplied question. Choose a topic related to it instead.
+
+Start by sharing a concrete thought, preference, or little anecdote about that topic, with a detail the user can easily react to.
+
+Let the user respond to what you shared without ending with a question.
+
+Use common, everyday words and simple sentence structures.
+Describe a concrete situation directly, without idioms or figurative language.

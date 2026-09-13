@@ -50,4 +50,4 @@ export function validateProviderRequest(value: ProviderRequest, original?: { bod
   if (original && value.sourceHash !== digest(original)) throw new AppFailure('provider_source_changed');
   return value;
 }
-export type ProviderOwner = 'memory_add' | 'model' | 'search' | 'pattern' | 'memory' | 'cleanup' | 'explain';
+export type ProviderOwner = 'opener' | 'memory_add' | 'model' | 'search' | 'pattern' | 'memory' | 'cleanup' | 'explain';

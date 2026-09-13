@@ -1,3 +1,4 @@
+import { openerIdentity } from './opener';
 import type { MemoryEmbeddingController } from './memory-embedding-controller';
 import { providerComplete, type PrepareProvider } from './provider-dispatch';
 import { recoverRouter, routerRecoveryVersion } from './router-recovery';
@@ -275,12 +276,12 @@ export class Coordinator {
     }
     if (name === 'genieOpen' && this.explain.visible) throw new AppFailure('explain_busy');
     const id = args?.sessionId as string;
-    if (this.genie.locked && ['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'setOpening', 'setReplyContext', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'asrBegin', 'asrTranscribe', 'asrInserted'].includes(name)) throw new AppFailure('genie_busy');
+    if (this.genie.locked && ['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'generateOpener', 'setOpening', 'setReplyContext', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'asrBegin', 'asrTranscribe', 'asrInserted'].includes(name)) throw new AppFailure('genie_busy');
     if (this.genie.locked && name === 'saveDraft') {
       const known = this.drafts.get(id);
       if (!known || known.revision !== args.revision || known.text !== args.text) throw new AppFailure('genie_busy');
     }
-    if (this.dictation?.locked && ['saveDraft', 'sendMessage', 'endSession', 'newSession', 'replaceStarter', 'setOpening', 'setReplyContext', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) throw new AppFailure('asr_busy');
+    if (this.dictation?.locked && ['saveDraft', 'sendMessage', 'endSession', 'newSession', 'replaceStarter', 'generateOpener', 'setOpening', 'setReplyContext', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) throw new AppFailure('asr_busy');
     if (['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) this.speech?.stop();
     switch (name) {
       case 'setMemoryPreference': {
@@ -351,7 +352,15 @@ export class Coordinator {
         try { return await this.write('setReplyContext', id, args.operationId, args.expectedRevision, args.mode); }
         finally { await this.publish(id); }
       }
+      case 'generateOpener': {
+        if (this.interactive) throw new AppFailure('reply_in_progress');
+        if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
+        const attempt = await this.write('prepareOpener', id, args.operationId, args.expectedRevision);
+        if (attempt) this.startOpener(id, attempt);
+        await this.publish(id); return;
+      }
       case 'setOpening': {
+        if (this.interactive) throw new AppFailure('reply_in_progress');
         await this.speech?.pauseOpening();
         try { const result = await this.write('setOpening', id, args.operationId, args.expectedRevision, args.kind); await this.publish(id); return result; }
         finally { this.speech?.resumeOpening(); }
@@ -478,6 +487,29 @@ export class Coordinator {
     if (this.interactive) throw new AppFailure('reply_in_progress');
     const view = await this.db.call('view', id), last = view.messages.at(-1);
     if (view.session.state === 'ended' || last?.role === 'user' || last?.delivery === 'interrupted') throw new AppFailure('asr_session_unavailable');
+  }
+  private startOpener(id: string, attempt: Json) {
+    this.activity = { ...this.activity, sessionId: id, requestId: null, phase: 'preparing', error: null, streamingMessageId: null, streamingText: '' };
+    const abort = new AbortController();
+    const promise = (async () => {
+      try {
+        await this.write('dispatchOpener', attempt.id);
+        if (abort.signal.aborted) throw new AppFailure('request_cancelled');
+        const routed = await this.prepareProvider('opener', attempt.id, attempt.body, openerIdentity);
+        const result = await this.gateway.stream(routed.body, abort.signal, () => {}, {timeoutMs:120_000});
+        if (abort.signal.aborted) throw new AppFailure('request_cancelled');
+        if (!result.content.trim()) throw new AppFailure('response_empty');
+        await this.write('receiveOpener', attempt.id, result.content, result.metadata);
+        await this.write('acceptOpener', attempt.id);
+      } catch (error) {
+        await this.write('failOpener', attempt.id, failureCode(error), error instanceof CompletionFailure ? error.metadata : {});
+        this.activity.error = failureCode(error);
+      }
+    })().finally(async () => {
+      this.activity.phase = 'idle'; this.interactive = null;
+      await this.publish(id).catch(() => undefined);
+    });
+    this.interactive = { abort, promise };
   }
   private startReply(id: string, kind: 'send' | 'retry' | 'different_model' | 'retry_selection' = 'send') {
     this.activity = { ...this.activity, sessionId: id, requestId: null, phase: 'preparing', error: null, streamingMessageId: null, streamingText: '' };

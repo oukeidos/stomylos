@@ -118,7 +118,7 @@ it('refuses a same-schema backup from another database instead of trusting or ov
 });
 
 it('upgrades through real Store startup and retires unrequested grammar blockers without replay', () => {
-  const {db,dir} = fixture(); new StarterStore(db).initialize();
+  const {db,dir} = fixture(); db.transaction(()=>new StarterStore(db).initialize())();
   for (const id of ['first-old','second-old']) db.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind,analysis_state) VALUES(?,'ended','2026-09-01','{}','user','pending')").run(id);
   db.close();
   const store = new Store(dir,resolve('native/advisory-lock.node'));
@@ -266,4 +266,24 @@ it('upgrades the schema 21 start through flat-memory conversion and eight-partne
   migrateDatabase(db,dir);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);validateSchema(db,current);
   expect(db.prepare('SELECT document FROM shared_memory').pluck().get()).toBe(flatDocument);
   expect(existsSync(join(dir,'stomylos.pre-migration-v21.sqlite3'))).toBe(true);
+});
+
+it('adds opener storage in 35 to 36 atomically while preserving legacy drafts and backup on restart', () => {
+  const source35=current.replace(/\n-- Public schema 35 -> 36:[\s\S]*$/, '');
+  const {db,dir}=fixture(source35,35);db.transaction(()=>new StarterStore(db).initialize())();
+  db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(flatDocument,memoryHash(flatDocument));
+  db.exec("INSERT INTO sessions(id,state,created_at,draft,chat_config,opening_kind) VALUES('legacy','draft','2026-09-13','Keep this draft','{}','user')");
+  const before=db.prepare('SELECT * FROM sessions').all();
+  const execute=db.exec.bind(db), fault=vi.spyOn(db,'exec').mockImplementation(sql=>{
+    const result=execute(sql); if(sql.includes('CREATE TABLE conversation_openers')) throw new Error('opener step fault'); return result;
+  });
+  expect(()=>migrateDatabase(db,dir)).toThrow('opener step fault');fault.mockRestore();
+  expect(db.pragma('user_version',{simple:true})).toBe(35);validateSchema(db,source35);
+  const backup=join(dir,'stomylos.pre-migration-v35.sqlite3'), bytes=readFileSync(backup);
+  migrateDatabase(db,dir);validateSchema(db,current);
+  expect(db.pragma('user_version',{simple:true})).toBe(36);
+  expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
+  expect(db.prepare('SELECT * FROM conversation_openers').all()).toEqual([]);
+  expect(db.pragma('foreign_key_check')).toEqual([]);
+  migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
 });

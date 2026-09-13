@@ -1,3 +1,4 @@
+import { openerVersion, openerBridge } from './opener';
 import { replyMode, replyPrefix } from './reply-context';
 import { coldContextVersion, coldRecallPolicy, renderCold, validateRecall } from './memory-recall';
 import { associativeRecallVersion, validateAssociative } from './associative-recall';
@@ -160,6 +161,7 @@ function runtimeForVersion(version: string) {
 function validateConversationSnapshot(snapshot: Json) {
   replyMode(snapshot);
   openingKind(snapshot);
+  if (snapshot.opener_version !== undefined && snapshot.opener_version !== openerVersion) throw new AppFailure('unsupported_opening');
   if (snapshot.memory_control !== undefined && snapshot.memory_control !== memoryControlVersion) throw new AppFailure('unsupported_memory_settings');
   if (snapshot.memory_control === memoryControlVersion && (snapshot.memory_context !== undefined || snapshot.cold_recollections !== undefined)) throw new AppFailure('unsupported_memory_settings');
   if (snapshot.version === runtime.conversation.version && snapshot.router_prompt_version !== eightRouterVersion) throw new AppFailure('unsupported_router_settings');
@@ -227,7 +229,7 @@ export function conversationBody(snapshot: Json, partnerId: string, question: st
     ...(partner.reasoning ? { reasoning: partner.reasoning } : {}), messages: [
       { role: 'system', content: system },
       ...replyPrefix(snapshot),
-      ...(!direct ? [{ role: 'user', content: snapshot.seed_template.replaceAll('{{QUESTION}}', question) }] : []),
+      ...(!direct ? [{ role: 'user', content: snapshot.opener_version === openerVersion ? openerBridge + question : snapshot.seed_template.replaceAll('{{QUESTION}}', question) }] : []),
       ...history
     ] };
 }
