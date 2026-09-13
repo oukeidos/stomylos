@@ -9,10 +9,11 @@ export function CredentialSettings({ active, settings, errorText }: {
   const id = useId(), epoch = useRef(0), pending = useRef(false);
   const [key, setKey] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [notice, setNotice] = useState(''), [confirm, setConfirm] = useState(false);
+  const [managing, setManaging] = useState(false);
   const status = settings.credentials;
   const editable = !settings.development && !!status;
   useEffect(() => {
-    epoch.current++; setKey(''); setError(''); setNotice(''); setConfirm(false);
+    epoch.current++; setKey(''); setError(''); setNotice(''); setConfirm(false); setManaging(!settings.keyPresent);
     return () => { epoch.current++; };
   }, [active]);
   const run = async (change?: KeyAction) => {
@@ -32,20 +33,22 @@ export function CredentialSettings({ active, settings, errorText }: {
   };
   return <section className="setting credential-settings">
     <div className="settings-row"><div><strong>OpenRouter API key</strong>
-      <small>Using: {status ? sources[status.source] : settings.keyPresent ? 'Available' : 'Not available'}</small>
-    </div><button disabled={busy} onClick={() => void run()}>Reload key status</button></div>
+      <small>{status ? sources[status.source] : settings.keyPresent ? 'Key available' : 'Key not available'}</small>
+    </div>{editable ? <button disabled={busy} aria-expanded={managing} aria-controls={`${id}-manage`} onClick={() => { setManaging(value => !value); setKey(''); setConfirm(false); }}>Manage</button> : <button disabled={busy} onClick={() => void run()}>Reload key status</button>}</div>
     {status?.problem && <p className="speech-error" role="alert">{errorText(new Error(status.problem))}</p>}
     {error && <p className="speech-error" role="alert">{error}</p>}
     {notice && <p className="note" role="status">{notice}</p>}
-    {editable ? <>
+    {editable ? <div id={`${id}-manage`} hidden={!managing}>
       {!status.secureAvailable && <p className="note">System secure storage is unavailable or locked. Unlock your system keyring and reload, or use a .env file.</p>}
       <form className="credential-form" onSubmit={event => { event.preventDefault(); if (validApiKey(key.trim())) void run({ action: 'save', key }); }}>
         <label htmlFor={`${id}-key`}>{status.saved ? 'Replacement API key' : 'API key'}</label>
         <input id={`${id}-key`} type="password" autoComplete="off" spellCheck={false} autoCapitalize="none" maxLength={4100}
           value={key} disabled={busy || !status.secureAvailable} onChange={event => setKey(event.target.value)} />
         <div className="credential-actions"><button className="primary" type="submit" disabled={busy || !status.secureAvailable || !validApiKey(key.trim())}>Save securely</button>
+          <button type="button" disabled={busy} onClick={() => void run()}>Reload key status</button>
           {(status.saved || status.problem === 'credential_file_unreadable') && <button type="button" disabled={busy} onClick={() => setConfirm(true)}>Delete saved key</button>}</div>
       </form>
+      <p className="note">Key availability does not verify authentication.</p>
       {confirm && <div className="settings-confirm"><p className="note">Delete the saved key and disable API access? The .env file will be kept and will not be activated automatically.</p>
         <div className="credential-actions"><button disabled={busy} onClick={() => setConfirm(false)}>Keep key</button><button className="delete-confirm" disabled={busy} onClick={() => void run({ action: 'delete' })}>Confirm delete key</button></div></div>}
       <details className="settings-details"><summary>Key source &amp; .env fallback</summary>
@@ -59,6 +62,6 @@ export function CredentialSettings({ active, settings, errorText }: {
         <div className="credential-actions"><button disabled={busy || !status.secureAvailable} onClick={() => void run({ action: 'import' })}>Import .env key into secure storage</button></div>
         <p className="note">Import keeps the original file for other tools. Removing that plain-text copy is a separate choice. Secure keys are local to this computer and OS account; enter your key again on another computer.</p>
       </details>
-    </> : <p className="note">{settings.simulation ? 'Isolated test data and a dummy key are used in this preview.' : 'This development build uses isolated data.'} Normal API keys and system secure storage are not accessed. Key management is disabled.</p>}
+    </div> : <p className="note">{settings.simulation ? 'Isolated test data and a dummy key are used in this preview.' : 'This development build uses isolated data.'} Normal API keys and system secure storage are not accessed. Key management is disabled.</p>}
   </section>;
 }

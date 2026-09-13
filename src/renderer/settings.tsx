@@ -44,9 +44,9 @@ export const SettingsDialog = forwardRef<SettingsHandle, {
           {item.id === 'memory' && <MemoryManager preference={settings.memory} ref={memory} active={open && tab === 'memory'} errorText={errorText} openChat={id => { onOpenChange(false); openChat(id); }} />}
           {item.id === 'data' && <>
             <CredentialSettings active={open && tab === 'data'} settings={settings} errorText={errorText} />
-            <section className="setting"><strong>History on this computer</strong><p className="note">Model requests go through OpenRouter to external providers. Provider retention policies apply.</p><details className="settings-details"><summary>Storage details</summary><code>{settings.dataPath}</code></details></section>
             <BackupSettings beforeBackup={beforeBackup} busy={backupBusy} onBusy={setBackupBusy} />
             <SpeechSettings section="data" />
+            <section className="setting"><p className="note">History is stored on this computer. Requests go through OpenRouter to external providers; provider retention policies apply.</p><details className="settings-details"><summary>Storage location</summary><code>{settings.dataPath}</code></details></section>
           </>}
         </section>)}
       </div>

@@ -41,10 +41,12 @@ export function BackupSettings({ beforeBackup, busy, onBusy }: { beforeBackup():
     } finally { stopWatching(); onBusy(false); }
   }
   return <section className="setting" aria-busy={busy}>
-    <strong>Backup and restore</strong>
-    <p className="note">Save conversations, drafts, memory, reports and saved voice data in one file. Backups contain private content and are not encrypted. API keys, device cost records and monthly budgets are excluded.</p>
-    <div className="settings-row backup-actions"><button disabled={busy} onClick={() => void run('backupExport')}>Export backup</button><button disabled={busy} onClick={() => void run('backupRestore')}>Restore backup</button></div>
-    <p className="note">Restoring replaces this computer’s history and restarts Stomylos. Cost records and the monthly budget stay on this computer. A copy of the previous data is kept for recovery.</p>
+    <div className="settings-row"><div><strong>Backup &amp; restore</strong><p className="note">Backups contain private content and are not encrypted.</p></div>
+      <div className="backup-actions"><button aria-label="Export backup" disabled={busy} onClick={() => void run('backupExport')}>Export</button><button aria-label="Restore backup" disabled={busy} onClick={() => void run('backupRestore')}>Restore…</button></div></div>
+    <details className="settings-details"><summary>What’s included</summary>
+      <p className="note">Conversations, drafts, memory, reports and saved voice data. API keys, device cost records and monthly budgets are excluded.</p>
+      <p className="note">Restoring replaces this computer’s history and restarts Stomylos. Cost records and the monthly budget stay on this computer. A copy of the previous data is kept for recovery.</p>
+    </details>
     {status && <p role="status" className="note">{status}</p>}
     {path && <code style={{ overflowWrap: 'anywhere' }}>{path}</code>}
     {error && <p role="alert" className="speech-error">{error}</p>}

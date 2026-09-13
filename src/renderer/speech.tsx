@@ -121,8 +121,10 @@ export function SpeechSettings({ section = 'voice', active = true }: { section?:
   const previewCanStop = previewGenerating || previewPlaying;
   const previewRetry = !!speech.preview && ['failed', 'cancelled', 'interrupted'].includes(speech.preview.state);
   const previewLabel = previewGenerating ? 'Cancel preview generation' : previewPlaying ? 'Stop voice sample' : previewRetry ? 'Retry voice sample' : 'Play voice sample';
-  return <section className="setting">
+  return <section className={`setting ${section === 'voice' ? 'voice-settings' : ''}`}>
     {section === 'voice' ? <>
+      <p className="voice-provider">Grok voice API by xAI · via OpenRouter</p>
+      <div className="voice-choice">
       <div className="settings-row voice-selection"><label htmlFor="speech-voice"><strong>Voice</strong></label>
         <select id="speech-voice" value={speech.voice} disabled={busy} onChange={e => void act(() => window.stomylos.command('speechVoice', { voice: e.target.value as VoiceId }))}>
           {voices.map(voice => <option key={voice} value={voice}>{voice[0].toUpperCase() + voice.slice(1)}</option>)}
@@ -141,7 +143,8 @@ export function SpeechSettings({ section = 'voice', active = true }: { section?:
           <Icon name={previewGenerating ? 'refresh' : previewPlaying ? 'stop' : 'play'} className={previewGenerating ? 'spinning' : ''} />
         </TooltipButton>
       </div>
-      <p className="note">Applies to the next Listen or new automatic reply. Preview generation uses API credits; saved samples replay for free.</p>
+      <p className="note">New samples use API credits. Saved samples replay free.</p>
+      </div>
       {(speech.preview?.error || (player.messageId === 'preview' && player.error)) && <p role="status" className="speech-error">{player.messageId === 'preview' && player.error || explain(speech.preview?.error)}</p>}
       {speech.recoveries.map(recovery => <div className="settings-row" key={recovery.assetKey}>
         <span>Received {recovery.voice[0].toUpperCase() + recovery.voice.slice(1)} {recovery.messageId ? 'reply' : 'preview'} audio needs saving.</span>
@@ -149,7 +152,7 @@ export function SpeechSettings({ section = 'voice', active = true }: { section?:
       </div>)}
       <label className="settings-switch"><span><strong>Automatic speech</strong><span className="note">Generate and play new replies. Uses API credits.</span></span>
         <input aria-label="Automatic speech" type="checkbox" checked={speech.mode === 'automatic'} disabled={busy} onChange={e => void act(() => window.stomylos.command('speechMode', { mode: e.target.checked ? 'automatic' : 'manual' }))} /></label>
-      <details className="settings-details"><summary>Voice details</summary><p className="note">Grok · {speech.voice[0].toUpperCase() + speech.voice.slice(1)}. When automatic speech is off, use Listen on a reply. Replaying saved audio uses no API credits.</p></details>
+      <details className="settings-details"><summary>Playback details</summary><p className="note">Voice changes apply to the next Listen or new automatic reply. Selecting a voice makes no API request.</p><p className="note">When automatic speech is off, use Listen on a reply. Replaying saved audio uses no API credits.</p></details>
     </> : <>
       <div className="settings-row"><div><strong>Saved speech</strong><small>{(speech.cacheBytes / 1024 / 1024).toFixed(1)} MiB on this computer</small></div>
         {!confirm && <button disabled={busy} onClick={() => setConfirm(true)}>Clear saved speech</button>}</div>

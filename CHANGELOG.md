@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Blend the Memory editing-lock notice into Settings with a neutral status row and a quiet chat-return action.
+- Simplify Voice, Usage & budget and Connection & data with expandable details, visible Grok API attribution and the existing sample playback icon.
 - Highlight Web search when Auto is selected, matching the other composer toggles.
 
 - Unify button tooltips and dismiss them after activation, focus return, Escape and owner hiding; prevent overlapping tooltips while preserving keyboard discovery.

@@ -20,14 +20,15 @@ async function launch() {
 }
 async function close() {
   const exited = new Promise(resolve => app.process().once('exit', resolve));
-  await page.evaluate(() => window.stomylos.command('close')); await exited; app = null;
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close()); await exited; app = null;
 }
 const button = name => page.getByRole('button', { name, exact: true });
 const input = () => page.getByLabel('Budget in USD', { exact: true });
 async function openUsage() {
-  await button('Settings').click(); await page.getByRole('tab', { name: 'Usage & budget', exact: true }).click(); await input().waitFor();
+  await button('Settings').click(); await page.getByRole('tab', { name: 'Usage & budget', exact: true }).click(); await page.locator('.usage-edit').waitFor();
 }
-async function budget(amount) { await input().fill(amount); await button('Save budget').click(); }
+async function edit() { if (!await input().isVisible()) await page.locator('.usage-edit').click(); }
+async function budget(amount) { await edit(); await input().fill(amount); await button('Save budget').click(); }
 try {
   await launch();
   const initial = await page.evaluate(() => window.stomylos.command('usageSnapshot'));
@@ -45,6 +46,9 @@ try {
   await page.getByText('$0.80 reported + $0.20 estimated', { exact: true }).waitFor();
   await page.getByText('Cost is not yet reported for 1 of 3 requests. This total is incomplete.', { exact: true }).waitFor();
   await budget('1.25'); await page.getByText('Near your monthly budget (80% or more).', { exact: true }).waitFor();
+  assert.equal(await input().isVisible(), false);
+  assert.equal(await page.getByRole('progressbar', { name: 'Monthly budget used' }).getAttribute('aria-valuenow'), '80');
+  assert.equal(await page.locator('.usage-edit').evaluate(n => n === document.activeElement), true);
   await page.getByText('Monthly budget saved.', { exact: true }).waitFor();
   await budget('0'); await page.getByText(/Enter a positive USD amount/).waitFor();
   assert.equal((await page.evaluate(() => window.stomylos.command('usageSnapshot'))).budget, '1.25');
@@ -55,12 +59,13 @@ try {
     assert.equal(await page.locator('.settings-panel:not([hidden])').evaluate(n => n.scrollWidth > n.clientWidth), false);
     await page.screenshot({ path: `${output}/settings-${width}.png` });
   }
-  await button('Turn off').click(); await page.getByText('Not set.', { exact: true }).waitFor();
+  await edit(); await button('Turn off').click(); await button('Set budget').waitFor();
+  assert.equal(await page.getByRole('progressbar').count(), 0);
   await budget('2'); await page.getByText('Monthly budget saved.', { exact: true }).waitFor();
   await button('Close settings').click();
   assert.equal(await button('Settings').evaluate(n => document.activeElement === n), true);
   await close(); await launch(); await openUsage();
-  assert.equal(await input().inputValue(), '2');
+  assert.equal(await input().isVisible(), false); await edit(); assert.equal(await input().inputValue(), '2');
   assert.equal((await page.evaluate(() => window.stomylos.command('usageSnapshot'))).total, '1');
   assert.equal(mock.requests.length, 0); assert.deepEqual(errors, []);
   writeFileSync(`${output}/summary.json`, JSON.stringify({ passed: true, checks: ['reported + estimated + unknown', '80% / 100%', 'invalid edit', 'keyboard save', 'off', 'wide/narrow', 'focus return', 'restart', 'zero provider calls'], errors }, null, 2));

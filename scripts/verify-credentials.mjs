@@ -77,6 +77,7 @@ async function launch(backend = 'gnome-libsecret') {
   }, { modulePath, keyFile, envFile });
   await command('refreshKey');
   await button('Settings').click(); await page.getByRole('tab', { name: 'Connection & data', exact: true }).click();
+  if (!await page.locator('.credential-form input').isVisible()) await button('Manage').click();
 }
 async function stop() {
   assert.equal(await application.evaluate(() => globalThis.credentialTest.control.requests), 0);
@@ -91,7 +92,7 @@ try {
   assert.equal((await command('snapshot')).settings.credentials.secureAvailable, true, 'Private GNOME keyring must be available');
   const input = () => page.locator('.credential-form input');
   await input().fill('public-ui-secure-key'); await button('Save securely').click();
-  await page.getByText('Using: System secure storage', { exact: true }).waitFor(); await emptyInput();
+  await page.getByText('System secure storage', { exact: true }).waitFor(); await emptyInput();
   assert.ok(!readFileSync(keyFile, 'utf8').includes('public-ui-secure-key'));
   report.checks.push('Private GNOME Keyring / real Electron safeStorage encrypts and decrypts synthetic credentials through the Settings UI');
   for (const [width, height] of [[1180, 860], [760, 620]]) {
@@ -102,33 +103,33 @@ try {
     await page.screenshot({ path: join(output, `${width}-settings.png`) });
   }
   await input().fill('public-ui-unsaved'); await page.getByRole('tab', { name: 'Memory', exact: true }).click();
-  await page.getByRole('tab', { name: 'Connection & data', exact: true }).click(); await emptyInput();
+  await page.getByRole('tab', { name: 'Connection & data', exact: true }).click(); await emptyInput(); await button('Manage').click();
   await input().fill('public-ui-unsaved'); await page.keyboard.press('Escape');
   await button('Settings').click(); await emptyInput();
   report.checks.push('Wide/narrow layout has no horizontal overflow; changing tabs and closing Settings clear unsaved secret input');
   await stop(); await launch();
-  await page.getByText('Using: System secure storage', { exact: true }).waitFor();
+  await page.getByText('System secure storage', { exact: true }).waitFor();
   await input().fill('public-ui-replacement'); await button('Save securely').click(); await page.getByRole('status').filter({ hasText: 'Saved securely' }).waitFor();
   await application.evaluate(() => { globalThis.credentialTest.control.fail = true; });
-  await button('Reload key status').click(); await page.getByText('Using: Not available', { exact: true }).waitFor();
+  await button('Reload key status').click(); await page.getByText('Not available', { exact: true }).waitFor();
   assert.equal((await command('snapshot')).settings.keyPresent, false);
-  await source('env'); await page.getByText('Using: .env file', { exact: true }).waitFor();
-  await stop(); await launch(); await page.getByText('Using: .env file', { exact: true }).waitFor();
+  await source('env'); await page.getByText('.env file', { exact: true }).waitFor();
+  await stop(); await launch(); await page.getByText('.env file', { exact: true }).waitFor();
   await source('env'); await button('Import .env key into secure storage').click();
-  await page.getByText('Using: System secure storage', { exact: true }).waitFor();
+  await page.getByText('System secure storage', { exact: true }).waitFor();
   assert.equal(readFileSync(envFile, 'utf8'), 'OPENROUTER_API_KEY=public-ui-legacy-key\n');
   report.checks.push('Restart preserves secure credentials and explicit env selection; unavailable storage blocks automatic fallback; importing keeps the original env file');
   await button('Delete saved key').click(); await button('Keep key').click();
   assert.equal((await command('snapshot')).settings.keyPresent, true);
   await button('Delete saved key').click(); await button('Confirm delete key').click();
-  await page.getByText('Using: Not available', { exact: true }).waitFor();
+  await page.getByText('Not available', { exact: true }).waitFor();
   await stop(); await launch();
   assert.equal((await command('snapshot')).settings.credentials.mode, 'disabled');
   await stop(); await launch('basic');
   const status = (await command('snapshot')).settings.credentials;
   assert.equal(status.secureAvailable, false); assert.equal(await button('Save securely').isDisabled(), true);
   await assert.rejects(command('manageKey', { action: 'save', key: 'public-ui-denied' }), /secure_storage_unavailable/);
-  await source('env'); await page.getByText('Using: .env file', { exact: true }).waitFor();
+  await source('env'); await page.getByText('.env file', { exact: true }).waitFor();
   report.checks.push('Confirmed deletion remains disabled after restart; actual basic_text backend rejects secure saves while explicit env remains usable');
   assert.deepEqual(report.errors, []); report.status = 'passed';
 } catch (error) {

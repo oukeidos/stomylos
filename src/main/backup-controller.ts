@@ -39,7 +39,7 @@ export class BackupController {
       const summary = prepared.summary;
       const answer = await dialog.showMessageBox({ type: 'warning', title: 'Restore backup?',
         message: 'Replace this computer’s history with this backup?',
-        detail: `Created: ${new Date(summary.createdAt).toLocaleString()}\nStomylos ${summary.appVersion} · ${summary.conversations} conversations\n\nCurrent conversations, drafts, memory, reports and voice data will be replaced, not merged. A verified copy of the current files will be kept in a restore-recovery folder inside the data folder. Your API key stays unchanged. Stomylos will restart.`,
+        detail: `Created: ${new Date(summary.createdAt).toLocaleString()}\nStomylos ${summary.appVersion} · ${summary.conversations} conversations\n\nCurrent conversations, drafts, memory, reports and voice data will be replaced, not merged. A verified copy of the current files will be kept in a restore-recovery folder inside the data folder. Your API key, cost records and monthly budget stay unchanged. Stomylos will restart.`,
         buttons: ['Cancel', 'Restore and restart'], defaultId: 0, cancelId: 0, noLink: true });
       if (answer.response !== 1) return {};
       const install = async () => {

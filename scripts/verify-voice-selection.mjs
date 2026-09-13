@@ -30,7 +30,7 @@ async function launch() {
 async function close() {
   if (!app) return;
   const exited = new Promise(resolve => app.process().once('exit', resolve));
-  await page.evaluate(() => window.stomylos.command('close')); await exited; app = null;
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close()); await exited; app = null;
 }
 async function settings() { await page.getByRole('button', { name: 'Settings', exact: true }).click(); await page.getByRole('tab', { name: 'Voice', exact: true }).click(); }
 async function voice(id) {
@@ -52,6 +52,7 @@ async function previewReady() {
 }
 try {
   await launch(); await settings();
+  await page.getByText('Grok voice API by xAI · via OpenRouter', { exact: true }).waitFor();
   if (controlsOnly) {
     const row = page.locator('.voice-selection');
     const play = () => page.getByRole('button', { name: 'Play voice sample', exact: true });

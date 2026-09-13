@@ -5,6 +5,7 @@ import { MemoryControl } from './memory-control';
 import type { MemoryPreference } from '../shared/memory-control';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { IconButton } from './icon-button';
+import { Icon } from './icons';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { MemoryManagement } from '../shared/memory-management';
 import { matchingMemories, memoryDisplayRecords } from '../shared/memory-management';
@@ -127,8 +128,12 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
         }} />
       </section>}
       {error && !editor && <p role="alert">{error}</p>}
-      {data.blocker && <div className="memory-lock"><p className="note">{data.blocker.reason === 'chat' ? 'Memory is in use by your current chat. Finish the chat to edit it.' : 'Finish memory processing to edit saved memories.'}</p>
-        <button disabled={busy} onClick={async () => { const id = data.blocker!.sessionId; if (await beforeLeave()) openChat(id); }}>{data.blocker.reason === 'chat' ? 'Back to chat' : 'View memory processing'}</button></div>}
+      {data.blocker && <div className="memory-lock">
+        <Icon name={data.blocker.reason === 'chat' ? 'chat' : 'refresh'} />
+        <div className="memory-lock-copy" role="status"><strong>{data.blocker.reason === 'chat' ? 'In use by your current chat' : 'Memory is being processed'}</strong>
+          <p className="note">{data.blocker.reason === 'chat' ? 'Finish the chat to edit memories.' : 'Finish processing to edit memories.'}</p></div>
+        <button className="memory-lock-action" disabled={busy} onClick={async () => { const id = data.blocker!.sessionId; if (await beforeLeave()) openChat(id); }}><Icon name="back" />{data.blocker.reason === 'chat' ? 'Back to chat' : 'View memory processing'}</button>
+      </div>}
       {older ? <ColdMemories ageSelector={ageSelector} locked={locked} errorText={errorText} onBusy={value => { busyRef.current = value; setBusy(value); }} /> : <>
       <div className="memory-toolbar">{ageSelector}<div className="memory-search"><input ref={search} type="search" aria-label="Search memories" placeholder="Search" value={query} onChange={event => { setQuery(event.target.value); setNotice(''); }} />
         {query && <IconButton label="Clear search" icon="close" onClick={() => { setQuery(''); search.current?.focus(); }} />}</div>

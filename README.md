@@ -30,7 +30,8 @@ npm start
 ```
 
 In **Settings → Connection & data**, enter your OpenRouter API key and choose
-**Save securely**. Linux requires a system keyring such as GNOME Keyring or KWallet.
+**Save securely**; choose **Manage** to replace an existing key or change its source.
+Linux requires a system keyring such as GNOME Keyring or KWallet.
 Alternatively, save `OPENROUTER_API_KEY=your-key` in `~/.stomylos/.env`, run
 `chmod 600 ~/.stomylos/.env`, and select **Use .env file** in Settings.
 
