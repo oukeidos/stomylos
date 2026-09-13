@@ -1,0 +1,60 @@
+import { afterEach, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import Database from 'better-sqlite3';
+import { Store } from '../src/main/database';
+import old from '../src/main/conversation-v8-config.json';
+import { conversationSnapshot, routerBody, routerSnapshot, routerScores, eligible } from '../src/main/contracts';
+import { recoverySnapshot, validateRecovery } from '../src/main/router-recovery';
+import { partnerRouterSnapshot, partnerRouterBody, chooseOtherPartner } from '../src/main/partner-router';
+import { orderedPartners, partnerDisplayName } from '../src/shared/partners';
+import type { Json, Message } from '../src/shared/types';
+const dirs: string[] = [], stores: Store[] = [];
+afterEach(() => { for (const s of stores) s.close(); stores.length=0; for (const d of dirs) rmSync(d,{recursive:true,force:true}); dirs.length=0; });
+const prior = (kind: 'user'|'starter'): Json => ({...conversationSnapshot(kind),...structuredClone(old.conversation),router_prompt_version:'stomylos_compact_router_v2'});
+it('removes Astra from new manual and every Auto entry while preserving all remaining cards', () => {
+  const current=conversationSnapshot('user'), ids=current.characters.map((c:Json)=>c.id);
+  expect(current.characters).toEqual(old.conversation.characters.filter(c=>c.id!=='model_04'));
+  expect(orderedPartners(current.characters).map(c=>c.id)).toEqual(ids);
+  for (const kind of ['user','starter','opener'] as const) {
+    const s=conversationSnapshot(kind==='user'?'user':'starter'); if(kind==='opener')s.opener_version='stomylos_opener_v1';
+    const b=routerBody(kind==='user'?null:'Opening','Hello',s);
+    expect(b.messages[0].content).not.toContain('model_04');
+    expect(b.response_format.json_schema.schema.required).toEqual(ids);
+    validateRecovery(routerSnapshot(s));validateRecovery(recoverySnapshot(routerSnapshot(s)));
+  }
+  const messages:Message[]=[{id:'u',session_id:'s',sequence:0,role:'user',origin:'learner',delivery:'complete',request_id:null,content:'Another perspective.'}];
+  const route=partnerRouterSnapshot(current,messages,current.characters[0].model);
+  expect(partnerRouterBody(route).messages[0].content).not.toContain('model_04');validateRecovery(route);
+  const scores=Object.fromEntries(ids.map((id:string)=>[id,1]));
+  expect(()=>routerScores(JSON.stringify({...scores,model_04:2}),current)).toThrow();
+  expect(eligible(null,current)).toEqual(['model_02','model_09']);
+  expect(chooseOtherPartner(current,current.characters[0].model,scores,{}).pool).not.toContain('model_04');
+  for(const kind of ['user','starter'] as const){const s=prior(kind); const r=routerSnapshot(s);validateRecovery(r);validateRecovery(recoverySnapshot(r));expect(r.parameters.response_format.json_schema.schema.required).toContain('model_04');}
+  const historicalRoute=partnerRouterSnapshot(prior('user'),messages,old.conversation.characters[0].model);
+  validateRecovery(historicalRoute);expect(partnerRouterBody(historicalRoute).messages[0].content).toContain('model_04');
+});
+it('preserves v8 Astra history and exact failed request through admission, reopen and retry; new sessions reject Astra', () => {
+  const dir=mkdtempSync(join(tmpdir(),'stomylos-astra-'));dirs.push(dir);
+  let store=new Store(dir,resolve('native/advisory-lock.node'));stores.push(store);
+  const session=store.createSession();
+  const raw=new Database(join(dir,'stomylos.sqlite3'));
+  const saved={...JSON.parse(store.session(session.id).chat_config),...old.conversation,router_prompt_version:'stomylos_compact_router_v2'};
+  raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(saved),session.id);
+  store.searchMode(session.id,'off');store.selectManual(session.id,'model_04');store.submit(session.id,'An ordinary bicycle conversation.');
+  store.commitRoute(session.id,null,null,null);
+  const request=store.prepareChat(session.id,randomUUID(),'send'), body=store.chatBody(request.id);
+  expect(body.model).toBe('openai/gpt-6-astra');store.prepareReply(session.id,request.id);store.dispatch(request.id);store.failRequest(request.id,'request_timeout','Saved partial',{});
+  const before=raw.prepare('SELECT * FROM model_requests').all(),history=store.messages(session.id);
+  raw.pragma('user_version=36');raw.close();store.close();stores.pop();
+  store=new Store(dir,resolve('native/advisory-lock.node'));stores.push(store);
+  expect(store.session(session.id).chat_config).toBe(JSON.stringify(saved));expect(store.messages(session.id)).toEqual(history);
+  const inspect=new Database(join(dir,'stomylos.sqlite3'),{readonly:true});expect(inspect.prepare('SELECT * FROM model_requests').all()).toEqual(before);expect(inspect.pragma('user_version',{simple:true})).toBe(37);inspect.close();
+  const retry=store.prepareChat(session.id,randomUUID(),'retry');expect(retry.config).toBe(request.config);expect(store.chatBody(retry.id)).toEqual(body);
+  expect(partnerDisplayName(saved.characters.find((c:Json)=>c.id==='model_04'))).toBe('Chat · Astra');
+  store.prepareReply(session.id,retry.id);store.dispatch(retry.id);store.failRequest(retry.id,'request_timeout','',{});store.end(session.id);store.cancelEnd(session.id);
+  const fresh=store.createSession();expect(()=>store.selectManual(fresh.id,'model_04')).toThrow('invalid_character');
+  expect(JSON.parse(fresh.chat_config).characters.map((c:Json)=>c.id)).not.toContain('model_04');
+});

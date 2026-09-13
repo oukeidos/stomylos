@@ -4,7 +4,7 @@ import v5 from '../src/main/conversation-v5-config.json';
 import universal from '../src/main/universal-v1-config.json';
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { config, conversationSnapshot, conversationBody, conversationRequestSnapshot, eligible, hash, routerScores, transcriptJson, validateGrammar, verifyRuntime } from '../src/main/contracts';
+import { conversationComponents, config, conversationSnapshot, conversationBody, conversationRequestSnapshot, eligible, hash, routerScores, transcriptJson, validateGrammar, verifyRuntime } from '../src/main/contracts';
 import { parseStrict } from '../src/main/strict-json';
 import type { Message } from '../src/shared/types';
 import goldens from './fixtures/contract-goldens.json';
@@ -47,8 +47,10 @@ it('keeps old and new prompt/model bundles separate and rejects mixed snapshots'
   expect(upgraded.system_prompt).toBe(old.system_prompt);
   expect(conversationBody(upgraded, 'warm_reflection', 'Public question?', []).model).toBe('google/gemini-3.1-pro-preview');
   const current = conversationSnapshot();
+  current.memory_version = 'stomylos_memory_context_v5';
+  current.component_hashes = conversationComponents(current.version, current.memory_version);
   current.memory_context = flattenMemory(emptyMemory('shared'));
-  expect(conversationBody(timed(current, []), 'model_04', 'Public question?', []).model).toBe('openai/gpt-6-astra');
+  expect(conversationBody(timed(current, []), 'model_03', 'Public question?', []).model).toBe('anthropic/claude-sonnet-5');
   expect(() => conversationRequestSnapshot({ ...current, characters: old.characters })).toThrow();
   expect(() => conversationRequestSnapshot({ ...current, system_prompt: old.system_prompt })).toThrow();
   expect(eligible(null)).toEqual(['model_02', 'model_09']);
@@ -69,7 +71,7 @@ it('preserves C sessions and rejects mixed universal/C contracts', () => {
   expect(body.messages[0].content).toBe(saved.system_prompt);
   expect(body.messages[1].content).toBe(saved.seed_template.replace('{{QUESTION}}', 'Public question?'));
   const current = conversationSnapshot();
-  expect(current.version).toBe('stomylos_conversation_v8');
+  expect(current.version).toBe('stomylos_conversation_v9');
   expect(eligible(null, saved)).toEqual(['model_03', 'model_04']);
   expect(eligible(null, current)).toEqual(['model_02', 'model_09']);
   for (const mixed of [

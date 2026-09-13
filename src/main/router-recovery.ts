@@ -1,6 +1,7 @@
 import { prepareProviderRequest, type ProviderRequest } from './provider-policy';
 import { isDeepStrictEqual } from 'node:util';
-import { eightRouterPrompts } from './compact-router';
+import previousEight from './conversation-v8-config.json';
+import { eightRouterPrompts, retainedRouterPrompts } from './compact-router';
 import type { Json, RequestRecord } from '../shared/types';
 import { AppFailure, failureCode } from './errors';
 import { config, hash, routerScores } from './contracts';
@@ -17,13 +18,14 @@ export function recoverySnapshot(primary: Json): Json {
 }
 export function validateRecovery(snapshot: Json) {
   const index = snapshot.recovery_attempt;
+  const selected = Object.values(eightRouterPrompts).includes(snapshot.prompt) ? previousEight : config;
   if (snapshot.recovery_version !== routerRecoveryVersion || ![0, 1].includes(index) ||
     snapshot.parameters?.model !== routerRecoveryPolicy.models[index as 0 | 1] ||
     snapshot.timeout_seconds * 1000 !== routerRecoveryPolicy.attemptMs[index as 0 | 1] ||
-    snapshot.prompt_sha256 !== hash(snapshot.prompt) || !Object.values(eightRouterPrompts).includes(snapshot.prompt) ||
-    !isDeepStrictEqual(snapshot.parameters.reasoning, config.router.model.reasoning) ||
-    !isDeepStrictEqual(snapshot.parameters.response_format, config.router.response_format) ||
-    !isDeepStrictEqual(snapshot.parameters.provider, { only: config.router.provider.only, require_parameters: true, data_collection: 'deny', allow_fallbacks: false }) ||
+    snapshot.prompt_sha256 !== hash(snapshot.prompt) || ![...Object.values(eightRouterPrompts), ...Object.values(retainedRouterPrompts)].includes(snapshot.prompt) ||
+    !isDeepStrictEqual(snapshot.parameters.reasoning, selected.router.model.reasoning) ||
+    !isDeepStrictEqual(snapshot.parameters.response_format, selected.router.response_format) ||
+    !isDeepStrictEqual(snapshot.parameters.provider, { only: selected.router.provider.only, require_parameters: true, data_collection: 'deny', allow_fallbacks: false }) ||
     snapshot.parameters.stream !== false || snapshot.parameters.max_tokens !== 512 ||
     !isDeepStrictEqual(snapshot.response_identity, { allowed_models: [routerRecoveryPolicy.models[index as 0 | 1]], provider: 'OpenAI' })) throw new AppFailure('router_recovery_changed');
 }

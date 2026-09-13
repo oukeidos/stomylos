@@ -281,9 +281,23 @@ it('adds opener storage in 35 to 36 atomically while preserving legacy drafts an
   expect(db.pragma('user_version',{simple:true})).toBe(35);validateSchema(db,source35);
   const backup=join(dir,'stomylos.pre-migration-v35.sqlite3'), bytes=readFileSync(backup);
   migrateDatabase(db,dir);validateSchema(db,current);
-  expect(db.pragma('user_version',{simple:true})).toBe(36);
+  expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
   expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
   expect(db.prepare('SELECT * FROM conversation_openers').all()).toEqual([]);
   expect(db.pragma('foreign_key_check')).toEqual([]);
+  migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
+});
+
+it('admits v9 contracts in 36 to 37 without rewriting data, with rollback and idempotent recovery', () => {
+  const {db,dir}=fixture(current,36);db.transaction(()=>new StarterStore(db).initialize())();
+  db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(flatDocument,memoryHash(flatDocument));
+  db.exec("INSERT INTO sessions(id,state,created_at,draft,chat_config,opening_kind) VALUES('legacy','draft','2026-09-13','Keep the saved draft','{}','user')");
+  const before=db.prepare('SELECT * FROM sessions').all();
+  const execute=db.exec.bind(db), fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=execute(sql);if(sql.includes('Admit conversation v9'))throw new Error('admission fault');return result;});
+  expect(()=>migrateDatabase(db,dir)).toThrow('admission fault');fault.mockRestore();
+  expect(db.pragma('user_version',{simple:true})).toBe(36);expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
+  const backup=join(dir,'stomylos.pre-migration-v36.sqlite3'),bytes=readFileSync(backup);
+  migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
+  expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
   migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
 });

@@ -11,3 +11,10 @@ import eightStarter from './compact-router-eight-starter.txt?raw';
 import eightReselection from './compact-router-eight-reselection.txt?raw';
 export const eightRouterVersion = 'stomylos_compact_router_v2';
 export const eightRouterPrompts = { direct: eightDirect, starter: eightStarter, opener: eightOpener, reselection: eightReselection };
+
+import retainedOpener from './compact-router-retained-opener.txt?raw';
+import retainedDirect from './compact-router-retained-direct.txt?raw';
+import retainedStarter from './compact-router-retained-starter.txt?raw';
+import retainedReselection from './compact-router-retained-reselection.txt?raw';
+export const retainedRouterVersion = 'stomylos_compact_router_v3';
+export const retainedRouterPrompts = { direct: retainedDirect, starter: retainedStarter, opener: retainedOpener, reselection: retainedReselection };

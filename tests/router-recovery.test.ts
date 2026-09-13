@@ -64,8 +64,8 @@ it('does not dispatch a secondary on save failure, and restart requires explicit
 it('keeps the ordered definition contract and frozen historical display identities',()=>{
   verifyRuntime();const f=setup(true);
   for(const body of [routerBody(null,'Hello',conversationSnapshot('user')),routerBody('Question','Answer',conversationSnapshot('starter')),f.body]){
-    expect(body.messages[0].content.match(/model_\d+/g)).toEqual(partnerOrder);
-    expect(Object.keys(body.response_format.json_schema.schema.properties)).toEqual(partnerOrder);
+    expect(body.messages[0].content.match(/model_\d+/g)).toEqual(partnerOrder.filter(id => id !== 'model_04'));
+    expect(Object.keys(body.response_format.json_schema.schema.properties)).toEqual(partnerOrder.filter(id => id !== 'model_04'));
   }
   const saved=[{id:'model_08',label:'Taste',model:'deepseek/deepseek-v4-pro-0813',description:''},{id:'model_03',label:'Explain',model:'anthropic/claude-sonnet-5',description:''}];
   expect(orderedPartners(saved).map(c=>c.id)).toEqual(['model_03','model_08']);expect(saved[0].label).toBe('Taste');

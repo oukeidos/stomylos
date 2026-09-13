@@ -3,11 +3,12 @@ import { AppFailure } from './errors';
 import { character, hash, isLearner, leastUsed, routerSnapshot, sessionRuntime } from './contracts';
 import cards from './partner-router-cards.json';
 import prompt from './partner-router-prompt.txt?raw';
-import { compactRouterPrompts, eightRouterPrompts } from './compact-router';
+import { compactRouterPrompts, eightRouterPrompts, retainedRouterPrompts } from './compact-router';
 
 export const partnerRouterVersion = 'stomylos_partner_reselection_v1';
 export const compactPartnerRouterVersion = 'stomylos_partner_reselection_v2';
 export const eightPartnerRouterVersion = 'stomylos_partner_reselection_v3';
+export const retainedPartnerRouterVersion = 'stomylos_partner_reselection_v4';
 export const partnerWindow = { turns: 3, bytes: 24_000 } as const;
 export function recentDialogue(messages: Message[]) {
   const users = messages.filter(isLearner), latest = users.at(-1);
@@ -24,12 +25,13 @@ export function recentDialogue(messages: Message[]) {
 }
 export function partnerRouterSnapshot(saved: Json, messages: Message[], excludedModel: string): Json {
   const selected = sessionRuntime(saved), reference = (cards as Record<string, { text: string; source_sha256: string }>)[saved.version];
+  const retained = saved.version === 'stomylos_conversation_v9';
   const eight = saved.version === 'stomylos_conversation_v8';
-  if (!eight && (!reference || reference.source_sha256 !== hash(selected.routerPrompt))) throw new AppFailure('unsupported_partner_router');
+  if (!retained && !eight && (!reference || reference.source_sha256 !== hash(selected.routerPrompt))) throw new AppFailure('unsupported_partner_router');
   const original = routerSnapshot(saved), window = recentDialogue(messages);
   const compact = saved.version === 'stomylos_conversation_v7';
-  const system = eight ? eightRouterPrompts.reselection : compact ? compactRouterPrompts.reselection : prompt + '\n' + reference.text;
-  const version = eight ? eightPartnerRouterVersion : compact ? compactPartnerRouterVersion : partnerRouterVersion;
+  const system = retained ? retainedRouterPrompts.reselection : eight ? eightRouterPrompts.reselection : compact ? compactRouterPrompts.reselection : prompt + '\n' + reference.text;
+  const version = retained ? retainedPartnerRouterVersion : eight ? eightPartnerRouterVersion : compact ? compactPartnerRouterVersion : partnerRouterVersion;
   return { ...original, version, purpose: 'partner_reselection',
     prompt: system, prompt_id: version, prompt_sha256: hash(system),
     input: window.input, input_hash: hash(window.input), source_message_ids: window.message_ids,
@@ -37,7 +39,8 @@ export function partnerRouterSnapshot(saved: Json, messages: Message[], excluded
     roster_version: saved.version, policy_version: partnerRouterVersion };
 }
 export function partnerRouterBody(snapshot: Json): Json {
-  if (![partnerRouterVersion, compactPartnerRouterVersion, eightPartnerRouterVersion].includes(snapshot.version) ||
+  if (![partnerRouterVersion, compactPartnerRouterVersion, eightPartnerRouterVersion, retainedPartnerRouterVersion].includes(snapshot.version) ||
+    (snapshot.version === retainedPartnerRouterVersion && snapshot.prompt !== retainedRouterPrompts.reselection) ||
     (snapshot.version === eightPartnerRouterVersion && snapshot.prompt !== eightRouterPrompts.reselection) ||
     (snapshot.version === compactPartnerRouterVersion && snapshot.prompt !== compactRouterPrompts.reselection) || snapshot.prompt_sha256 !== hash(snapshot.prompt) ||
     snapshot.input_hash !== hash(snapshot.input)) throw new AppFailure('partner_source_changed');

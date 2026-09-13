@@ -10,6 +10,7 @@ import { version } from '../../package.json';
 import runtime from './runtime-config.json';
 import grammarV1 from './grammar-v1-config.json';
 import conversationV5 from './conversation-v5-config.json';
+import conversationV8 from './conversation-v8-config.json';
 import conversationV7 from './conversation-v7-config.json';
 import conversationV6 from './conversation-v6-config.json';
 import universalV1 from './universal-v1-config.json';
@@ -27,7 +28,7 @@ import starterSixPrompt from './starter-router-six-prompt.txt?raw';
 import directSevenPrompt from './direct-router-seven-prompt.txt?raw';
 import starterSevenPrompt from './starter-router-seven-prompt.txt?raw';
 import reciprocalPrompt from './reciprocal-replacement-prompt.txt?raw';
-import { compactRouterPrompts, compactRouterVersion, eightRouterPrompts, eightRouterVersion } from './compact-router';
+import { compactRouterPrompts, compactRouterVersion, eightRouterPrompts, eightRouterVersion, retainedRouterPrompts, retainedRouterVersion } from './compact-router';
 
 export const appId = 'io.github.oukeidos.stomylos';
 export const appVersion = version;
@@ -51,6 +52,10 @@ export function character(id: string, snapshot?: Json): Character {
 }
 export function verifyRuntime() {
   for (const [text, expected] of [
+    [retainedRouterPrompts.direct, '9faed13263187c6a4f4b30688044bd92bf4995edb54c5a7ec7e1158e21414ec0'],
+    [retainedRouterPrompts.starter, '2a714646c3920efb762770088e3fbbeed3825556309fe4c94d6c43827879103c'],
+    [retainedRouterPrompts.opener, 'b03c74d9510f6651a2b61e4fc66698981ba526865fad77b836ad2198e67efdaa'],
+    [retainedRouterPrompts.reselection, '30ccfe940c813c67fa240d1da86c7ee968ca57a5d4ca97b6f9d3d85a223fef48'],
     [eightRouterPrompts.direct, 'f6ae98bcef9549f8551f57fbacd2e58e6d42be48cbaf1df832124ec3c1fdfde4'],
     [eightRouterPrompts.starter, '2f759a0fe8d9ca399f07eb9dc9b57f4dc77aeb40915514a48d9fb1532dd301bd'],
     [eightRouterPrompts.reselection, '628b4faa7fe937937f4ec250125a12469e4b279d23deb610d600d281b8e9a727'],
@@ -71,7 +76,7 @@ export function verifyRuntime() {
     [timePrompt, 'd23e7c5b12a9c528bdcbf5e109319148dd599c86d8bbd7448cf1e1eaa39de322'],
     [runtime.conversation.seed_template, 'bebbc423485b5e9f37c5ec843f98e4146c46192e61c5aee82dadca923a2df46b']
   ]) if (hash(text) !== expected) throw new AppFailure('prompt_hash_mismatch');
-  if (runtime.conversationPrompt !== reciprocalPrompt || runtime.routerPrompt !== eightRouterPrompts.starter || runtime.router.prompt.sha256 !== hash(eightRouterPrompts.starter)) throw new AppFailure('prompt_hash_mismatch');
+  if (runtime.conversationPrompt !== reciprocalPrompt || runtime.routerPrompt !== retainedRouterPrompts.starter || runtime.router.prompt.sha256 !== hash(retainedRouterPrompts.starter)) throw new AppFailure('prompt_hash_mismatch');
   if (characters.some(c => (runtime.router.character_to_conversation_model as Json)[c.id] !== c.model)) throw new AppFailure('portfolio_mismatch');
 }
 export function sessionRuntime(snapshot?: Json) {
@@ -84,7 +89,8 @@ function directPrompt(selected: ReturnType<typeof sessionRuntime>) {
   return selected.conversation.version === conversationV6.conversation.version ? directSixPrompt : directRouterPrompt;
 }
 function routingPrompt(snapshot: Json | undefined, direct: boolean, selected: ReturnType<typeof sessionRuntime>) {
-  if (!snapshot || snapshot.router_prompt_version === eightRouterVersion) return direct ? eightRouterPrompts.direct : snapshot?.opener_version === openerVersion ? eightRouterPrompts.opener : eightRouterPrompts.starter;
+  if (!snapshot || snapshot.router_prompt_version === retainedRouterVersion) return direct ? retainedRouterPrompts.direct : snapshot?.opener_version === openerVersion ? retainedRouterPrompts.opener : retainedRouterPrompts.starter;
+  if (snapshot.router_prompt_version === eightRouterVersion) return direct ? eightRouterPrompts.direct : snapshot?.opener_version === openerVersion ? eightRouterPrompts.opener : eightRouterPrompts.starter;
   if (snapshot.router_prompt_version === compactRouterVersion) return direct ? compactRouterPrompts.direct : compactRouterPrompts.starter;
   return direct ? directPrompt(selected) : selected.routerPrompt;
 }
@@ -104,20 +110,20 @@ export function routerSnapshot(snapshot?: Json): Json {
   const selected = sessionRuntime(snapshot);
   const direct = snapshot && openingKind(snapshot) === 'user';
   const prompt = routingPrompt(snapshot, !!direct, selected);
-  const compact = !snapshot || [compactRouterVersion, eightRouterVersion].includes(snapshot.router_prompt_version);
-  const promptVersion = !snapshot ? eightRouterVersion : snapshot.router_prompt_version;
+  const compact = !snapshot || [compactRouterVersion, eightRouterVersion, retainedRouterVersion].includes(snapshot.router_prompt_version);
+  const promptVersion = !snapshot ? retainedRouterVersion : snapshot.router_prompt_version;
   const inputKind = direct ? 'direct' : snapshot?.opener_version === openerVersion ? 'opener' : 'starter';
   const directVersion = selected.conversation.version === conversationV7.conversation.version ? 'v7' : selected.conversation.version === conversationV6.conversation.version ? 'v5' : 'v3';
   const { messages: _, ...parameters } = routerBody(direct ? null : '', '', snapshot);
   return { version: compact ? `${promptVersion}_${inputKind}` : direct ? `stomylos_character_router_${directVersion}` : selected.router.version, app_version: appVersion, parameters,
     prompt, prompt_id: compact ? `${promptVersion}_${inputKind}` : direct ? `stomylos_character_router_prompt_${directVersion}` : selected.router.prompt.id, prompt_sha256: hash(prompt),
-    response_identity: { allowed_models: selected.router.model.accepted_response_models, provider: selected.router.provider.expected_response_provider }, timeout_seconds: selected === runtime ? 3 : 10,
-    ...(selected === runtime ? { recovery_version: 'stomylos_router_recovery_v1', recovery_attempt: 0 } : {}) };
+    response_identity: { allowed_models: selected.router.model.accepted_response_models, provider: selected.router.provider.expected_response_provider }, timeout_seconds: (selected === runtime || selected === conversationV8) ? 3 : 10,
+    ...((selected === runtime || selected === conversationV8) ? { recovery_version: 'stomylos_router_recovery_v1', recovery_attempt: 0 } : {}) };
 }
 export function conversationSnapshot(kind?: OpeningKind): Json {
   return { ...structuredClone(runtime.conversation), system_prompt: runtime.conversationPrompt,
     prompt_id: 'stomylos_conversation_prompt_v5', prompt_sha256: hash(runtime.conversationPrompt), app_version: appVersion, memory_version: coldContextVersion,
-    time_version: timeVersion, component_hashes: conversationComponents(), router_prompt_version: eightRouterVersion,
+    time_version: timeVersion, component_hashes: conversationComponents(), router_prompt_version: retainedRouterVersion,
     associative_context_version: associativeRecallVersion,
     ...(kind ? { opening: { version: openingVersion, kind } } : {}) };
 }
@@ -151,6 +157,7 @@ export function grammarBody(snapshot: Json, messages: Message[]): Json {
 
 function runtimeForVersion(version: string) {
   if (version === runtime.conversation.version) return runtime;
+  if (version === conversationV8.conversation.version) return conversationV8;
   if (version === conversationV7.conversation.version) return conversationV7;
   if (version === conversationV6.conversation.version) return conversationV6;
   if (version === conversationV5.conversation.version) return conversationV5;
@@ -165,17 +172,17 @@ function validateConversationSnapshot(snapshot: Json) {
   if (snapshot.opener_version !== undefined && snapshot.opener_version !== openerVersion) throw new AppFailure('unsupported_opening');
   if (snapshot.memory_control !== undefined && snapshot.memory_control !== memoryControlVersion) throw new AppFailure('unsupported_memory_settings');
   if (snapshot.memory_control === memoryControlVersion && (snapshot.memory_context !== undefined || snapshot.cold_recollections !== undefined)) throw new AppFailure('unsupported_memory_settings');
-  if (snapshot.version === runtime.conversation.version && snapshot.router_prompt_version !== eightRouterVersion) throw new AppFailure('unsupported_router_settings');
-  if (snapshot.router_prompt_version !== undefined && !((snapshot.router_prompt_version === compactRouterVersion && snapshot.version === conversationV7.conversation.version) || (snapshot.router_prompt_version === eightRouterVersion && snapshot.version === runtime.conversation.version))) throw new AppFailure('unsupported_router_settings');
+  if ((snapshot.version === runtime.conversation.version && snapshot.router_prompt_version !== retainedRouterVersion) || (snapshot.version === conversationV8.conversation.version && snapshot.router_prompt_version !== eightRouterVersion)) throw new AppFailure('unsupported_router_settings');
+  if (snapshot.router_prompt_version !== undefined && !((snapshot.router_prompt_version === compactRouterVersion && snapshot.version === conversationV7.conversation.version) || (snapshot.router_prompt_version === eightRouterVersion && snapshot.version === conversationV8.conversation.version) || (snapshot.router_prompt_version === retainedRouterVersion && snapshot.version === runtime.conversation.version))) throw new AppFailure('unsupported_router_settings');
   if (snapshot.cache_version !== undefined && snapshot.cache_version !== conversationCacheVersion) throw new AppFailure('unsupported_conversation_settings');
   if (snapshot.associative_context_version !== undefined && snapshot.associative_context_version !== associativeRecallVersion) throw new AppFailure('unsupported_conversation_settings');
   if (snapshot.associative_recall !== undefined) {
     if (snapshot.associative_context_version !== associativeRecallVersion) throw new AppFailure('unsupported_associative_settings');
     validateAssociative(snapshot.associative_recall);
   }
-  const modern = [runtime.conversation.version, conversationV7.conversation.version, conversationV6.conversation.version, conversationV5.conversation.version].includes(snapshot.version);
+  const modern = [runtime.conversation.version, conversationV8.conversation.version, conversationV7.conversation.version, conversationV6.conversation.version, conversationV5.conversation.version].includes(snapshot.version);
   if (modern) {
-    if (!(snapshot.memory_version === memoryVersion || ([runtime.conversation.version, conversationV7.conversation.version, conversationV6.conversation.version].includes(snapshot.version) && [sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion, coldContextVersion].includes(snapshot.memory_version))) || snapshot.time_version !== timeVersion ||
+    if (!(snapshot.memory_version === memoryVersion || ([runtime.conversation.version, conversationV8.conversation.version, conversationV7.conversation.version, conversationV6.conversation.version].includes(snapshot.version) && [sharedMemoryVersion, capacityMemoryVersion, flatMemoryVersion, coldContextVersion].includes(snapshot.memory_version))) || snapshot.time_version !== timeVersion ||
         !isDeepStrictEqual(snapshot.component_hashes, conversationComponents(snapshot.version, snapshot.memory_version))) throw new AppFailure('unsupported_temporal_settings');
     const promptId = snapshot.version === conversationV5.conversation.version ? 'stomylos_conversation_prompt_v4' : 'stomylos_conversation_prompt_v5';
     if (snapshot.prompt_id !== promptId) throw new AppFailure('unsupported_conversation_prompt');

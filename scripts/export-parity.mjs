@@ -48,12 +48,12 @@ const selectionArea = '../auxiliary/conversation-model-evaluation/';
 const selectedSeven = JSON.parse(readFileSync(selectionArea + 'selected-conversation-models.json', 'utf8'));
 const previousSeven = JSON.parse(readFileSync('src/main/conversation-v7-config.json', 'utf8'));
 const current = JSON.parse(readFileSync('src/main/runtime-config.json', 'utf8'));
-assert.deepEqual(current.conversation.characters.map(({model, reasoning}) => ({model, reasoning})), selectedSeven.models.map(({model, reasoning}) => ({model, reasoning})));
+assert.deepEqual(current.conversation.characters.map(({model, reasoning}) => ({model, reasoning})), selectedSeven.models.filter(c => c.model !== 'openai/gpt-6-astra').map(({model, reasoning}) => ({model, reasoning})));
 const reciprocal = readFileSync(selectionArea + 'reciprocal-replacement-prompt.txt', 'utf8');
 assert.equal(current.conversationPrompt, reciprocal);
 assert.equal(readFileSync('src/main/reciprocal-replacement-prompt.txt', 'utf8'), reciprocal);
 assert.equal(createHash('sha256').update(reciprocal).digest('hex'), 'c70cffeace85121e193f76373a69ccb77785bce8688ab82df88da3f9b95bca00');
-assert.equal(current.routerPrompt, readFileSync('src/main/compact-router-eight-starter.txt', 'utf8'));
+assert.equal(current.routerPrompt, readFileSync('src/main/compact-router-retained-starter.txt', 'utf8'));
 assert.equal(previousSeven.routerPrompt, readFileSync('src/main/starter-router-seven-prompt.txt', 'utf8'));
 const directSeven = readFileSync('src/main/direct-router-seven-prompt.txt', 'utf8');
 assert.equal(previousSeven.routerPrompt.split('Characters:')[1].split('The starter question')[0], directSeven.split('Characters:')[1].split('The first message')[0]);
@@ -136,13 +136,13 @@ assert.equal(readFileSync('src/main/memory-prompt-compact.txt', 'utf8'), readFil
 // Updater v7 uses the exact selected baseline; later rejected refinements stay out.
 assert.equal(readFileSync('src/main/memory-prompt-flat.txt', 'utf8'), readFileSync('../experiments/EXP-017-character-memory/gemini-product-comparison/prompt.md', 'utf8'));
 
-const order = ['model_01','model_03','model_02','model_04','model_07','model_08','model_05','model_09'];
+const order = ['model_01','model_03','model_02','model_07','model_08','model_05','model_09'];
 assert.deepEqual(current.conversation.characters.map(c=>c.id),order);
 assert.deepEqual(Object.keys(current.router.response_format.json_schema.schema.properties),order);
 assert.deepEqual(current.router.response_format.json_schema.schema.required,order);
 const proposal=readFileSync('../experiments/EXP-022-conversation-model-selection/PROVISIONAL_EIGHT_PARTNERS.md','utf8');
 for(const kind of ['direct','starter','reselection']){
-  const prompt=readFileSync(`src/main/compact-router-eight-${kind}.txt`,'utf8');
+  const prompt=readFileSync(`src/main/compact-router-retained-${kind}.txt`,'utf8');
   assert.deepEqual(prompt.match(/model_\d+/g),order);
   for(const c of current.conversation.characters){
     const line=prompt.split('\n').find(l=>l.startsWith(c.id+' — '));
@@ -157,3 +157,8 @@ console.log('Eight adopted cards, display/schema order, model settings and prese
 assert.equal(readFileSync('src/main/memory-add-prompt.txt','utf8'),readFileSync('tests/fixtures/memory-add/merge-only-l-prompt.txt','utf8'));
 assert.equal(readFileSync('src/main/memory-add-prompt.txt','utf8'),readFileSync('../experiments/EXP-033-add-only-memory/paragraph-l-prompt.txt','utf8'));
 console.log('Luna ADD prompt matches the selected EXP-033 bytes.');
+
+assert.equal(createHash('sha256').update(readFileSync('src/main/conversation-v8-config.json')).digest('hex'), 'c828e835c682fd251913c1e07b648dc5c4b398d240ab0ea7496799a60864d464');
+const oldEight = JSON.parse(readFileSync('src/main/conversation-v8-config.json', 'utf8'));
+assert.deepEqual(current.conversation.characters, oldEight.conversation.characters.filter(c => c.id !== 'model_04'));
+console.log('Astra retirement preserves frozen v8 and every retained character definition/setting.');
