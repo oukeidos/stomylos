@@ -9,7 +9,7 @@ export function MemoryInputRecovery({ jobs, disabled, onAction }: {
   return <>{jobs.filter(job => ['failed', 'interrupted'].includes(job.state)).map(job =>
     <section key={job.ordinal} aria-label={`Memory input ${job.input_number}`}>
       <p>Input {job.input_number}: {job.state}. {job.failure === 'memory_add_item_capacity'
-        ? 'A note exceeds 4,000 characters.' : job.failure?.replaceAll('_', ' ')}</p>
+        ? 'A note exceeds 3,000 characters.' : job.failure?.replaceAll('_', ' ')}</p>
       {memoryOutcomeUncertain(job.state, job.failure) && <p className="note">{memoryRetryNotice}</p>}
       <div className="dialog-actions">
         <button disabled={disabled} onClick={() => onAction('retryMemoryAdd', job)}>Retry input</button>

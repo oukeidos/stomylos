@@ -27,7 +27,9 @@ export class MemoryStore {
     if (memoryHash(saved.document) !== saved.document_hash) fail('document_hash');
     const doc = JSON.parse(saved.document); validateStored(doc);
     if (doc.character_id !== sharedMemoryId) fail('character_mismatch');
-    if (memoryCharacters(doc) > (Number(this.db.pragma('user_version', {simple:true}))>=28?activeMemoryCharacterCap:memoryCharacterCap)) fail('recovery_required');
+    const schema = Number(this.db.pragma('user_version', { simple: true }));
+    const cap = schema >= 35 ? activeMemoryCharacterCap : schema >= 28 ? 4000 : memoryCharacterCap;
+    if (memoryCharacters(doc) > cap) fail('recovery_required');
     if (Number(this.db.pragma('user_version', { simple: true })) >= 22 && !isFlatMemory(doc)) fail('document');
     if (Number(this.db.pragma('user_version',{simple:true}))>=28) validateMemoryMetadata(this.db,doc);
     return doc;

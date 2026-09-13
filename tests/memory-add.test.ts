@@ -24,11 +24,11 @@ function finish(store:Store,texts:string[]){const a=prepare(store);store.receive
 it('uses the tested prompt/schema without old memory, counts rendered Unicode and rejects a single oversized note atomically',()=>{
  const body=memoryAddBody({current_user:{content:'Tea.'}});expect(body.messages[0].content).toBe(readFileSync('tests/fixtures/memory-add/merge-only-l-prompt.txt','utf8'));expect(body.max_tokens).toBe(2048);expect(body.reasoning).toEqual({effort:'none',exclude:true});
  const empty={character_id:'shared',revision:0,database_records:[]};
- const first=addAndFifo(empty,JSON.stringify({add:['🙂'.repeat(3998)]}),'m1');expect(memoryCharacters(first.document)).toBe(4000);
+ const first=addAndFifo(empty,JSON.stringify({add:['🙂'.repeat(2998)]}),'m1');expect(memoryCharacters(first.document)).toBe(3000);
  expect(first.changes.added[0].id).toBe('add_'+memoryHash(JSON.stringify(['stomylos_memory_add_v1','m1',0])).slice(0,24));
  const second=addAndFifo(first.document,JSON.stringify({add:['한글','Again','Again']}),'m2');expect(second.changes.evicted).toEqual(first.document.database_records);expect(second.document.database_records).toHaveLength(3);
  expect(addAndFifo(second.document,'{"add":[]}','m3').document).toEqual(second.document);
- expect(()=>addAndFifo(first.document,JSON.stringify({add:['x'.repeat(3999)]}),'m4')).toThrow('memory_add_item_capacity');expect(memoryCharacters(first.document)).toBe(4000);
+ expect(()=>addAndFifo(first.document,JSON.stringify({add:['x'.repeat(2999)]}),'m4')).toThrow('memory_add_item_capacity');expect(memoryCharacters(first.document)).toBe(3000);
 });
 it.each([
  ['2026-09-11T15:30:00.000Z',540,'2026-09-12 (Saturday)'],
@@ -86,12 +86,12 @@ it('persists response before atomic apply, recovers save-only after restart, pre
  f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'),undefined,()=>({utc:'2020-01-01T00:00:00.000Z',timezone:'UTC',utc_offset_minutes:0,local_date:'2020-01-01'}));expect(f.store.memoryAddReady()?.state).toBe('received');expect(f.store.prepareMemoryAdd(1,'unused').id).toBe(a.id);f.store.acceptMemoryAdd(a.id);
  // Interrupted chat still needs an explicit reply recovery; complete its stored bubble for this isolated source-order fixture.
  f.db.prepare("UPDATE messages SET delivery='complete',content='And then?' WHERE id=?").run(start.bubble.id);
- f.store.submit(s.id,'A later source.');finish(f.store,['z'.repeat(2000)]);
+ f.store.submit(s.id,'A later source.');finish(f.store,['z'.repeat(1900)]);
  const doc=f.store.memoryManagement().document;expect(doc.database_records.map(r=>r.text[0])).toEqual(['y','z']);
  f.store.end(s.id);const row=doc.database_records[0],before=f.db.prepare('SELECT * FROM memory_item_metadata WHERE id=?').get(row.id) as Json;
  const view=f.store.memoryManagement();const edit={id:row.id,text:'Edited detail',revision:doc.revision,hash:view.hash};f.store.commitMemoryEdit(f.store.prepareMemoryEdit(edit));
  expect(f.db.prepare('SELECT * FROM memory_item_metadata WHERE id=?').get(row.id)).toEqual({...before,origin:'manual',edited_at:expect.any(String)});
- const current=f.store.memoryManagement();expect(()=>f.store.prepareMemoryEdit({...edit,text:'x'.repeat(4000),revision:current.document.revision,hash:current.hash})).toThrow('memory_edit_capacity');
+ const current=f.store.memoryManagement();expect(()=>f.store.prepareMemoryEdit({...edit,text:'x'.repeat(3000),revision:current.document.revision,hash:current.hash})).toThrow('memory_edit_capacity');
  f.store.commitMemoryEdit(f.store.prepareMemoryEdit({...edit,text:null,revision:current.document.revision,hash:current.hash}));expect(f.db.prepare('SELECT 1 FROM memory_item_metadata WHERE id=?').get(row.id)).toBeUndefined();
  f.store.deleteSession(s.id);expect(f.store.memoryManagement().document.database_records).toHaveLength(1);expect(f.db.pragma('foreign_key_check')).toEqual([]);
 });
@@ -167,7 +167,7 @@ it('actual coordinator quit interrupts a dispatched ADD, preserves the queued so
  const gateway:Gateway={async complete(_body,_identity,signal){calls++;return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new AppFailure('request_cancelled')),{once:true}));},async stream(_body,_signal,chunk){chunk('More?');return {content:'More?',metadata:{}};}};
  const c=controller(f,gateway);
  await c.command('sendMessage',{sessionId:s.id,text:'First detail',revision:0});
- await vi.waitFor(()=>{expect(calls).toBe(1);expect(f.store.messages(s.id).at(-1)?.delivery).toBe('complete');});
+ await vi.waitFor(()=>{expect(calls).toBe(1);expect(f.store.messages(s.id).at(-1)).toMatchObject({role:'assistant',delivery:'complete'});},{timeout:3000});
  f.store.submit(s.id,'Second detail');await c.command('close',undefined);
  f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
  expect(f.store.view(s.id).memory.addJobs?.map(j=>j.state)).toEqual(['interrupted','pending']);expect(f.store.currentMemory().revision).toBe(0);
@@ -205,7 +205,7 @@ it('projects transcript input numbers across chats and preserves Older movement 
  const {store,db}=fixture(), first=session(store), start=send(store,first.id);
  finish(store,['Earlier chat.']);store.finishReply(start.request.id,start.bubble.id,'Next?',{});store.end(first.id);
  const second=session(store), next=send(store,second.id);
- finish(store,['x'.repeat(3998)]);store.finishReply(next.request.id,next.bubble.id,'More?',{});
+ finish(store,['x'.repeat(2998)]);store.finishReply(next.request.id,next.bubble.id,'More?',{});
  store.submit(second.id,'My second input.');finish(store,['A new note.']);
  const jobs=store.view(second.id).memory.addJobs!;
  expect(jobs.map(job=>[job.ordinal,job.input_number])).toEqual([[2,1],[3,2]]);

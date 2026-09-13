@@ -850,3 +850,5 @@ CREATE TABLE genie_request_attempts (
   settings TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', failure TEXT
 );
 CREATE INDEX genie_requests_session ON genie_request_attempts(session_id,created_at,id);
+
+-- Public schema 34 -> 35: same tables; startup archives HOT overflow at 3,000 characters.

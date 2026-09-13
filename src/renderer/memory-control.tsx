@@ -77,11 +77,11 @@ export function MemoryControl({ preference, active, characters, errorText, coldS
         {indexError && <p role="alert">{indexError}</p>}
       </div>}
       <p>Memory saves notes for future chats with any partner. Older notes stay as recorded and may be recalled. Matching is local; notes used in replies go to your AI provider.</p>
-      <p>Recent holds up to 4,000 characters; overflow moves to Older. Edit Recent notes or delete either kind here. Asking a partner to forget does not delete notes.</p>
+      <p>Recent holds up to 3,000 characters; overflow moves to Older. Edit Recent notes or delete either kind here. Asking a partner to forget does not delete notes.</p>
       <p>Off pauses memory use and new notes, keeping saved notes. Already-used memory remains in the current chat. Start a new chat after turning memory back on.</p>
       <p>Chats are still saved and sent when memory is off. Past chats and backups stay unchanged.</p>
       <details className="memory-storage-details"><summary>Storage</summary>
-        {characters !== undefined && <p>{characters.toLocaleString()} / 4,000 recent characters</p>}
+        {characters !== undefined && <p>{characters.toLocaleString()} / 3,000 recent characters</p>}
         {coldStatus ? <>
           <p>{coldStatus.originals.toLocaleString()} older notes · {coldStatus.groups.toLocaleString()} groups</p>
           {coldStatus.oversized > 0 && <p>{coldStatus.oversized.toLocaleString()} notes are too long for recall and remain saved.</p>}

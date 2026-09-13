@@ -3,8 +3,8 @@ import { AppFailure } from './errors';
 
 export const associativeRecallVersion = 'stomylos_associative_recall_v1';
 export const associativeSimilarityFloor = 0.78;
-export const associativeItemLimit = 3;
-export const associativeCharacterCap = 900;
+export const associativeItemLimit = 5;
+export const associativeCharacterCap = 1500;
 const intro = '\n\n<associative_recall>\n';
 const outro = '\n</associative_recall>';
 export interface AssociativeItem { id: string; text: string; text_hash: string; source_order: number; }

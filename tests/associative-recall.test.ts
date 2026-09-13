@@ -116,3 +116,13 @@ it('migrates a schema-32 database to the additive associative index without chan
     upgraded?.close(); rmSync(fixture.directory, { recursive: true, force: true });
   }
 });
+
+it('supplies five qualifying whole records above the former budget without filling below the similarity floor', () => {
+  const candidates = Array.from({length: 7}, (_, n) => candidate(String(n), String(n) + '🙂'.repeat(210), n, [0.9, 0]));
+  const selected = selectAssociative(q, candidates, 0);
+  expect(selected.items).toHaveLength(5);
+  expect(Array.from(selected.block).length).toBeGreaterThan(900);
+  expect(Array.from(selected.block).length).toBeLessThanOrEqual(1500);
+  validateAssociative(selected);
+  expect(selectAssociative(q, [...candidates.slice(0, 1), candidate('weak', 'Weak', 9, [0.77, 0])], 0).items).toHaveLength(1);
+});

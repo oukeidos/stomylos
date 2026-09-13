@@ -41,6 +41,8 @@ it('keeps already-bound legacy flat-memory sessions HOT-only even when valid COL
   const f=fixture(),config=JSON.parse(f.store.session(f.session.id).chat_config);config.memory_version='stomylos_memory_context_v5';config.component_hashes=conversationComponents(config.version,config.memory_version);
   f.db.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(config),f.session.id);
   f.db.prepare('INSERT INTO session_memory_policy VALUES(?,1,0)').run(f.session.id);
+  // Binding requires saved context; an undispatched policy row alone no longer binds a chat.
+  f.store.freezeMemory(f.session.id);
   const request=f.store.prepareChat(f.session.id,'legacy'),sent=f.store.startChat(request.id);
   expect(JSON.parse(request.config).memory_version).toBe('stomylos_memory_context_v5');expect(JSON.parse(request.config)).not.toHaveProperty('cold_recollections');expect(JSON.stringify(sent.body)).not.toContain('COLD_SENTINEL');
 });

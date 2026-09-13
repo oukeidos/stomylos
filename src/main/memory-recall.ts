@@ -4,7 +4,8 @@ import type { ColdMemory } from '../shared/cold-memory';
 
 export const coldRecallPolicy = 'cold_session_recall_v1';
 export const coldContextVersion = 'stomylos_memory_context_v6';
-export const coldCharacterCap = 1600;
+export const coldCharacterCap = 2000;
+export const coldItemLimit = 4;
 export const recallPrng = 'sfc32_v1';
 export const codePoints = (text: string) => Array.from(text).length;
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -72,7 +73,7 @@ export function draw(probabilities: number[], random: () => number): number {
 export function sampleRecollections(candidates: RecallCandidate[], hot: string[], load: (id: string) => RecallItem,
   random: () => number): RecallItem[] {
   const selected: RecallItem[] = [], usedGroups = new Set<string>(), excludedText = new Set(hot), excludedHashes = new Set(hot.map(hash));
-  for (let slot = 0; slot < 3; slot++) {
+  for (let slot = 0; slot < coldItemLimit; slot++) {
     const available = coldCharacterCap - (selected.length ? codePoints(renderCold(selected)) + 1 : codePoints(intro + outro));
     const eligible = new Map<string, RecallCandidate[]>();
     for (const item of candidates) {
@@ -100,7 +101,7 @@ export function sampleRecollections(candidates: RecallCandidate[], hot: string[]
 export function recallSeed(): string { return randomBytes(16).toString('hex'); }
 export function validateRecall(selection: RecallSelection) {
   if (!selection || selection.policy !== coldRecallPolicy || selection.prng !== recallPrng || !/^[a-f0-9]{32}$/.test(selection.seed)
-    || !Number.isSafeInteger(selection.revision) || selection.revision < 0 || !Array.isArray(selection.items) || selection.items.length > 3
+    || !Number.isSafeInteger(selection.revision) || selection.revision < 0 || !Array.isArray(selection.items) || selection.items.length > coldItemLimit
     || selection.items.some(item => typeof item.id !== 'string' || typeof item.text !== 'string' || hash(item.text) !== item.text_hash
       || !['source_message','manual_edit','unknown'].includes(item.time_basis))
     || new Set(selection.items.map(i => i.id)).size !== selection.items.length

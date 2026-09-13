@@ -24,7 +24,7 @@ it('establishes exact eligible groups before drawing, excludes duplicate text an
   const originals=new Map(notes.map(i=>[i.id,i])); let draws=0;
   const selected=sampleRecollections(notes.map((i,n)=>candidate(i,n<2?'impossible':i.id, n<2?1000:1)),['Already HOT'],id=>originals.get(id)!,()=>{draws++;return 0;});
   expect(selected.map(i=>i.id)).toEqual(['c','d']); expect(draws).toBe(4);
-  expect(codePoints(renderCold(selected))).toBeLessThanOrEqual(1600); expect(renderCold(selected)).toContain('\\u003colder_recollections\\u003e');
+  expect(codePoints(renderCold(selected))).toBeLessThanOrEqual(2000); expect(renderCold(selected)).toContain('\\u003colder_recollections\\u003e');
   expect(selected[0].text).toBe(notes[2].text);
   expect(()=>sampleRecollections([{...candidate(notes[2]),length:1}],[],()=>notes[2],()=>0)).toThrow('cold_recall_integrity');
 });
@@ -60,4 +60,13 @@ it('matches the fixed group distribution in a bounded seeded draw sample',()=>{
   for(let i=0;i<5000;i++)counts[draw(probabilities,random)]++;
   probabilities.forEach((expected,i)=>expect(Math.abs(counts[i]/5000-expected)).toBeLessThan(0.025));
   expect(counts[2]).toBeGreaterThan(0);
+});
+
+it('selects four distinct groups within 2,000 characters and skips whole oversized notes', () => {
+  const notes = Array.from({length: 6}, (_, n) => item(String(n), String(n) + '🙂'.repeat(300)));
+  const selected = sampleRecollections(notes.map(i => candidate(i)), [], id => notes[Number(id)], () => 0);
+  expect(selected).toHaveLength(4);
+  expect(codePoints(renderCold(selected))).toBeGreaterThan(1600);
+  expect(codePoints(renderCold(selected))).toBeLessThanOrEqual(2000);
+  validateRecall({policy:'cold_session_recall_v1',prng:'sfc32_v1',seed:'0'.repeat(32),generation:null,space:null,revision:0,items:selected,block:renderCold(selected),reason:'selected'});
 });

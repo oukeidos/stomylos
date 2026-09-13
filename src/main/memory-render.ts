@@ -1,5 +1,5 @@
 import { memoryCategories, isFlatMemory, type StoredMemoryDocument } from '../shared/memory';
-export const activeMemoryCharacterCap = 4000;
+export const activeMemoryCharacterCap = 3000;
 // Historical contracts and published migration helpers retain this bound.
 export const memoryCharacterCap = 30_000;
 export const normalizeMemoryText = (text: string) => text.replace(/\r\n?/g, '\n').trim();

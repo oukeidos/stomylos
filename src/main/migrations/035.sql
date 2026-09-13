@@ -1,0 +1,3 @@
+-- Public schema 34 -> 35: rebalance memory budgets and archive HOT overflow.
+-- Tables and frozen conversation/request payloads remain unchanged.
+-- The adjacent data step moves whole oldest HOT records into COLD at 3,000 characters.
