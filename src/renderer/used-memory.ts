@@ -2,7 +2,8 @@ import { isFlatMemory, memoryCategories, type MemoryItem, type StoredMemoryDocum
 import type { RequestRecord } from '../shared/types';
 
 export function usedMemory(requests: RequestRecord[]) {
-  const hot = new Map<string, MemoryItem>(), cold = new Map<string, MemoryItem>(), associative = new Map<string, MemoryItem>();
+  const hot = new Map<string, MemoryItem>(), cold = new Map<string, MemoryItem>();
+  const associative = new Map<number, Map<string, MemoryItem>>();
   let dispatched = false, used = false;
   const collect = (target: Map<string, MemoryItem>, items: MemoryItem[]) => {
     for (const item of items) {
@@ -20,7 +21,9 @@ export function usedMemory(requests: RequestRecord[]) {
       collect(hot, isFlatMemory(memory) ? memory.database_records : memoryCategories.flatMap(category => memory[category]));
     }
     collect(cold, config.cold_recollections?.items ?? []);
-    collect(associative, config.associative_recall?.items ?? []);
+    let turn = associative.get(request.source_sequence);
+    if (!turn) { turn = new Map<string, MemoryItem>(); associative.set(request.source_sequence, turn); }
+    collect(turn, config.associative_recall?.items ?? []);
   }
-  return { dispatched, used, hot: [...hot.values()], cold: [...cold.values()], associative: [...associative.values()] };
+  return { dispatched, used, hot: [...hot.values()], cold: [...cold.values()], associative: [...associative].sort(([a], [b]) => a - b).map(([sourceSequence, items]) => ({ sourceSequence, items: [...items.values()] })) };
 }

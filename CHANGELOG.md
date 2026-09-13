@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Group associative recall by learner turn in Conversation details and omit capacity moves to Older from the chat memory changes.
 - Include Explain, Genie, speech synthesis and legacy background attempts in Conversation request details, show reported costs independently of token totals, and retain new Genie request metadata across restarts without saving help text.
 - Combine memory age selection and counts with search, consolidate guidance in About memory, and show indexing issues only through an attention icon.
 - Show Recent and Older memory newest recorded input first, preserving within-input order and item positions after edits.

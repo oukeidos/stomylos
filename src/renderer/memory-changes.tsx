@@ -14,7 +14,6 @@ export function MemoryChangeHistory({ memory, ended }: { memory: MemoryView; end
         const archived = new Set<string>(job.archived_ids ?? []);
         const groups = [
           {label:'Added', items:changes.added},
-          {label:'Moved to Older by capacity limit', items:changes.evicted.filter(item => archived.has(item.id))},
           {label:'Removed by capacity limit', items:changes.evicted.filter(item => !archived.has(item.id))},
         ];
         return groups.filter(group => group.label === 'Added' || group.items.length).map(group =>

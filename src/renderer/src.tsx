@@ -227,7 +227,7 @@ function MemoryDetails({ view, act, show, openShared, initialOpen, disabled }: {
   return <Disclosure initialOpen={initialOpen} title="Shared memory" subtitle={summary}>
     <p className="note">{memoryStatus}</p><button onClick={openShared}>Open shared memory</button>
     <Disclosure title="Used in this chat">
-      <UsedMemory requests={view.requests} />
+      <UsedMemory requests={view.requests} messages={view.messages} />
     </Disclosure>
     <Disclosure title="Changes from this chat" subtitle={summary}>
       {earlierChat && <><p className="note">Waiting for memory processing in an earlier chat.</p>
