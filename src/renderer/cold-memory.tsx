@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ColdMemory, ColdPage, ColdStatus } from '../shared/cold-memory';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ColdMemory, ColdPage } from '../shared/cold-memory';
 import { IconButton } from './icon-button';
 
-export function ColdMemories({ locked, enabled, errorText, onBusy }: {
-  locked: boolean; enabled: boolean; errorText(code: unknown): string; onBusy(value: boolean): void;
+export function ColdMemories({ locked, ageSelector, errorText, onBusy }: {
+  locked: boolean; ageSelector: ReactNode; errorText(code: unknown): string; onBusy(value: boolean): void;
 }) {
-  const [page, setPage] = useState<ColdPage | null>(null), [status, setStatus] = useState<ColdStatus | null>(null);
+  const [page, setPage] = useState<ColdPage | null>(null);
   const [query, setQuery] = useState(''), [offset, setOffset] = useState(0);
   const [target, setTarget] = useState<{ item: ColdMemory; revision: number } | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
@@ -14,10 +14,10 @@ export function ColdMemories({ locked, enabled, errorText, onBusy }: {
   const refresh = useCallback(async () => {
     const token = ++serial.current;
     try {
-      const [next, current] = await Promise.all([window.stomylos.command('coldPage', { query, offset }), window.stomylos.command('coldStatus', undefined)]);
+      const next = await window.stomylos.command('coldPage', { query, offset });
       if (!mounted.current || token !== serial.current) return;
       if (offset && !next.items.length) { setOffset(Math.max(0, offset - 50)); return; }
-      setPage(next); setStatus(current);
+      setPage(next);
     } catch (cause) { if (mounted.current && token === serial.current) setError(errorText(cause)); }
   }, [query, offset, errorText]);
   useEffect(() => {
@@ -34,27 +34,12 @@ export function ColdMemories({ locked, enabled, errorText, onBusy }: {
     } catch (cause) { if (mounted.current) { setError(errorText(cause)); await refresh(); } }
     finally { if (mounted.current) setBusy(false); onBusy(false); }
   };
-  return <section aria-label="Older memories">
-    <p className="note">Older notes are preserved as originally recorded. A few may return in later chats. Embedding is local; recalled notes are included in your conversation provider requests.</p>
-    {status && <div className="note" role="status">
-      <p>{status.originals.toLocaleString()} older notes · {status.groups.toLocaleString()} ready groups · {status.pending.toLocaleString()} pending · {status.failed.toLocaleString()} failed</p>
-      {(status.indexingFailure || status.failed > 0) && <>
-        <p>New memory indexing is paused or needs attention. Existing ready recollections remain available.</p>
-        {status.indexingFailure === 'cold_model_missing' || status.indexingFailure === 'cold_model_integrity'
-          ? <p>Install the verified local model with <code>npm run model:fetch</code> in the app source folder, then retry indexing.</p> : null}
-        <button disabled={!enabled || busy} onClick={async () => {
-          try { await window.stomylos.command('coldRetry', undefined); await refresh(); }
-          catch (cause) { setError(errorText(cause)); }
-        }}>Retry local indexing</button>
-      </>}
-      {status.oversized > 0 && <p>{status.oversized.toLocaleString()} notes exceed the recollection budget and are retained without shortening.</p>}
-      {status.excluded > 0 && <p>{status.excluded.toLocaleString()} notes are excluded from the current groups after processing failures.</p>}
-      {status.storageWarning && <p>Your memory store is large. Review disk space and backup size; no notes are automatically deleted.</p>}
-    </div>}
-    <div className="memory-toolbar"><div className="memory-search">
-      <input ref={search} type="search" aria-label="Search older memories" placeholder="Search older memories" value={query} maxLength={1000}
+  return <section className="older-memory" aria-label="Older memories">
+    <div className="memory-toolbar">{ageSelector}<div className="memory-search">
+      <input ref={search} type="search" aria-label="Search older memories" placeholder="Search" value={query} maxLength={1000}
         onChange={event => { setQuery(event.target.value); setOffset(0); setTarget(null); }} />
-    </div><span className="memory-count">{page?.total ?? 0}</span></div>
+      {query && <IconButton label="Clear search" icon="close" onClick={() => { setQuery(''); setOffset(0); setTarget(null); search.current?.focus(); }} />}
+    </div><span className="memory-sr-status" role="status" aria-live="polite">{page ? `${page.total} matching older memories` : ''}</span></div>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {!page && <p>Loading older memories…</p>}

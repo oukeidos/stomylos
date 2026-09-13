@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Include Explain, Genie, speech synthesis and legacy background attempts in Conversation request details, show reported costs independently of token totals, and retain new Genie request metadata across restarts without saving help text.
+- Combine memory age selection and counts with search, consolidate guidance in About memory, and show indexing issues only through an attention icon.
+- Show Recent and Older memory newest recorded input first, preserving within-input order and item positions after edits.
 - Exclude memory created in the current conversation from associative recall, whether stored in HOT or COLD memory.
 - Retain and display all returned distinct valid web sources without a ten-source storage cap.
 - Restore the Cancel grammar analysis button by forwarding its command through the desktop bridge.

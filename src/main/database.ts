@@ -846,7 +846,8 @@ export class Store {
       EXISTS (SELECT 1 FROM messages m WHERE m.session_id=s.id AND m.origin='learner') OR
       EXISTS (SELECT 1 FROM session_memories m WHERE m.session_id=s.id) OR
       EXISTS (SELECT 1 FROM model_requests r WHERE r.session_id=s.id)) LIMIT 1`)[0];
-    return { document, hash: memoryHash(memoryJson(document)), jobs:this.additions.jobs().filter(j=>!['completed','skipped'].includes(j.state)), blocker: processing ? {reason:'processing',sessionId:processing} : chat ? {reason:'chat',sessionId:chat.id} : null };
+    const displayOrder = this.all<{ id: string }>('SELECT id FROM memory_item_metadata ORDER BY source_order DESC,item_index ASC,id ASC').map(item => item.id);
+    return { document, displayOrder, hash: memoryHash(memoryJson(document)), jobs:this.additions.jobs().filter(j=>!['completed','skipped'].includes(j.state)), blocker: processing ? {reason:'processing',sessionId:processing} : chat ? {reason:'chat',sessionId:chat.id} : null };
   }
   prepareMemoryEdit(edit: MemoryEdit) {
     const current = this.memoryManagement();

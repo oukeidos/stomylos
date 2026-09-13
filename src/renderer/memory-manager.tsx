@@ -1,4 +1,5 @@
 import { ColdMemories } from './cold-memory';
+import type { ColdStatus } from '../shared/cold-memory';
 import { MemoryInputRecovery } from './memory-input-recovery';
 import { MemoryControl } from './memory-control';
 import type { MemoryPreference } from '../shared/memory-control';
@@ -6,7 +7,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { IconButton } from './icon-button';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { MemoryManagement } from '../shared/memory-management';
-import { matchingMemories } from '../shared/memory-management';
+import { matchingMemories, memoryDisplayRecords } from '../shared/memory-management';
 import { memoryCharacters, activeMemoryCharacterCap } from '../main/memory-render';
 
 export interface MemoryManagerHandle { beforeLeave(): Promise<boolean> }
@@ -17,6 +18,7 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
   const [data, setData] = useState<MemoryManagement | null>(null);
   const [query, setQuery] = useState('');
   const [older, setOlder] = useState(false);
+  const [coldStatus, setColdStatus] = useState<ColdStatus | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -34,8 +36,9 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
   const refresh = useCallback(async () => {
     const token = ++generation.current;
     try {
-      const value = await window.stomylos.command('memoryManagement', undefined);
-      if (mounted.current && generation.current === token) { setData(value); setLoadError(false); }
+      const [value, status] = await Promise.all([window.stomylos.command('memoryManagement', undefined),
+        window.stomylos.command('coldStatus', undefined).catch(() => null)]);
+      if (mounted.current && generation.current === token) { setData(value); setColdStatus(status); setLoadError(false); }
     } catch { if (mounted.current && generation.current === token) setLoadError(true); }
   }, []);
   useEffect(() => {
@@ -69,7 +72,7 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
   const visible = useMemo(() => {
     if (!data) return [];
     const matches = new Set(matchingMemories(data.document.database_records, query).map(item => item.id));
-    const list = data.document.database_records.filter(item => matches.has(item.id) || item.id === editor?.id);
+    const list = memoryDisplayRecords(data).filter(item => matches.has(item.id) || item.id === editor?.id);
     // Keep a conflicting editor visible even if another operation removed its record.
     if (editor && !list.some(item => item.id === editor.id)) list.push({id:editor.id, text:editor.original});
     return list;
@@ -103,9 +106,13 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
       if (mounted.current) { setError(errorText(cause)); await refresh(); }
     } finally { busyRef.current = false; if (mounted.current) setBusy(false); }
   };
+  const ageSelector = <div className="memory-age-selector" role="group" aria-label="Memory age">
+    <button aria-pressed={!older} disabled={busy} onClick={async () => { if (await beforeLeave()) setOlder(false); }}>Recent <span className="memory-count">{data?.document.database_records.length ?? '…'}</span></button>
+    <button aria-pressed={older} disabled={busy} onClick={async () => { if (await beforeLeave()) setOlder(true); }}>Older <span className="memory-count">{coldStatus?.originals ?? '…'}</span></button>
+  </div>;
   return <div className="current-memory memory-manager" aria-busy={busy}>
     <div className="memory-heading"><h3 className="settings-title">Memory</h3>
-      <MemoryControl active={active} preference={preference} characters={data ? memoryCharacters(data.document) : undefined} errorText={errorText} />
+      <MemoryControl active={active} preference={preference} characters={data ? memoryCharacters(data.document) : undefined} errorText={errorText} coldStatus={coldStatus} refreshStatus={refresh} />
     </div>
     {!data && !loadError && <p role="status">Loading memory…</p>}
     {loadError && <div role="alert"><p>Memory could not be loaded.{editor ? ' Your edit is preserved.' : ''}</p><button onClick={() => void refresh()}>Retry loading memory</button></div>}
@@ -122,14 +129,10 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
       {error && !editor && <p role="alert">{error}</p>}
       {data.blocker && <div className="memory-lock"><p className="note">{data.blocker.reason === 'chat' ? 'Memory is in use by your current chat. Finish the chat to edit it.' : 'Finish memory processing to edit saved memories.'}</p>
         <button disabled={busy} onClick={async () => { const id = data.blocker!.sessionId; if (await beforeLeave()) openChat(id); }}>{data.blocker.reason === 'chat' ? 'Back to chat' : 'View memory processing'}</button></div>}
-      <div className="memory-actions" role="group" aria-label="Memory age">
-        <button aria-pressed={!older} disabled={busy} onClick={async () => { if (await beforeLeave()) setOlder(false); }}>Recent</button>
-        <button aria-pressed={older} disabled={busy} onClick={async () => { if (await beforeLeave()) setOlder(true); }}>Older</button>
-      </div>
-      {older ? <ColdMemories enabled={preference?.enabled ?? true} locked={locked} errorText={errorText} onBusy={value => { busyRef.current = value; setBusy(value); }} /> : <>
-      <div className="memory-toolbar"><div className="memory-search"><input ref={search} type="search" aria-label="Search memories" placeholder="Search memories" value={query} onChange={event => { setQuery(event.target.value); setNotice(''); }} />
+      {older ? <ColdMemories ageSelector={ageSelector} locked={locked} errorText={errorText} onBusy={value => { busyRef.current = value; setBusy(value); }} /> : <>
+      <div className="memory-toolbar">{ageSelector}<div className="memory-search"><input ref={search} type="search" aria-label="Search memories" placeholder="Search" value={query} onChange={event => { setQuery(event.target.value); setNotice(''); }} />
         {query && <IconButton label="Clear search" icon="close" onClick={() => { setQuery(''); search.current?.focus(); }} />}</div>
-        <span className="memory-count" role="status" aria-live="polite" aria-label={`${visible.length} of ${data.document.database_records.length} memories`}>{visible.length} / {data.document.database_records.length}</span>
+        <span className="memory-sr-status" role="status" aria-live="polite" aria-label={`${visible.length} of ${data.document.database_records.length} memories`}>{visible.length} / {data.document.database_records.length}</span>
       </div>
       <div role="status" aria-live="polite">{(notice || !data.document.database_records.length) && <p className="note memory-feedback">{notice || 'Nothing recorded.'}</p>}</div>
       {!visible.length && !!data.document.database_records.length && <p>No matching memories</p>}

@@ -25,6 +25,7 @@ const paths = {
   stop: <rect x="6" y="6" width="12" height="12" rx="1" />,
   back: <path d="M20 12H4m7-7-7 7 7 7" />,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7v.1" /></>,
+  warning: <><path d="m12 3 10 18H2Z" /><path d="M12 9v5m0 3v.1" /></>,
   check: <path d="m5 12 4 4L19 6" />,
   exit: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M9 12h12m-5-5 5 5-5 5" /></>,
   apply: <path d="M20 4v8a3 3 0 0 1-3 3H4m5-5-5 5 5 5" />,
