@@ -25,6 +25,8 @@ const paths = {
   play: <path d="m8 4 12 8-12 8Z" />,
   stop: <rect x="6" y="6" width="12" height="12" rx="1" />,
   back: <path d="M20 12H4m7-7-7 7 7 7" />,
+  chevronLeft: <path d="m15 6-6 6 6 6" />,
+  chevronRight: <path d="m9 6 6 6-6 6" />,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7v.1" /></>,
   warning: <><path d="m12 3 10 18H2Z" /><path d="M12 9v5m0 3v.1" /></>,
   check: <path d="m5 12 4 4L19 6" />,

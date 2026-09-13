@@ -52,10 +52,10 @@ try {
   for (let i=0;i<report.geometry.length;i+=2) assert.equal(report.geometry[i].selector.top,report.geometry[i+1].selector.top);
   assert.equal(await button('Edit').count(),0);
   assert.equal(await page.getByText(/ready groups|\d+ pending|\d+ failed|Older notes are preserved/).count(),0);
-  await button('Next').click();await page.waitForFunction(()=>document.querySelectorAll('.memory-items>li').length===5);
+  await button('Next page').click();await page.waitForFunction(()=>document.querySelectorAll('.memory-items>li').length===5);
   const search=page.getByRole('searchbox',{name:'Search older memories'});await search.fill('coastal');
   await page.waitForFunction(()=>document.querySelectorAll('.memory-items>li').length===28);
-  assert.equal(await button('Next').count(),0);
+  assert.equal(await button('Next page').count(),0);
   await button('Delete older memory').first().click();await button('Cancel').click();
   await button('Delete older memory').first().click();await page.locator('.memory-delete-confirmation').getByRole('button',{name:'Delete older memory',exact:true}).click();
   await button('Older 54').waitFor();await button('Clear search').click();

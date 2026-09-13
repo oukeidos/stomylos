@@ -462,6 +462,16 @@ footer.help-open { max-height: calc(100dvh - 150px); overflow-y: auto; }
 .memory-row-actions .ui-icon { width:18px; height:18px; }
 .memory-actions button[aria-pressed=true] { background:#e1ebe3; color:var(--accent); }
 .memory-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.memory-pagination { display:flex; flex:none; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; overflow:visible; border-top:1px solid var(--line); padding-top:10px; margin-top:2px; }
+.memory-page-range { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.memory-page-range strong { color:var(--ink); font-weight:500; }
+.memory-page-separator { margin:0 7px; opacity:.55; }
+.memory-page-buttons { display:flex; gap:2px; padding:3px; border-radius:8px; background:var(--soft); }
+.memory-page-buttons .icon-button { width:32px; height:30px; min-height:30px; padding:7px 8px; border:0; border-radius:5px; color:var(--accent); background:transparent; }
+.memory-page-buttons .icon-button .ui-icon { width:16px; height:16px; }
+.memory-page-buttons .icon-button:hover:not(:disabled) { background:var(--surface); }
+.memory-page-buttons .icon-button:disabled { opacity:.3; }
+@media (pointer:coarse) { .memory-page-buttons .icon-button { width:44px; height:44px; min-height:44px; } }
 .memory-actions button { min-height:34px; font-size:13px; padding:6px 12px; }
 .memory-manager textarea { width:100%; min-height:108px; max-height:300px; resize:vertical; box-sizing:border-box; padding:12px; border:1px solid #b9cbbf; border-radius:8px; font:inherit; line-height:1.6; }
 .memory-lock { display:grid; grid-template-columns:18px minmax(0,1fr) auto; align-items:center; gap:10px; margin:0 0 12px; padding:12px 0 16px; border-bottom:1px solid var(--line); }

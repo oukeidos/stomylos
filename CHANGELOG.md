@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Refine Older memory pagination with compact arrow controls, a quiet range display and consistent loading, retry and keyboard focus behavior.
 - Generate memories once at End for new chats with Terra medium and a 128,000-token output ceiling, preserve legacy work during upgrade, and search associative memory directly from user input.
 - Remove Astra from new-conversation manual and Automatic choices while preserving historical conversations, retries and the other partners’ definitions and settings.
 - Describe generated openers and first user replies accurately in routing while preserving direct-entry and legacy starter prompts.
