@@ -119,6 +119,7 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   snapshot: undefined;
   listSessions: { offset: number; filter?: HistoryFilter };
   setSessionBookmark: { sessionId: string; bookmarked: boolean };
+  requestHistory: { sessionId: string };
   loadSession: { sessionId: string };
   saveDraft: { sessionId: string; text: string; revision: number; dictationIds?: string[] };
   replaceStarter: { sessionId: string; operationId: string; expectedQuestionId: string; expectedRevision?: number };
@@ -171,6 +172,7 @@ export interface CommandResults extends ExplainCommandResults, GenieCommandResul
   memoryManagement: import('./memory-management').MemoryManagement;
   editMemory: import('./memory-management').MemoryManagement;
   currentMemory: import('./memory').StoredMemoryDocument;
+  requestHistory: import('./request-history').RequestHistory;
   snapshot: AppSnapshot; listSessions: SessionPage; loadSession: SessionView;
   changePartner: void; useSelectedPartner: void; retryPartnerSelection: void;
   saveDraft: { revision: number }; replaceStarter: void; selectPartner: void; searchMode: void;

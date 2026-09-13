@@ -1,3 +1,4 @@
+import { currentSchema } from '../src/main/database-migrations';
 import { expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { associativeCharacterCap, associativeSimilarityFloor, renderAssociative, selectAssociative, validateAssociative } from '../src/main/associative-recall';
@@ -102,12 +103,12 @@ it('migrates a schema-32 database to the additive associative index without chan
   try {
     const before = fixture.db.prepare('SELECT document,document_hash FROM shared_memory').get();
     fixture.store.close();
-    fixture.db.exec('DROP INDEX associative_embedding_queue; DROP TABLE associative_embeddings; PRAGMA user_version=32;'); fixture.db.close();
+    fixture.db.exec('DROP TABLE genie_request_attempts; DROP INDEX associative_embedding_queue; DROP TABLE associative_embeddings; PRAGMA user_version=32;'); fixture.db.close();
     upgraded = new Store(fixture.directory, resolve('native/advisory-lock.node'));
     expect(upgraded.integrity()).toEqual({ integrity: [{ integrity_check: 'ok' }], foreignKeys: [] });
     const verify = new Database(resolve(fixture.directory, 'stomylos.sqlite3'));
     try {
-      expect(verify.pragma('user_version', { simple: true })).toBe(33);
+      expect(verify.pragma('user_version', { simple: true })).toBe(currentSchema);
       expect(verify.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='associative_embeddings'").pluck().get()).toBe('associative_embeddings');
       expect(verify.prepare('SELECT document,document_hash FROM shared_memory').get()).toEqual(before);
     } finally { verify.close(); }

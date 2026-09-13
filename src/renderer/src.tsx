@@ -1,13 +1,14 @@
 import { historySubtitle } from './history-subtitle';
 import { useReplyContext } from './reply-context';
 import { MemoryInputRecovery, memoryInputProgress } from './memory-input-recovery';
-import { MemoryAddRequests } from './memory-add-requests';
+import { RequestHistoryRows } from './request-history';
+import { useRequestHistory } from './use-request-history';
 import { orderedPartners, partnerDisplayName } from '../shared/partners';
 import { UsedMemory } from './used-memory-details';
 import { usedMemory } from './used-memory';
 import { EndProcessingDialog } from './end-processing';
 import { Explainable, ExplainHistory, ExplainDialog } from './explain';
-import { SearchSources, SearchCost, SearchAttempts } from './search';
+import { SearchSources } from './search';
 import type { PatternCard } from '../shared/pattern-report';
 import { Learning, usePatternState } from './learning';
 import { GenieDock, UndoGenie, useGenie, genieBusy, openGenie, captureGenieRange, closeGenieForApp, genieError } from './genie';
@@ -240,58 +241,13 @@ function MemoryDetails({ view, act, show, openShared, initialOpen, disabled }: {
     </Disclosure>
   </Disclosure>;
 }
-function RequestDetails({ view, onToggle }: { view: SessionView; onToggle: () => void }) {
-  const dictations = useDictation().snapshot.records.filter(r => r.sessionId === view.session.id);
-  const count = (view.searches?.reduce((n, s) => n + s.attempts.length, 0) ?? 0) + view.requests.length + (view.renewal?.attempts.length ?? 0) + (view.memory?.attempts.length ?? 0) + (view.memory?.addAttempts?.length ?? 0) + dictations.reduce((sum, record) => sum + record.attempts.length, 0);
-  return <Disclosure title="Request details" subtitle={`${count} ${count === 1 ? 'attempt' : 'attempts'}`} onToggle={onToggle}>
-    {!count && <p className="note">No model requests have been made for this chat.</p>}
-    {view.requests.map(request => { const metadata = JSON.parse(request.metadata), settings = JSON.parse(request.config); const requestedModel = settings.request_partner?.target.model ?? (request.role === 'chat' ? view.session.model : settings.parameters?.model); return <div className="request" key={request.id}>
-      <strong>{request.role === 'chat' ? 'Conversation' : request.role === 'router' ? settings.purpose === 'partner_reselection' ? 'Partner reselection' : 'Partner selection' : 'Grammar analysis'}</strong><span className="tag neutral">{request.status}</span>
-      <small>{new Date(request.created_at).toLocaleString()}</small>
-      {requestedModel && <small>Requested: {requestedModel}{settings.request_partner?.target.reasoning ? ` · ${JSON.stringify(settings.request_partner.target.reasoning)}` : ''}</small>}
-      {settings.purpose === 'partner_reselection' && <small>Excluded: {settings.excluded_model} · {settings.source_message_ids.length} recent messages · {settings.omitted_groups} earlier turns omitted</small>}
-      {metadata.model && <small>Reported: {metadata.model}{metadata.provider ? ` · ${metadata.provider}` : ''}</small>}
-      {request.failure && <small>{request.role === 'chat' ? errorText(request.failure) : request.failure.replaceAll('_', ' ')}</small>}
-      {metadata.finish_reason && <small>Finish reason: {metadata.finish_reason}</small>}
-      {metadata.elapsed_seconds != null && <small>{Number(metadata.elapsed_seconds).toFixed(1)} seconds</small>}
-      {metadata.send_to_first_answer_seconds != null && <small>From Send: {Number(metadata.send_to_first_answer_seconds).toFixed(2)} s to first answer text · {Number(metadata.send_to_completion_seconds).toFixed(2)} s to completion</small>}
-      {request.status === 'interrupted' && request.dispatched_at && <small>The provider's outcome is unknown. An explicit retry may incur another charge.</small>}
-      {metadata.usage?.total_tokens != null && <small>{metadata.usage.total_tokens} tokens{metadata.usage.cost != null ? ` · $${Number(metadata.usage.cost).toFixed(5)}` : ''}</small>}
-      {metadata.usage?.completion_tokens != null && <small>{metadata.usage.completion_tokens} output tokens{metadata.usage.completion_tokens_details?.reasoning_tokens != null ? ` · ${metadata.usage.completion_tokens_details.reasoning_tokens} reasoning tokens` : ''}</small>}
-      <SearchCost metadata={metadata} />
-      {request.status !== 'succeeded' && request.response_content && <p className="retained-text">{request.response_content}</p>}
-    </div>; })}
-    <SearchAttempts view={view} />
-    {dictations.flatMap(record => record.attempts.map(attempt => <div className="request" key={attempt.id}>
-      <strong>Speech recognition</strong><span className="tag neutral">{attempt.error ? 'Needs attention' : attempt.finishedAt ? 'Completed' : 'Dispatched'}</span>
-      <small>{new Date(attempt.dispatchedAt).toLocaleString()} · {record.config.model}</small>
-      <small>{record.duration.toFixed(1)} seconds of audio</small>
-      {attempt.error && <small>{attempt.error.replaceAll('_', ' ')}. An uploaded request may still be billed.</small>}
-      {attempt.usage?.cost != null && <small>${Number(attempt.usage.cost).toFixed(5)}</small>}
-      {record.submitted && <small>{record.submitted.edited ? 'Edited dictation was sent.' : 'Dictation was sent.'}</small>}
-    </div>))}
-    <MemoryAddRequests attempts={view.memory?.addAttempts ?? []} />
-    {view.memory?.attempts.map(request => { const metadata = JSON.parse(request.metadata); return <div className="request" key={request.id}>
-      <strong>Memory update</strong><span className="tag neutral">{request.status}</span>
-      <small>{new Date(request.created_at).toLocaleString()}</small>
-      {metadata.model && <small>{metadata.model}</small>}
-      {metadata.elapsed_seconds != null && <small>{Number(metadata.elapsed_seconds).toFixed(1)} seconds</small>}
-      {metadata.usage?.cost != null && <small>${Number(metadata.usage.cost).toFixed(5)}</small>}
-      {request.failure && <small>{request.failure.replaceAll('_', ' ')}</small>}
-      {request.status === 'interrupted' && request.dispatched_at && <small>The provider's outcome is unknown. Retrying sends another request.</small>}
-    </div>; })}
-    {view.renewal?.attempts.map(request => { const metadata = JSON.parse(request.metadata); return <div className="request" key={request.id}>
-      <strong>Starter generation</strong><span className="tag neutral">{request.status}</span>
-      <small>{new Date(request.created_at).toLocaleString()}</small>
-      <small>{metadata.model ?? view.renewal!.model}{metadata.provider ? ` · ${metadata.provider}` : ''}</small>
-      {metadata.elapsed_seconds != null && <small>{Number(metadata.elapsed_seconds).toFixed(1)} seconds</small>}
-      {metadata.usage?.total_tokens != null && <small>{metadata.usage.total_tokens} tokens</small>}
-      {metadata.usage?.cost != null && <small>${Number(metadata.usage.cost).toFixed(5)}</small>}
-      {request.failure && <small>{request.failure.replaceAll('_', ' ')}</small>}
-      {request.status === 'interrupted' && request.dispatched_at && <small>The provider's outcome is unknown. An explicit retry may incur another charge.</small>}
-    </div>; })}
+function RequestDetails({ view }: { view: SessionView }) {
+  const { history, failed, retry } = useRequestHistory(view.session.id);
+  return <Disclosure title="Request details" subtitle={history ? `${history.attempts.length} recorded ${history.attempts.length === 1 ? 'attempt' : 'attempts'}` : failed ? 'History unavailable' : 'Loading…'}>
+    {history ? <RequestHistoryRows history={history} errorText={errorText} /> : failed ? <p className="note" role="alert">Request history could not be loaded. <button onClick={retry}>Retry loading</button></p> : <p className="note">Loading request history…</p>}
   </Disclosure>;
 }
+
 function Composer({ view, app, act, openingAction, starter, blocked, onComposition, afterAcceptedAction }: { view: SessionView; app: AppSnapshot; act: (fn: () => Promise<unknown>) => void; openingAction?: ReactNode; starter?: ReactNode; blocked: boolean; onComposition: (value: boolean) => void; afterAcceptedAction: () => () => void }) {
   const dictation = useDictation(); const genie = useGenie();
   const selection = useRef<ReturnType<typeof captureGenieRange> | null>(null);
@@ -569,7 +525,7 @@ function App() {
     <p>Reply style: {view.replyContext?.mode === 'one_point' ? 'Lighter' : 'Standard'}</p>
     <GrammarDetails key={view.session.id} view={view} act={act} />
     <MemoryDetails key={view.session.id} disabled={!!app.activity.storageError || app.activity.closing} view={view} act={act} initialOpen={detailsSection === 'memory'} openShared={() => { setDetails(false); setSettingsTab('memory'); setSettings(true); }} show={async id => { setDetails(false); await show(id); }} />
-    <RequestDetails view={view} onToggle={() => undefined} />
+    <RequestDetails view={view} />
     <Renewal initialOpen={detailsSection === 'starter'} view={view} onToggle={() => undefined} act={act} />
     {view.session.state === 'ended' && view.session.draft && <Disclosure title="Unsent draft"><p className="retained-text">{view.session.draft}</p></Disclosure>}
     {view.session.state === 'ended' && <DictationPanel sessionId={view.session.id} disabled />}

@@ -1,3 +1,4 @@
+import { requestSettings } from '../shared/request-history';
 import { prepareProviderRequest } from './provider-policy';
 import { randomUUID } from 'node:crypto';
 import type { GenieSource, GenieRange, GenieSnapshot, GenieEpisode, GenieDraftResult } from '../shared/genie';
@@ -10,6 +11,8 @@ type Hooks = {
   source: (sessionId: string, text: string, revision: number) => Promise<GenieSource>;
   save: (source: GenieSource, text: string, revision: number) => Promise<void>;
   emit: (snapshot: GenieSnapshot) => void;
+  requestStart?: (id: string, sessionId: string, parentId: string | null, settings: Json) => Promise<void>;
+  requestFinish?: (id: string, metadata: Json, failure: string | null, sessionId: string) => Promise<void>;
 };
 export class GenieController {
   private state: GenieSnapshot = { revision: 0, episode: null, undo: null, draftResult: null };
@@ -96,11 +99,19 @@ export class GenieController {
   private dispatch() {
     const e = this.state.episode!, turn = e.turns.at(-1)!, body = this.pendingBody!;
     const abort = new AbortController(), attempt = { id: randomUUID(), status: 'waiting', error: null as string | null, cost: null as number | null };
+    const parentId = e.attempts.at(-1)?.id ?? null;
     e.attempts.push(attempt); e.phase = 'waiting'; e.candidateId = null; turn.status = 'waiting'; turn.error = null;
     const promise = (async () => {
+      let recorded = false, dispatched = false, metadata: Json = {}, failure: string | null = null;
+      const started = performance.now();
       try {
         const routed = prepareProviderRequest(body, genieIdentity);
+        await this.hooks.requestStart?.(attempt.id, e.sessionId, parentId, requestSettings(routed.body));
+        recorded = true;
+        if (abort.signal.aborted || this.state.episode !== e) throw new AppFailure('queued_not_dispatched');
+        dispatched = true;
         const result = await this.gateway.complete(routed.body, routed.identity!, abort.signal, genieTimeout);
+        metadata = result.metadata;
         if (abort.signal.aborted || this.state.episode !== e) return;
         attempt.cost = typeof result.metadata.usage?.cost === 'number' && Number.isFinite(result.metadata.usage.cost) ? result.metadata.usage.cost : null;
         const reply = parseGenie(result.content), replacement = genieReplacement(e.source, e.range, reply);
@@ -108,10 +119,17 @@ export class GenieController {
         e.candidateId = replacement === null ? null : turn.id;
         this.history.push({ role: 'assistant', content: result.content }); this.pendingBody = null;
       } catch (error) {
+        failure = failureCode(error);
+        if (error instanceof CompletionFailure) metadata = error.metadata;
         if (abort.signal.aborted || this.state.episode !== e) return;
         if (error instanceof CompletionFailure && typeof error.metadata.usage?.cost === 'number') attempt.cost = error.metadata.usage.cost;
         turn.status = 'failed'; turn.error = failureCode(error); e.phase = 'failed'; attempt.status = 'failed'; attempt.error = turn.error;
       } finally {
+        if (abort.signal.aborted || this.state.episode !== e) failure = dispatched ? 'request_cancelled' : 'queued_not_dispatched';
+        if (recorded) {
+          metadata.elapsed_seconds ??= (performance.now() - started) / 1000;
+          await this.hooks.requestFinish?.(attempt.id, metadata, failure, e.sessionId);
+        }
         if (this.flight?.abort === abort) this.flight = null;
         if (this.state.episode === e) this.publish();
       }

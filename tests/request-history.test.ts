@@ -1,0 +1,74 @@
+import { afterEach, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import schema from '../src/main/schema.sql?raw';
+import { requestHistory } from '../src/main/request-history-store';
+import { audioRequestHistory } from '../src/main/audio-request-history';
+import { orderAttempts, type RequestAttempt } from '../src/shared/request-history';
+import { RequestHistoryRows } from '../src/renderer/request-history';
+import { speechConfig, type SpeechManifest } from '../src/main/speech-store';
+import type { DictationRecord } from '../src/shared/asr';
+import { validateCommand } from '../src/main/ipc';
+const dbs: Database.Database[] = [];
+afterEach(() => { for (const db of dbs.splice(0)) db.close(); });
+const time = '2026-09-13T01:00:00Z';
+function fixture() {
+  const db = new Database(':memory:'); dbs.push(db); db.exec(schema); db.pragma('foreign_keys=ON');
+  const insert = (table: string, row: Record<string, unknown>) => db.prepare(`INSERT INTO ${table}(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(() => '?').join(',')})`).run(...Object.values(row));
+  insert('sessions', {id:'s',state:'active',opening_kind:'user',created_at:time,chat_config:'{}',model:'chat-model'});
+  insert('sessions', {id:'other',state:'ended',opening_kind:'user',created_at:time,chat_config:'{}'});
+  insert('messages', {id:'m',session_id:'s',sequence:0,role:'user',content:'Hello',origin:'learner',delivery:'complete'});
+  insert('messages', {id:'reply',session_id:'s',sequence:1,role:'assistant',content:'Hello there',origin:'model',delivery:'complete'});
+  return {db,insert};
+}
+it('includes all stored request categories without relying on active memory or intention views', () => {
+  const {db,insert}=fixture(), config=JSON.stringify({parameters:{model:'worker-model',reasoning:{effort:'low'}}});
+  const base={created_at:time,status:'succeeded',metadata:JSON.stringify({usage:{cost:0.125}})};
+  const requestBase={...base,session_id:'s',source_sequence:0,source_hash:'h',config,config_hash:'h'};
+  for (const role of ['chat','router','grammar']) insert('model_requests',{...requestBase,id:role,role});
+  insert('search_turns',{user_message_id:'m',session_id:'s',mode:'auto',input:'{}',input_hash:'h',config:'{}',config_hash:'h',created_at:time,decision:'fallback',permitted:1});
+  for (const ordinal of [0,1]) insert('search_router_attempts',{...base,id:`search-${ordinal}`,user_message_id:'m',ordinal,config:JSON.stringify({model:'router'}),config_hash:'h'});
+  insert('starter_renewal_jobs',{id:'starter',session_id:'s',created_at:time,source_sequence:0,source_hash:'h',source_messages:'[]',input_json:'{}',input_hash:'h',config,config_hash:'h',model:'worker-model',state:'completed'});
+  insert('starter_renewal_attempts',{...base,id:'starter-a',job_id:'starter'});
+  insert('memory_jobs',{ordinal:1,session_id:'s',character_id:'shared',source:'{}',source_hash:'h',config,config_hash:'h',created_at:time,state:'completed'});
+  insert('memory_attempts',{...base,id:'memory-a',job_id:1,input_json:'{}',input_hash:'h'});
+  insert('memory_candidates',{session_id:'s',update_attempt_id:'memory-a',document:'{}',document_hash:'h',config,config_hash:'h',state:'completed',created_at:time});
+  insert('memory_cleanup_attempts',{...base,id:'cleanup',session_id:'s',input_hash:'h'});
+  insert('memory_add_jobs',{ordinal:1,session_id:'s',message_id:'m',input_json:'{}',input_hash:'h',config,config_hash:'h',created_at:time,state:'completed'});
+  insert('memory_add_attempts',{...base,id:'add',job_id:1,body:JSON.stringify({model:'add-model'}),body_hash:'h'});
+  insert('intention_question_state',{item_id:'item',epoch:1});
+  insert('intention_question_jobs',{id:'intent',item_id:'item',epoch:1,text_hash:'h',session_id:'s',input_json:'{}',input_hash:'h',config:JSON.stringify({routes:[{parameters:{model:'legacy-router'}}]}),config_hash:'h',created_at:time,deadline:time,state:'superseded'});
+  insert('intention_question_attempts',{id:'intent-a',job_id:'intent',run:1,route:0,status:'succeeded',dispatched_at:time});
+  insert('explanations',{id:'explain',session_id:'s',message_id:'reply',target_key:'key',source_json:'{}',request_body:JSON.stringify({model:'explain-model',messages:[{content:'private text'}]}),state:'ready',created_at:time});
+  insert('explanation_attempts',{id:'explain-a',explanation_id:'explain',state:'ready',created_at:time,metadata:base.metadata});
+  insert('genie_request_attempts',{...base,id:'genie-a',session_id:'s',settings:JSON.stringify({model:'genie-model'})});
+  insert('genie_request_attempts',{...base,id:'genie-other',session_id:'other',settings:'{}'});
+  const attempts=requestHistory(db,'s');
+  expect(attempts.map(a=>a.kind)).toEqual(['Conversation','Partner selection','Grammar analysis','Search routing · Primary','Search routing · Fallback','Starter generation','Memory update','Memory update · Input 1','Memory cleanup (legacy)','Intention starter generation (legacy)','Explain','Genie']);
+  expect(attempts).toHaveLength(12); expect(new Set(attempts.map(a=>a.id)).size).toBe(12);
+  expect(attempts.find(a=>a.kind==='Explain')?.settings).toEqual({model:'explain-model'});
+  expect(attempts.find(a=>a.kind.startsWith('Intention'))?.model).toBe('legacy-router');
+  expect(JSON.stringify(attempts)).not.toContain('private text');
+  expect(db.pragma('foreign_key_check')).toEqual([]);
+});
+it('shows a known cost without any token total, independent cached/reasoning tokens and unknown cost honestly', () => {
+  const base: RequestAttempt={id:'a',kind:'Explain',status:'succeeded',createdAt:time,settings:{},metadata:{usage:{cost:0.125,prompt_tokens_details:{cached_tokens:2},completion_tokens_details:{reasoning_tokens:3}}}};
+  const html=renderToStaticMarkup(createElement(RequestHistoryRows,{history:{attempts:[base,{...base,id:'b',metadata:{}},{...base,id:'c',metadata:{usage:{cost:0}}}],notices:[]},errorText:x=>x}));
+  expect(html).toContain('$0.125000');expect(html).toContain('$0.000000');expect(html).toContain('Not reported');
+  expect(html).toContain('2');expect(html).toContain('cached input tokens');expect(html).toContain('reasoning tokens');
+  expect(html.match(/data-request-id=/g)).toHaveLength(3);expect(html).not.toContain('NaN');
+});
+it('includes discarded ASR, all TTS retry/voice manifests and evicted history, excluding previews and other sessions', () => {
+  const record={sessionId:'s',config:{model:'asr'},duration:1,discarded:true,attempts:[{id:'asr1',dispatchedAt:time,error:'asr_cancelled'},{id:'asr2',dispatchedAt:time,finishedAt:time,usage:{cost:0}}]} as DictationRecord;
+  const speech={version:1,key:'k',sessionId:'s',messageId:'reply',config:speechConfig,attempts:[{id:'tts1',state:'failed',trigger:'manual',createdAt:time,dispatchedAt:time},{id:'tts2',parentId:'tts1',state:'evicted',trigger:'manual',createdAt:time,dispatchedAt:time}]} as SpeechManifest;
+  const attempts=audioRequestHistory('s',[record,{...record,sessionId:'other'}],[speech,{...speech,key:'v',config:{...speechConfig,voice:'rex'},attempts:[{...speech.attempts[0],id:'tts3'}]},{...speech,sessionId:undefined,kind:'preview'},{...speech,sessionId:'other'}]);
+  expect(attempts.map(a=>a.id)).toEqual(['asr1','asr2','tts1','tts2','tts3']);
+  expect(attempts[3]).toMatchObject({parentId:'tts1',status:'succeeded'});
+  expect(attempts[0].notes?.join(' ')).toContain('discarded');
+  expect(orderAttempts(attempts.reverse()).map(a=>a.id)).toEqual(['asr1','asr2','tts1','tts2','tts3']);
+});
+it('validates the read-only history command and rejects extra fields',()=>{
+  expect(()=>validateCommand('requestHistory',{sessionId:'s'})).not.toThrow();
+  expect(()=>validateCommand('requestHistory',{sessionId:'s',body:'x'})).toThrow('invalid_command');
+});

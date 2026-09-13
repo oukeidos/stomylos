@@ -1,3 +1,4 @@
+import { CompletionFailure } from '../src/main/transport';
 import contractFixtures from './fixtures/explain-contract.json';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
@@ -104,4 +105,11 @@ it('validates renderer commands and rejects source/range injection', () => {
   const t = target(); expect(() => validateCommand('explainOpen', t)).not.toThrow();
   for (const bad of [{ ...t, start: -1 }, { ...t, end: 999999 }, { ...t, context: 'fake' }]) expect(() => validateCommand('explainOpen', bad)).toThrow();
   expect(() => validateCommand('explainRetry', { id: '../x' })).toThrow();
+});
+
+it('retains reported usage from provider failures in request history', async () => {
+  const t = target(); await controller.open(t);
+  calls[0].reject(new CompletionFailure('request_timeout', null, {model:'openai/gpt-5.6-luna',usage:{cost:0.125},elapsed_seconds:2}));
+  await settle();
+  expect(store.requestHistory(t.sessionId).find(a=>a.kind==='Explain')).toMatchObject({status:'failed',failure:'request_timeout',metadata:{usage:{cost:0.125},elapsed_seconds:2}});
 });

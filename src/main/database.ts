@@ -1,3 +1,5 @@
+import { requestHistory } from './request-history-store';
+import { requestSettings } from '../shared/request-history';
 import { replyContext, replyMode, retainReplyContext } from './reply-context';
 import type { ReplyMode, ReplyContextView } from '../shared/reply-context';
 import { MemoryAddStore } from './memory-add-store';
@@ -16,7 +18,7 @@ import type { MemoryEdit, MemoryManagement } from '../shared/memory-management';
 import { memoryCharacters, activeMemoryCharacterCap } from './memory-render';
 import { validateFlatMemory } from './memory-flat';
 import { flatMemoryVersion, candidateLimits } from './memory-updater';
-import { conversationComponents } from './contracts';
+import { safeMetadata, conversationComponents } from './contracts';
 import { recoverySnapshot, validateRecovery } from './router-recovery';
 import { flattenMemory } from './memory-flat';
 import { currentSchema, inspectMigration, migrateDatabase } from './database-migrations';
@@ -141,7 +143,21 @@ export class Store {
       this.search.recover();
       this.partners.recover();
       this.explanations.recover();
+      this.run("UPDATE genie_request_attempts SET status='interrupted',failure='interrupted_unknown_outcome',finished_at=? WHERE status='dispatched'", now());
     });
+  }
+  requestHistory(id: string) { this.session(id); return requestHistory(this.db, id); }
+  genieRequestStart(id: string, sessionId: string, parentId: string | null, settings: Json) {
+    this.session(sessionId);
+    this.run("INSERT OR IGNORE INTO genie_request_attempts(id,session_id,parent_id,status,created_at,dispatched_at,settings) VALUES(?,?,?,'dispatched',?,?,?)",
+      id, sessionId, parentId, now(), now(), JSON.stringify(requestSettings(settings)));
+  }
+  genieRequestFinish(id: string, metadata: Json, failure: string | null) {
+    const safe = safeMetadata(metadata);
+    if (typeof metadata.finish_reason === 'string') safe.finish_reason = metadata.finish_reason;
+    if (typeof metadata.elapsed_seconds === 'number' && Number.isFinite(metadata.elapsed_seconds) && metadata.elapsed_seconds >= 0) safe.elapsed_seconds = metadata.elapsed_seconds;
+    this.run("UPDATE genie_request_attempts SET status=?,metadata=?,failure=?,finished_at=?,dispatched_at=CASE WHEN ?='queued_not_dispatched' THEN NULL ELSE dispatched_at END WHERE id=? AND status='dispatched'",
+      failure === 'request_cancelled' || failure === 'queued_not_dispatched' ? 'interrupted' : failure ? 'failed' : 'succeeded', JSON.stringify(safe), failure, now(), failure, id);
   }
   explainPrepare(target: ExplainTarget) { return this.explanations.prepare(target); }
   explainList(id: string) { return this.explanations.list(id); }

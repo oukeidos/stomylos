@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Include Explain, Genie, speech synthesis and legacy background attempts in Conversation request details, show reported costs independently of token totals, and retain new Genie request metadata across restarts without saving help text.
 - Exclude memory created in the current conversation from associative recall, whether stored in HOT or COLD memory.
 - Retain and display all returned distinct valid web sources without a ten-source storage cap.
 - Restore the Cancel grammar analysis button by forwarding its command through the desktop bridge.

@@ -1,5 +1,5 @@
 import type { DatabaseClient } from './db-client';
-import type { Gateway } from './transport';
+import { CompletionFailure, type Gateway } from './transport';
 import type { ExplainRecord, ExplainTarget } from '../shared/explain';
 import type { Json } from '../shared/types';
 import { AppFailure, failureCode } from './errors';
@@ -44,9 +44,10 @@ export class ExplainController {
       try {
         const routed = await this.db.call('prepareProvider', 'explain', started.attempt, started.body, explainIdentity);
         const result = await this.gateway.complete(routed.body, routed.identity!, flight.abort.signal, 90_000);
+        metadata = result.metadata;
         if (!result.content.trim()) throw new AppFailure('explain_empty');
         content = result.content; metadata = result.metadata;
-      } catch (error) { failure = failureCode(error); }
+      } catch (error) { failure = failureCode(error); if (error instanceof CompletionFailure) metadata = error.metadata; }
       if (!flight.active) return;
       try {
         const record = await this.db.call('explainFinish', id, flight.attempt, content, metadata, failure);

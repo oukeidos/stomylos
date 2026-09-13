@@ -2,6 +2,8 @@ import type { MemoryEmbeddingController } from './memory-embedding-controller';
 import { providerComplete, type PrepareProvider } from './provider-dispatch';
 import { recoverRouter, routerRecoveryVersion } from './router-recovery';
 import { endRetryDelay, waitEndRetry } from './end-retry';
+import { audioRequestHistory } from './audio-request-history';
+import { orderAttempts } from '../shared/request-history';
 import { ExplainController } from './explain-controller';
 import { partnerRouterBody } from './partner-router';
 import { PatternReportController } from './pattern-report-controller';
@@ -64,6 +66,8 @@ export class Coordinator {
     this.genie = new GenieController(gateway, {
       source: (id, text, revision) => this.genieSource(id, text, revision),
       save: (source, text, revision) => this.saveGenieDraft(source, text, revision),
+      requestStart: async (id, session, parent, settings) => { await this.write('genieRequestStart', id, session, parent, settings); this.emit({type:'session-changed',sessionId:session,revision:++this.revision}); },
+      requestFinish: async (id, metadata, failure, session) => { await this.write('genieRequestFinish', id, metadata, failure); this.emit({type:'session-changed',sessionId:session,revision:++this.revision}); },
       emit: snapshot => this.emit({ type: 'genie', snapshot })
     });
   }
@@ -188,6 +192,17 @@ export class Coordinator {
     if (name === 'snapshot') return this.snapshot() as Promise<CommandResults[K]>;
     if (name === 'listSessions') return this.db.call('sessionPage', (args as CommandArgs['listSessions']).offset, (args as CommandArgs['listSessions']).filter) as Promise<CommandResults[K]>;
     if (args && 'sessionId' in args && this.deleting.has(args.sessionId)) throw new AppFailure('session_deleting');
+    if (name === 'requestHistory') {
+      const id = (args as CommandArgs['requestHistory']).sessionId;
+      const stored = await this.db.call('requestHistory', id);
+      const dictation = this.dictation?.snapshot();
+      const audio = audioRequestHistory(id, dictation?.records ?? [], this.speech?.store.records.values() ?? []);
+      return { attempts: orderAttempts([...stored, ...audio]), notices: [
+        'Genie requests made before request history support was added were not retained.',
+        ...(dictation?.warning ? ['Some speech recognition history could not be loaded.'] : []),
+        ...(this.speech?.store.warning ? ['Some speech synthesis history could not be loaded.'] : [])
+      ] } as CommandResults[K];
+    }
     if (name === 'loadSession') {
       const view = await this.db.call('view', (args as CommandArgs['loadSession']).sessionId);
       await this.speech?.load(view.messages); return view as CommandResults[K];

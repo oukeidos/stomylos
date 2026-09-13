@@ -1,4 +1,4 @@
-import type { Json, SessionView } from '../shared/types';
+import type { Json } from '../shared/types';
 import type { SearchSource } from '../shared/search';
 import { markdownWebUrl } from '../shared/markdown-link';
 
@@ -26,19 +26,4 @@ export function SearchCost({ metadata }: { metadata: Json }) {
     <small>Total reported: {dollars(usage.cost)}</small>
     {metadata.search.endpoints?.map((e: Json, i: number) => <small key={i}>Endpoint reported: {e.provider} · {e.model}</small>)}
   </>;
-}
-export function SearchAttempts({ view }: { view: SessionView }) {
-  return <>{view.searches?.map(({ turn, attempts }) => <div key={turn.user_message_id}>
-    <p className="note">Search: {turn.mode === 'off' ? 'Off' : !turn.decision ? 'Awaiting routing' : turn.decision === 'router_unavailable' ? 'Router unavailable; bounded search permitted' : turn.permitted ? 'Permitted by routing' : 'Not needed'}</p>
-    {attempts.map(a => { const metadata = JSON.parse(a.metadata), body = JSON.parse(a.config); return <div className="request" key={a.id}>
-      <strong>Search routing · {a.ordinal === 0 ? 'Primary' : 'Fallback'}</strong><span className="tag neutral">{a.status}</span>
-      <small>{body.model}{metadata.provider ? ` · ${metadata.provider}` : ''}</small>
-      <small>Router charge: {dollars(metadata.usage?.cost)}</small>
-      {metadata.routing_network_ms != null && <small>{Math.round(metadata.routing_network_ms)} ms through completed gate</small>}
-      {metadata.first_valid_seconds != null && <small>{Math.round(metadata.first_valid_seconds * 1000)} ms to first valid JSON</small>}
-      {metadata.usage && <small>{metadata.usage.prompt_tokens ?? '?'} input · {metadata.usage.completion_tokens ?? '?'} output tokens</small>}
-      {a.failure && <small>{a.failure.replaceAll('_', ' ')}</small>}
-      {a.status === 'interrupted' && a.dispatched_at && <small>The provider outcome and any unreported charge are unknown.</small>}
-    </div>; })}
-  </div>)}</>;
 }

@@ -64,3 +64,24 @@ it.each([false, true])('persists Auto routing through the real worker (fallback:
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it('serves durable content-free Genie history through the shipped worker operations', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'stomylos-request-history-worker-'));
+  let db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, resolve('native/advisory-lock.node'), () => undefined);
+  try {
+    await db.ready;
+    const session = await db.call('createSession');
+    await db.call('genieRequestStart', 'genie-record', session.id, null, {model:'test-model',messages:[{content:'unsent private text'}]});
+    await db.call('genieRequestFinish', 'genie-record', {usage:{cost:0.125}}, null);
+    await db.close();
+    db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, resolve('native/advisory-lock.node'), () => undefined);
+    await db.ready;
+    const rows = await db.call('requestHistory', session.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({kind:'Genie',status:'succeeded',model:'test-model',metadata:{usage:{cost:0.125}}});
+    expect(JSON.stringify(rows)).not.toContain('unsent private text');
+    await expect(db.call('requestHistory', 'missing')).rejects.toThrow('session_not_found');
+  } finally {
+    await db.close(); rmSync(directory, {recursive:true,force:true});
+  }
+});
