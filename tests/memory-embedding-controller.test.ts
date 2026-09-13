@@ -26,3 +26,13 @@ it('isolates an item after two inference failures, processes the next item and s
   expect(claims).toBe(3);expect(failed).toBe(2);expect(successes).toBe(1);expect(pending).toBe(0);
   await controller.suspend();const before=methods.length;controller.wake();await vi.advanceTimersByTimeAsync(1000);expect(methods.length).toBe(before);await controller.close();
 });
+it('embeds raw interactive text in the shared local worker without an indexing job and ignores results after abort',async()=>{
+ const db={call:async(name:string)=>name==='memoryPreference'?{enabled:true}:name==='coldStatus'?{pending:0}:0} as unknown as DatabaseClient;
+ let release!:(v:any)=>void;const texts:string[]=[];
+ const make=vi.fn(()=>({initialize:async()=>{},embed:async(text:string)=>{texts.push(text);return new Promise(resolve=>release=resolve);},stop:async()=>{release?.({vector:[1]});}} as unknown as EmbeddingWorkerClient));
+ const controller=new MemoryEmbeddingController(db,'fixture','fixture',()=>{},make),abort=new AbortController();
+ const first=controller.query('My original\ninput.',abort.signal);await vi.waitFor(()=>expect(texts).toHaveLength(1));
+ expect(await controller.query('concurrent',abort.signal)).toBeNull();abort.abort();release({vector:[1]});expect(await first).toBeNull();
+ const second=controller.query('Another input',new AbortController().signal);await vi.waitFor(()=>expect(texts).toHaveLength(2));release({vector:[0,1]});expect(await second).toEqual([0,1]);expect(make).toHaveBeenCalledTimes(1);
+ await controller.close();expect(await controller.query('after close',new AbortController().signal)).toBeNull();
+});

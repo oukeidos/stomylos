@@ -1,3 +1,4 @@
+import sessionPrompt from './session-memory-add-prompt.txt?raw';
 import prompt from './memory-add-prompt.txt?raw';
 import type { FlatMemoryDocument } from '../shared/memory';
 import type { Json } from '../shared/types';
@@ -25,16 +26,29 @@ export function memoryAddBody(input: Json, sent?: RecordedTime | null): Json {
     messages:[{role:'system',content:prompt},{role:'user',content:JSON.stringify(wire)}],
     response_format:{type:'json_schema',json_schema:{name:'add_only_v1',strict:true,schema:{type:'object',properties:{add:{type:'array',items:{type:'string',minLength:1}}},required:['add'],additionalProperties:false}}}, provider:{require_parameters:true} };
 }
-export function addAndFifo(before: FlatMemoryDocument, content: string, messageId: string) {
+export function addAndFifo(before: FlatMemoryDocument, content: string, messageId: string, version = memoryAddVersion) {
   let value: any;
   try { value=JSON.parse(content); } catch { throw new AppFailure('memory_add_format'); }
   if (!value || Object.keys(value).length!==1 || !Array.isArray(value.add) || value.add.length>4096 ||
     value.add.some((s: unknown)=>typeof s!=='string'||!s.trim())) throw new AppFailure('memory_add_format');
-  const added = (value.add as string[]).map((text,index)=>({id:'add_'+memoryHash(JSON.stringify([memoryAddVersion,messageId,index])).slice(0,24),text:normalizeMemoryText(text)}));
+  const added = (value.add as string[]).map((text,index)=>({id:'add_'+memoryHash(JSON.stringify([version,messageId,index])).slice(0,24),text:normalizeMemoryText(text)}));
   if(added.some(r=>Array.from(r.text).length+2>activeMemoryCharacterCap))throw new AppFailure('memory_add_item_capacity');
   const document = structuredClone(before), evicted = [];
   document.database_records.push(...added);
   while (memoryCharacters(document)>activeMemoryCharacterCap) evicted.push(document.database_records.shift()!);
   if (added.length) document.revision++;
   return {document,changes:{added,evicted}};
+}
+
+export const sessionMemoryAddVersion = 'stomylos_session_memory_add_v1';
+export function sessionMemoryAddBody(input: Json): Json {
+  const body = memoryAddBody({});
+  return {...body, model:'openai/gpt-5.6-terra', reasoning:{effort:'medium',exclude:true}, max_tokens:128000,
+    messages:[{role:'system',content:sessionPrompt},{role:'user',content:JSON.stringify(input)}]};
+}
+
+/** Conservative UTF-8 upper bound, including schema/framing and the full output reservation. */
+export function validateSessionMemorySize(body: Json) {
+  if(Buffer.byteLength(JSON.stringify(body),'utf8') + 1024 + body.max_tokens > 1050000)
+    throw new AppFailure('memory_add_input_limit');
 }

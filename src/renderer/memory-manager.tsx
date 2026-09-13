@@ -121,7 +121,7 @@ export const MemoryManager = forwardRef<MemoryManagerHandle, {
       setRetryingSave(true); try { await window.stomylos.command('retrySaving', undefined); } catch (cause) { setError(errorText(cause)); } finally { setRetryingSave(false); }
     }}>{retryingSave ? 'Retrying…' : 'Retry saving memory'}</button></div>}
     {data && <>
-      {!!data.jobs?.length && <section aria-label="Memory queue"><p className="note">{data.jobs.length} memory inputs pending. Conversation replies can continue while memory is processed.</p>
+      {!!data.jobs?.length && <section aria-label="Memory queue"><p className="note">{data.jobs.length} memory jobs pending.</p>
         <MemoryInputRecovery jobs={data.jobs} disabled={busy || saveRecovery} onAction={async(command,job)=>{
           try {await window.stomylos.command(command,{sessionId:job.session_id,jobId:job.ordinal});await refresh();}
           catch(cause){setError(errorText(cause));}

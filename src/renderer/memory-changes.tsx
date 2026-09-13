@@ -6,9 +6,9 @@ const kinds = { added: 'Added', updated: 'Updated', deleted: 'Deleted' };
 
 export function MemoryChangeHistory({ memory, ended }: { memory: MemoryView; ended: boolean }) {
   if(memory.addJobs) return <div className="memory-changes">
-    <p className="note">Notes are added per input. Earlier additions remain if later processing is skipped or fails.</p>
-    {!memory.addJobs.length && <p className="note">No eligible memory inputs from this chat.</p>}
-    {memory.addJobs.map(job=><section key={job.ordinal} aria-label={`Memory input ${job.input_number}`}><h4>Input {job.input_number} · {job.state}</h4>
+    <p className="note">Memory changes are shown for each saved source.</p>
+    {!memory.addJobs.length && <p className="note">No memory generation was scheduled for this chat.</p>}
+    {memory.addJobs.map(job=><section key={job.ordinal} aria-label={job.source_kind==='session'?'Session memory':`Memory input ${job.input_number}`}><h4>{job.source_kind==='session'?'Session memory':`Input ${job.input_number}`} · {job.state}</h4>
       {job.changes ? (() => {
         const changes = JSON.parse(job.changes) as {added:{id:string;text:string}[];evicted:{id:string;text:string}[]};
         const archived = new Set<string>(job.archived_ids ?? []);
@@ -18,7 +18,7 @@ export function MemoryChangeHistory({ memory, ended }: { memory: MemoryView; end
         ];
         return groups.filter(group => group.label === 'Added' || group.items.length).map(group =>
           <div key={group.label}><strong>{group.label}</strong><ul>{group.items.map(item => <li key={item.id}>{item.text}</li>)}</ul></div>);
-      })() : <p className="note">{job.state === 'skipped' ? 'This input was skipped.' : job.failure || 'Waiting for memory processing.'}</p>}
+      })() : <p className="note">{job.state === 'skipped' ? 'This source was skipped.' : job.failure || 'Waiting for memory processing.'}</p>}
     </section>)}
   </div>;
   const changes = memory.changes, state = memory.job?.state;

@@ -10,6 +10,8 @@ export class MemoryEmbeddingController {
   private running: Promise<void> | null = null;
   private current: { kind: 'cold'; job: EmbeddingJob } | { kind: 'associative'; job: AssociativeEmbeddingJob } | null = null;
   private stopped = false;
+  private querying = false;
+  private queryWork: Promise<unknown> | null = null;
   private suspended = false;
   private epoch = 0;
   private recoveries = 0;
@@ -21,7 +23,7 @@ export class MemoryEmbeddingController {
   async initialize() { await this.db.call('coldInitialize'); this.wake(); }
   wake() {
     this.wakeSequence++;
-    if (this.stopped || this.suspended || this.running || this.paused || this.timer) return;
+    if (this.stopped || this.suspended || this.querying || this.running || this.paused || this.timer) return;
     const wake = this.wakeSequence;
     this.running = this.run().finally(() => {
       this.running = null;
@@ -40,7 +42,7 @@ export class MemoryEmbeddingController {
   }
   private async run() {
     try {
-      while (!this.stopped && !this.suspended && !this.paused) {
+      while (!this.stopped && !this.suspended && !this.querying && !this.paused) {
         if (!(await this.db.call('memoryPreference')).enabled) return;
         let changed = await this.db.call('coldTick');
         if (changed) this.changed();
@@ -102,6 +104,33 @@ export class MemoryEmbeddingController {
       await this.db.call('coldIndexFailure', failureCode(error)).catch(() => undefined); this.changed();
     }
   }
+  /** Reuse the local worker, giving an interactive raw-text query priority after the current item. */
+  async query(text: string, signal: AbortSignal): Promise<number[] | null> {
+    if(this.querying || this.stopped || this.suspended || this.paused || signal.aborted)return null;
+    this.querying=true;
+    const epoch=this.epoch;
+    const allowed=async()=>!signal.aborted&&!this.stopped&&!this.suspended&&epoch===this.epoch&&(await this.db.call('memoryPreference')).enabled;
+    const work=(async()=>{
+      await this.running;
+      if(!await allowed())return null;
+      try {
+        if(!this.engine){this.engine=this.make(this.entry,reason=>this.invalidate(reason));await this.engine.initialize(this.directory);}
+        if(!await allowed())return null;
+        const result=await this.engine.embed(text);
+        return await allowed()?result.vector:null;
+      } catch(error) {
+        if(this.engine){
+          try{await this.engine.stop(failureCode(error));this.engine=null;}
+          catch{this.paused=true;await this.db.call('coldIndexFailure','cold_worker_termination');this.changed();return null;}
+        }
+        if(['cold_model_missing','cold_model_integrity','cold_tokenizer_contract'].includes(failureCode(error)))this.paused=true;
+        if(!this.stopped&&!this.suspended){await this.db.call('coldIndexFailure',failureCode(error));this.changed();}
+        return null;
+      }
+    })();
+    this.queryWork=work;
+    try{return await work;}finally{this.queryWork=null;this.querying=false;this.wake();}
+  }
   async preferenceChanged(enabled: boolean) {
     if (enabled) { this.wake(); return; }
     this.epoch++;
@@ -122,6 +151,7 @@ export class MemoryEmbeddingController {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     if (this.engine) { await this.engine.stop(); this.engine = null; }
     await this.running;
+    await this.queryWork;
   }
   resume() { this.suspended = false; this.wake(); }
   async close() {
@@ -129,5 +159,6 @@ export class MemoryEmbeddingController {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     if (this.engine) await this.engine.stop();
     await this.running;
+    await this.queryWork;
   }
 }

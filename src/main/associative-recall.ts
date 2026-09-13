@@ -9,6 +9,7 @@ const intro = '\n\n<associative_recall>\n';
 const outro = '\n</associative_recall>';
 export interface AssociativeItem { id: string; text: string; text_hash: string; source_order: number; }
 export interface AssociativeSelection {
+  query_source?: 'user_input';
   version: typeof associativeRecallVersion; query_ids: string[]; source_revision: number; threshold: number;
   items: AssociativeItem[]; block: string; reason: 'selected' | 'empty' | 'unavailable' | 'revoked' | 'integrity';
 }

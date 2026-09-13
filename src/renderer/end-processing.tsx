@@ -55,7 +55,7 @@ export function EndProcessingDialog({ sessionId, storageError, errorText }: {
       }}>
       <div className="end-processing-symbol" aria-hidden="true">{failed || loadError || storageError ? <Icon name="info" /> : <span className="end-spinner" />}</div>
       <Dialog.Title ref={heading} tabIndex={-1}>{failed ? 'Almost done' : 'Finishing your chat'}</Dialog.Title>
-      <Dialog.Description>{failed ? 'Retry or cancel remaining.' : 'Chat saved.'}</Dialog.Description>
+      <Dialog.Description>{failed ? 'Chat saved. Retry or cancel remaining memories.' : 'Chat saved. Creating memories…'}</Dialog.Description>
       <ul className="end-processing-stages" aria-label="Processing stages" aria-live="polite">
         {Object.entries(view?.memory.addJobs ? {update:'Memory'} : stages).map(([stage, label]) => {
           const raw = String(processing?.stages?.[stage] ?? 'pending');
@@ -71,6 +71,7 @@ export function EndProcessingDialog({ sessionId, storageError, errorText }: {
           </li>;
         })}
       </ul>
+      <p className="note">Cancel remaining skips unfinished memory generation; your chat stays saved.</p>
       <MemoryInputRecovery jobs={view?.memory.addJobs ?? []} disabled={busy || !!storageError} onAction={(command,job)=>void act(command,job)} />
       {(actionError || loadError || storageError) && <p className="end-processing-error" role="alert">{actionError || loadError || 'Changes could not be saved. Retry saving to continue.'}</p>}
       <div className="dialog-actions">

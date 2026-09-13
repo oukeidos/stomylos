@@ -177,7 +177,7 @@ it('upgrades schema 15 atomically for low memory requests without changing rows 
 it('upgrades schema 16 without rewriting saved routing contracts and recovers a failed v17 step', () => {
   const { db, dir } = fixture(source18, 16);
   db.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind) VALUES('saved','draft','2026-09-08',?,'user')").run('{"version":"stomylos_conversation_v7","historical":"unchanged"}');
-  const before = db.prepare('SELECT * FROM sessions').all();
+  const before = db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved);
   const execute = db.exec.bind(db);
   const fault = vi.spyOn(db, 'exec').mockImplementation(sql => {
     const result = execute(sql);
@@ -186,11 +186,11 @@ it('upgrades schema 16 without rewriting saved routing contracts and recovers a 
   });
   expect(() => migrateDatabase(db, dir)).toThrow('v17 interruption'); fault.mockRestore();
   expect(db.pragma('user_version', { simple: true })).toBe(16);
-  expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
   const file = join(dir, 'stomylos.pre-migration-v16.sqlite3'), bytes = readFileSync(file);
   migrateDatabase(db, dir);
   expect(db.pragma('user_version', { simple: true })).toBe(currentSchema); validateSchema(db, current);
-  expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
   migrateDatabase(db, dir); expect(readFileSync(file)).toEqual(bytes);
 });
 
@@ -251,13 +251,13 @@ it('admits eight-partner contracts from schema 22 without rewriting history and 
   const {db,dir}=fixture(source23,22); db.transaction(()=>installCatalog19(db))();
   db.prepare('UPDATE shared_memory SET document=?,document_hash=? WHERE id=1').run(flatDocument,memoryHash(flatDocument));
   db.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind) VALUES('saved','ended','2026-09-10','{\"version\":\"stomylos_conversation_v7\"}','user')").run();
-  const before=db.prepare('SELECT * FROM sessions').all();
+  const before=db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved);
   const exec=db.exec.bind(db),fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=exec(sql);if(sql.includes('Admit versioned eight-partner'))throw new Error('v23 interruption');return result;});
   expect(()=>migrateDatabase(db,dir)).toThrow('v23 interruption');fault.mockRestore();
   expect(db.pragma('user_version',{simple:true})).toBe(22);
-  expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
   migrateDatabase(db,dir);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
-  expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
   expect(db.prepare('SELECT document FROM shared_memory').pluck().get()).toBe(flatDocument);
 });
 
@@ -273,7 +273,7 @@ it('adds opener storage in 35 to 36 atomically while preserving legacy drafts an
   const {db,dir}=fixture(source35,35);db.transaction(()=>new StarterStore(db).initialize())();
   db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(flatDocument,memoryHash(flatDocument));
   db.exec("INSERT INTO sessions(id,state,created_at,draft,chat_config,opening_kind) VALUES('legacy','draft','2026-09-13','Keep this draft','{}','user')");
-  const before=db.prepare('SELECT * FROM sessions').all();
+  const before=db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved);
   const execute=db.exec.bind(db), fault=vi.spyOn(db,'exec').mockImplementation(sql=>{
     const result=execute(sql); if(sql.includes('CREATE TABLE conversation_openers')) throw new Error('opener step fault'); return result;
   });
@@ -282,22 +282,22 @@ it('adds opener storage in 35 to 36 atomically while preserving legacy drafts an
   const backup=join(dir,'stomylos.pre-migration-v35.sqlite3'), bytes=readFileSync(backup);
   migrateDatabase(db,dir);validateSchema(db,current);
   expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
-  expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
   expect(db.prepare('SELECT * FROM conversation_openers').all()).toEqual([]);
   expect(db.pragma('foreign_key_check')).toEqual([]);
   migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
 });
 
 it('admits v9 contracts in 36 to 37 without rewriting data, with rollback and idempotent recovery', () => {
-  const {db,dir}=fixture(current,36);db.transaction(()=>new StarterStore(db).initialize())();
+  const {db,dir}=fixture(current.replace(/\n-- Public schema 37 -> 38:[\s\S]*$/, ''),36);db.transaction(()=>new StarterStore(db).initialize())();
   db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(flatDocument,memoryHash(flatDocument));
   db.exec("INSERT INTO sessions(id,state,created_at,draft,chat_config,opening_kind) VALUES('legacy','draft','2026-09-13','Keep the saved draft','{}','user')");
-  const before=db.prepare('SELECT * FROM sessions').all();
+  const before=db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved);
   const execute=db.exec.bind(db), fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=execute(sql);if(sql.includes('Admit conversation v9'))throw new Error('admission fault');return result;});
   expect(()=>migrateDatabase(db,dir)).toThrow('admission fault');fault.mockRestore();
-  expect(db.pragma('user_version',{simple:true})).toBe(36);expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);
+  expect(db.pragma('user_version',{simple:true})).toBe(36);expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
   const backup=join(dir,'stomylos.pre-migration-v36.sqlite3'),bytes=readFileSync(backup);
   migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
-  expect(db.prepare('SELECT * FROM sessions').all()).toEqual(before);expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
   migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
 });

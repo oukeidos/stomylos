@@ -389,7 +389,7 @@ export class Store {
       if (this.endBlocker()) throw new AppFailure('end_processing_pending');
       const kind: OpeningKind = 'user';
       const id = randomUUID();
-      this.run("INSERT INTO sessions(id,state,starter_id,starter_version,starter_text,created_at,chat_config,opening_kind,search_mode) VALUES(?,'draft',?,?,?,?,?,?,?)",
+      this.run("INSERT INTO sessions(id,state,starter_id,starter_version,starter_text,created_at,chat_config,opening_kind,search_mode,memory_add_scope) VALUES(?,'draft',?,?,?,?,?,?,?,'session')",
         id, null, null, null, now(), JSON.stringify({ ...conversationSnapshot(kind), opener_version: openerVersion, reply_context: replyContext(this.all<{mode: ReplyMode}>('SELECT mode FROM reply_preferences WHERE id=1')[0].mode) }), kind, this.all<{mode: SearchMode}>('SELECT mode FROM search_preferences WHERE id=1')[0].mode);
       this.run('INSERT INTO conversation_openers(session_id,message_id) VALUES(?,?)', id, randomUUID());
       return this.session(id);
@@ -756,11 +756,28 @@ export class Store {
   associativeFail(job: AssociativeEmbeddingJob, failure: string, retry = false) { return this.associative.fail(job, failure, retry); }
   associativePending() { return this.associative.pending(); }
   associativeSelection(query: { id: string; vector: number[] }[], currentOrder: number, alreadySent: string[]) { return this.associative.selection(query, currentOrder, alreadySent); }
+  associativeInput(sessionId:string,messageId:string): {id:string;text:string}|null {
+    const session=this.session(sessionId);
+    if(session.state!=='active'||!memoryReadAllowed(this.db,sessionId)||JSON.parse(session.chat_config).associative_context_version!=='stomylos_associative_recall_v1')return null;
+    const message=this.messages(sessionId).findLast(isLearner);
+    if(!message||message.id!==messageId||message.delivery!=='complete')return null;
+    return {id:message.id,text:message.content};
+  }
+  associativeFromInput(sessionId:string,messageId:string,vector:number[]):AssociativeSelection|null {
+    return this.transaction(()=>{
+      if(!this.associativeInput(sessionId,messageId))return null;
+      const session=this.session(sessionId),hot=this.memory.snapshot(session);
+      if(!hot)return null;
+      const cold=JSON.parse(session.chat_config).memory_version===coldContextVersion?this.recollections.snapshot(sessionId,flattenMemory(hot)):null;
+      const supplied=[...flattenMemory(hot).database_records,...(cold?.items??[])];
+      return {...this.associative.selection([{id:messageId,vector}],Number.MAX_SAFE_INTEGER,supplied.map(item=>item.id),supplied.map(item=>item.text),sessionId),query_source:'user_input'};
+    });
+  }
   associativeForMessage(sessionId: string, messageId: string): AssociativeSelection | null {
     return this.transaction(() => {
       const session = this.session(sessionId);
       if (!memoryReadAllowed(this.db, sessionId) || JSON.parse(session.chat_config).associative_context_version !== 'stomylos_associative_recall_v1') return null;
-      const job = this.all<{ ordinal: number; changes: string }>("SELECT ordinal,changes FROM memory_add_jobs WHERE session_id=? AND message_id=? AND state='completed'", sessionId, messageId)[0];
+      const job = this.all<{ ordinal: number; changes: string }>("SELECT ordinal,changes FROM memory_add_jobs WHERE session_id=? AND message_id=? AND source_kind='turn' AND state='completed'", sessionId, messageId)[0];
       if (!job || !job.changes) return null;
       const queryIds = (JSON.parse(job.changes).added as { id: string }[]).map(item => item.id);
       if (!queryIds.length) return null;
@@ -775,6 +792,7 @@ export class Store {
   admitAssociativeMemory(sessionId: string, messageId: string): boolean {
     return this.transaction(() => {
       const session = this.session(sessionId);
+      if(this.all<{memory_add_scope:string}>('SELECT memory_add_scope FROM sessions WHERE id=?',sessionId)[0].memory_add_scope==='session')return false;
       const message = this.all<Message>('SELECT * FROM messages WHERE id=? AND session_id=?', messageId, sessionId)[0];
       if (!message || !isLearner(message) || session.state !== 'active' || !memoryPreference(this.db).enabled ||
         JSON.parse(session.chat_config).associative_context_version !== 'stomylos_associative_recall_v1') return false;
@@ -924,7 +942,7 @@ export class Store {
       this.run('INSERT INTO end_processing(session_id,created_at) VALUES(?,?)', id, now());
       for (const stage of ['grammar','starter','update','cleanup']) this.run('INSERT INTO end_stage_state(session_id,stage) VALUES(?,?)', id, stage);
       this.starter.freeze(this.session(id), source);
-      this.additions.end(id);
+      this.additions.end(id, source);
       if (!this.memory.job(id)) this.starter.release(this.session(id), source, 'no_memory_update');
       return analyze;
     });

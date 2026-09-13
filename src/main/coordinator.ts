@@ -1,3 +1,4 @@
+import { validateSessionMemorySize } from './memory-add';
 import { openerIdentity } from './opener';
 import type { MemoryEmbeddingController } from './memory-embedding-controller';
 import { providerComplete, type PrepareProvider } from './provider-dispatch';
@@ -572,7 +573,8 @@ export class Coordinator {
     }
     if (signal.aborted) return;
     const learner = view.messages.findLast(isLearner);
-    if (kind === 'send' && learner && await this.write('admitAssociativeMemory', id, learner.id)) this.enqueueMemory(id);
+    const associativeAdmitted = kind === 'send' && learner && await this.write('admitAssociativeMemory', id, learner.id);
+    if (associativeAdmitted) this.enqueueMemory(id);
     if (kind !== 'retry') {
       const route = await this.write('preparePartner', id, kind, randomUUID());
       if (route && JSON.parse(route.config).recovery_version === routerRecoveryVersion) {
@@ -604,7 +606,7 @@ export class Coordinator {
       finish: (attemptId, content, metadata, failure, interrupted) => this.write('searchFinish', attemptId, content, metadata, failure, interrupted)
     }, this.gateway, signal);
     if (signal.aborted) return;
-    const associative = kind === 'send' && learner ? await this.waitAssociativeRecall(id, learner.id, signal) : null;
+    const associative = kind === 'send' && learner ? await this.recallFromInput(id, learner.id, signal) : null;
     let request = await this.write('prepareChat', id, randomUUID(), kind === 'retry_selection' ? 'different_model' : kind, associative);
     let text = ''; let checkpoint = 0; let pendingCheckpoint: Promise<unknown> = Promise.resolve(); let searchEvidence: Json = {};
     let firstAnswerAt: number | null = null;
@@ -738,14 +740,19 @@ export class Coordinator {
   private enqueueMemory(sessionId: string) {
     this.memoryWake++; this.pumpMemory();
   }
-  private async waitAssociativeRecall(sessionId: string, messageId: string, signal: AbortSignal) {
-    const deadline = Date.now() + 1500;
-    while (!signal.aborted && Date.now() < deadline) {
-      const selection = await this.db.call('associativeForMessage', sessionId, messageId);
-      if (selection) return selection;
-      await new Promise<void>(resolve => setTimeout(resolve, 25));
-    }
-    return null;
+  private async recallFromInput(sessionId:string,messageId:string,signal:AbortSignal) {
+    if(!this.cold)return null;
+    const source=await this.db.call('associativeInput',sessionId,messageId);
+    if(!source||signal.aborted)return null;
+    const bounded=AbortSignal.any([signal,AbortSignal.timeout(1500)]);
+    let stop!:()=>void;
+    const expired=new Promise<null>(resolve=>{stop=()=>resolve(null);bounded.addEventListener('abort',stop,{once:true});});
+    try {
+      const vector=await Promise.race([this.cold.query(source.text,bounded),expired]);
+      if(!vector||bounded.aborted)return null;
+      return await this.db.call('associativeFromInput',sessionId,messageId,vector);
+    } catch {return null;}
+    finally{bounded.removeEventListener('abort',stop);}
   }
   private async memoryChanged(sessionId: string) {
     const session = await this.db.call('session', sessionId);
@@ -775,6 +782,7 @@ export class Coordinator {
             // Share the short dispatch gate with Memory Off; never hold it over inference.
             const launch=await this.admitMemory(async()=>{
               if(abort.signal.aborted)throw new AppFailure('request_cancelled');
+              if(job.source_kind==='session')validateSessionMemorySize(JSON.parse(attempt.body));
               const routed=await this.prepareProvider('memory_add',attempt.id,JSON.parse(attempt.body),JSON.parse(job.config).identity);
               await this.write('dispatchMemoryAdd',attempt.id);
               if(abort.signal.aborted)throw new AppFailure('request_cancelled');

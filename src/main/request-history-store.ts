@@ -15,7 +15,7 @@ export function requestHistory(db: Database.Database, sessionId: string): Reques
     provenance.settings_source = wire ? 'Effective request snapshot' : 'Saved generation settings';
     result.push({ id: row.id, kind, status: row.status ?? row.state,
       createdAt: row.created_at ?? row.dispatched_at ?? null, dispatchedAt: row.dispatched_at,
-      finishedAt: row.finished_at, parentId: row.parent_id, messageId: row.message_id,
+      finishedAt: row.finished_at, parentId: row.parent_id, messageId: row.source_kind==='session'?undefined:row.message_id,
       model: settings.model ?? fallbackModel, settings, metadata: parse(row.metadata), failure: row.failure, notes, provenance,
       retainedText: kind === 'Conversation' && row.status !== 'succeeded' ? row.response_content : undefined });
   };
@@ -34,9 +34,9 @@ export function requestHistory(db: Database.Database, sessionId: string): Reques
   for (const row of rows('SELECT a.*,j.config FROM memory_attempts a JOIN memory_jobs j ON j.ordinal=a.job_id WHERE j.session_id=?')) {
     const config = parse(row.config); add(row, 'Memory update', config.parameters ?? config.request_parameters ?? {});
   }
-  for (const row of rows(`SELECT a.*,LAG(a.id) OVER (PARTITION BY a.job_id ORDER BY a.rowid) parent_id,j.message_id,(SELECT COUNT(*) FROM messages m WHERE m.session_id=j.session_id AND m.origin='learner' AND m.sequence<=(SELECT sequence FROM messages WHERE id=j.message_id)) input_number
+  for (const row of rows(`SELECT a.*,LAG(a.id) OVER (PARTITION BY a.job_id ORDER BY a.rowid) parent_id,j.message_id,j.source_kind,(SELECT COUNT(*) FROM messages m WHERE m.session_id=j.session_id AND m.origin='learner' AND m.sequence<=(SELECT sequence FROM messages WHERE id=j.message_id)) input_number
     FROM memory_add_attempts a JOIN memory_add_jobs j ON j.ordinal=a.job_id WHERE j.session_id=?`))
-    add(row, `Memory update · Input ${row.input_number}`, parse(row.body));
+    add(row, row.source_kind==='session'?'Memory update · Session':`Memory update · Input ${row.input_number}`, parse(row.body));
   for (const row of rows('SELECT a.*,c.config FROM memory_cleanup_attempts a JOIN memory_candidates c ON c.session_id=a.session_id WHERE a.session_id=?')) {
     const config = parse(row.config); add(row, 'Memory cleanup (legacy)', config.parameters ?? config.request_parameters ?? {});
   }

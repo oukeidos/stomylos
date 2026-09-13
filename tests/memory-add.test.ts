@@ -17,7 +17,14 @@ import {validateCommand} from '../src/main/ipc';
 const fixtures:{dir:string;store:Store;db:Database.Database}[]=[];
 afterEach(()=>{for(const f of fixtures.splice(0)){f.store.close();f.db.close();rmSync(f.dir,{recursive:true,force:true});}});
 function fixture(){const dir=mkdtempSync('/tmp/stomylos-add-'),store=new Store(dir,resolve('native/advisory-lock.node')),db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);return f;}
-function session(store:Store){const s=store.createSession();store.searchMode(s.id,'off');store.selectManual(s.id,'model_04');return s;}
+// Exercise the pre-upgrade per-turn contract independently of the new-session default.
+function session(store:Store){
+ const s=store.createSession(),db=fixtures.find(f=>f.store===store)!.db;
+ db.exec('DROP TRIGGER immutable_memory_add_scope');
+ db.prepare("UPDATE sessions SET memory_add_scope='turn' WHERE id=?").run(s.id);
+ db.exec("CREATE TRIGGER immutable_memory_add_scope BEFORE UPDATE OF memory_add_scope ON sessions BEGIN SELECT RAISE(ABORT, 'Immutable memory ADD scope'); END");
+ store.searchMode(s.id,'off');store.selectManual(s.id,'model_01');return s;
+}
 function send(store:Store,id:string,text='I like green tea.'){store.submit(id,text);store.commitRoute(id,null,'fixture',null);return store.startChat(store.prepareChat(id,crypto.randomUUID()).id);}
 function prepare(store:Store){const j=store.memoryAddReady()!;const a=store.prepareMemoryAdd(j.ordinal,crypto.randomUUID());store.prepareProvider('memory_add',a.id,JSON.parse(a.body),JSON.parse(j.config).identity);store.dispatchMemoryAdd(a.id);return a;}
 function finish(store:Store,texts:string[]){const a=prepare(store);store.receiveMemoryAdd(a.id,JSON.stringify({add:texts}),{usage:{cost:0.001}});store.acceptMemoryAdd(a.id);return a;}
@@ -65,9 +72,9 @@ it('freezes L wire dates while retaining full source times and effective provide
  expect(f.db.prepare('SELECT input_json,config,created_at FROM memory_add_jobs WHERE ordinal=?').get(job.ordinal)).toEqual({input_json:savedInput,config:savedConfig,created_at:sent.utc});
 });
 it('captures only accepted source and preceding delivered reply, waits for dispatch policy, and keeps snapshot/date metadata separate',()=>{
- const {store,db}=fixture(),s=session(store);const starter=store.messages(s.id).at(-1)!;
+ const {store,db}=fixture(),s=session(store);const starter=store.messages(s.id).at(-1);
  store.submit(s.id,'Yes, every Wednesday.','source');store.submit(s.id,'Yes, every Wednesday.','source');expect(store.memoryAddReady()).toBeNull();
- const job=db.prepare('SELECT * FROM memory_add_jobs').get() as Json;expect(JSON.parse(job.input_json)).toMatchObject({previous_assistant:{content:starter.content},current_user:{content:'Yes, every Wednesday.'}});
+ const job=db.prepare('SELECT * FROM memory_add_jobs').get() as Json;expect(JSON.parse(job.input_json)).toMatchObject({previous_assistant:starter?{content:starter.content}:null,current_user:{content:'Yes, every Wednesday.'}});
  store.commitRoute(s.id,null,'fixture',null);const start=store.startChat(store.prepareChat(s.id,'chat').id);const frozen=JSON.parse(start.request.config).memory_context;
  const a=finish(store,['The user swims on Wednesdays.']);store.acceptMemoryAdd(a.id);
  expect(db.prepare('SELECT count(*) FROM memory_add_attempts').pluck().get()).toBe(1);
@@ -135,7 +142,7 @@ it('runs ADD before a held reply with a frozen baseline, sends one request per i
  const gateway:Gateway={async complete(body,identity){calls.push(body);expect(identity.allowed_models).toContain(body.model);return {content:'{"add":["Likes tea."]}',metadata:{usage:{cost:0.001}}};},async stream(body,_signal,chunk){replies.push(body);await held;chunk('Tell me more.');return {content:'Tell me more.',metadata:{}};}};
  const c=new Coordinator(client,gateway,{keyPresent:true,keyPath:'',dataPath:f.dir,appVersion:'test',development:true},()=>{},()=>true);
  try{await c.command('sendMessage',{sessionId:s.id,text:'I like tea.',revision:0});await vi.waitFor(()=>expect(f.store.currentMemory().revision).toBe(1));
- expect(f.store.view(s.id).memoryPolicy?.firstEnabled).toBeNull();
+ // Raw-input recall no longer delays chat dispatch for ADD completion.
  await vi.waitFor(()=>expect(replies).toHaveLength(1),{timeout:3000});expect(f.store.messages(s.id).at(-1)?.delivery).toBe('streaming');
  expect(JSON.stringify(replies[0])).not.toContain('Likes tea.');
  release();await vi.waitFor(()=>expect(f.store.messages(s.id).at(-1)?.delivery).toBe('complete'));await c.command('endSession',{sessionId:s.id});expect(f.store.endBlocker()).toBeNull();expect(calls.map(b=>b.model)).toEqual(['openai/gpt-5.6-luna']);

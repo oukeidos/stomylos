@@ -77,6 +77,7 @@ export function MemoryControl({ preference, active, characters, errorText, coldS
         {indexError && <p role="alert">{indexError}</p>}
       </div>}
       <p>Memory saves notes for future chats with any partner. Older notes stay as recorded and may be recalled. Matching is local; notes used in replies go to your AI provider.</p>
+      <p>New chats create memories when you select End. Associative recall searches your input during the conversation.</p>
       <p>Recent holds up to 3,000 characters; overflow moves to Older. Edit Recent notes or delete either kind here. Asking a partner to forget does not delete notes.</p>
       <p>Off pauses memory use and new notes, keeping saved notes. Already-used memory remains in the current chat. Start a new chat after turning memory back on.</p>
       <p>Chats are still saved and sent when memory is off. Past chats and backups stay unchanged.</p>
