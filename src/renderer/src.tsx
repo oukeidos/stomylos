@@ -299,11 +299,11 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
       onKeyDown={event => { if (event.key === 'Enter' && !event.repeat && !dictationBusy() && !event.shiftKey && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) {
         event.preventDefault(); if (draft.text === '/end' || (!busy && !unresolved)) send();
       } }} />
-      <div className="composer-actions"><TooltipButton className="icon-button genie-help" data-explain-return aria-label="Genie" tooltip="Genie · Help with wording" disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length >= 24 || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing}
+      <div className="composer-actions"><TooltipButton className="icon-button genie-help" data-explain-return aria-label="Hyphantes" tooltip="Hyphantes · Weaving words" disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length >= 24 || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing}
         onPointerDown={() => { if (textarea.current) selection.current = captureGenieRange(textarea.current, currentDraft(id).text); }}
         onClick={() => { if (!composing.current && textarea.current) act(() => openGenie(id, selection.current ?? captureGenieRange(textarea.current!, currentDraft(id).text))); }}><Icon name="help" /></TooltipButton><TooltipButton className="icon-button search-toggle" aria-pressed={view.session.search_mode === 'auto'}
           aria-label={`Web search: ${view.session.search_mode === 'auto' ? 'Auto' : 'Off'}`}
-          tooltip={view.session.search_mode === 'auto' ? 'Web search: Auto — Search when helpful' : 'Web search: Off — No web search'}
+          tooltip={view.session.search_mode === 'auto' ? 'Web search: Auto - Seeking, they find what is better' : 'Web search: Off - Dig within'}
           disabled={blocked || sending || busy || unresolved || genie.locked || dictation.locked || !!app.activity.storageError || app.activity.closing}
           onClick={() => act(() => window.stomylos.command('searchMode', { sessionId: id, mode: view.session.search_mode === 'auto' ? 'off' : 'auto' }))}>
           <Icon name={view.session.search_mode === 'auto' ? 'globe' : 'globeOff'} /></TooltipButton>{replyChoice.control(blocked || sending || busy || unresolved || genie.locked || dictation.locked || composing.current || !!app.activity.storageError || app.activity.closing)}{openingAction}<UndoGenie sessionId={id} textarea={textarea} /><span className="composer-spacer" /><RecordButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} />
@@ -422,7 +422,8 @@ function App() {
   const canChangeOpening = view?.session.state === 'draft' && JSON.parse(view.session.chat_config).opening?.version === 'stomylos_opening_v1';
   const openerBusy = !!view?.opener && app.activity.sessionId === view.session.id && app.activity.phase !== 'idle';
   const openerLabel = openerBusy ? 'Thinking…' : view?.opener?.generated ? (view.session.opening_kind === 'starter' ? 'Hide opener' : 'Show opener') : 'Give me something';
-  const openingAction = canChangeOpening && <TooltipButton className="icon-button opening-action" aria-label={view?.opener ? openerLabel : view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} tooltip={view?.opener ? openerLabel : view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} aria-pressed={view?.session.opening_kind === 'starter'}
+  const openerTooltip = openerBusy ? 'Thinking…' : view?.opener?.generated ? (view.session.opening_kind === 'starter' ? 'Set it aside for later' : 'Shall we read its beginning again?') : 'Tell me, Muse';
+  const openingAction = canChangeOpening && <TooltipButton className="icon-button opening-action" aria-label={view?.opener ? openerLabel : view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} tooltip={view?.opener ? openerTooltip : view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} aria-pressed={view?.session.opening_kind === 'starter'}
     disabled={openerBusy || openingBusy || composing || dictation.locked || !!app.activity.storageError || app.activity.closing}
     onClick={() => act(async () => {
       if (!view || openingBusy || composing || dictationBusy()) return;

@@ -79,7 +79,7 @@ it('serves durable content-free Genie history through the shipped worker operati
     await db.ready;
     const rows = await db.call('requestHistory', session.id);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({kind:'Genie',status:'succeeded',model:'test-model',metadata:{usage:{cost:0.125}}});
+    expect(rows[0]).toMatchObject({kind:'Hyphantes',status:'succeeded',model:'test-model',metadata:{usage:{cost:0.125}}});
     expect(JSON.stringify(rows)).not.toContain('unsent private text');
     await expect(db.call('requestHistory', 'missing')).rejects.toThrow('session_not_found');
   } finally {

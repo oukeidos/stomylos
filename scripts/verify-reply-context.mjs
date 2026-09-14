@@ -23,7 +23,7 @@ try{
  await launch();const initial=await command('snapshot');const id=initial.unfinished.id;
  await command('setMemoryPreference',{enabled:false,revision:initial.settings.memory.revision});
  const feather=button('Lighter replies');await feather.waitFor();assert.equal(await feather.getAttribute('aria-pressed'),'true');
- await feather.focus();await page.getByRole('tooltip').filter({hasText:'Encourages shorter replies'}).waitFor({state:'visible'});
+ await feather.focus();await page.getByRole('tooltip').filter({hasText:'As briefly as possible'}).waitFor({state:'visible'});
  await page.screenshot({path:`${output}/before-send.png`});
  await app.evaluate(({ipcMain})=>{
    const original=ipcMain._invokeHandlers.get('stomylos:command');let attempts=0;

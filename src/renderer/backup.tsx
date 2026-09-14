@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 const errors: Record<string, string> = {
-  backup_busy: 'Finish generation, recording and saving, and close Genie before trying again.',
+  backup_busy: 'Finish generation, recording and saving, and close Hyphantes before trying again.',
   backup_invalid: 'This is not a supported Stomylos backup.',
   backup_database_invalid: 'The backup database failed its integrity checks. Your current data has not been replaced.',
   backup_checksum_mismatch: 'The backup is damaged or incomplete. Choose another backup.',

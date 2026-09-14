@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Rename visible Genie controls to Hyphantes and update composer tooltips to the selected English copy without trailing periods, retaining the final question mark.
+
 ## 0.6.0 — 2026-09-14
 
 - Restore reply generation through the database worker with Memory On or Off, bound optional recall failures and preserve memory lookup during recovery before a reply request exists.

@@ -47,21 +47,21 @@ try {
   const draft = '😀 I felt put on the spot. Later, I felt put on the spot again.\nKeep this line.';
   const start = draft.lastIndexOf('put on the spot'), end = start + 'put on the spot'.length;
   await composer().fill(draft); await select(start, end);
-  await composer().dispatchEvent('compositionstart'); await button('Genie').click(); assert.equal(count(), 0); await composer().dispatchEvent('compositionend');
-  await select(start, end); await button('Genie').click(); await button('Replace selection').waitFor();
+  await composer().dispatchEvent('compositionstart'); await button('Hyphantes').click(); assert.equal(count(), 0); await composer().dispatchEvent('compositionend');
+  await select(start, end); await button('Hyphantes').click(); await button('Replace selection').waitFor();
   assert.equal(await composer().getAttribute('readonly'), '');
   const packet = JSON.parse(mock.requests.at(-1).messages[1].content);
   assert.equal(packet.target_selection.start, start - 1); assert.equal(packet.target_selection.text, 'put on the spot');
   assert.deepEqual(packet.main_chat, originalView.messages.map(({ role, content }) => ({ role, content })));
-  assert.equal(await page.getByLabel('Tell Genie more', { exact: true }).evaluate(n => document.activeElement === n), true);
+  assert.equal(await page.getByLabel('Tell Hyphantes more', { exact: true }).evaluate(n => document.activeElement === n), true);
   const beforeVoice = await cmd('asrSnapshot');
   await page.keyboard.press('F8');
-  const followup = page.getByLabel('Tell Genie more', { exact: true });
+  const followup = page.getByLabel('Tell Hyphantes more', { exact: true });
   await followup.dispatchEvent('compositionstart'); await page.keyboard.press('Escape');
-  await page.getByRole('dialog', { name: 'Genie', exact: true }).waitFor();
+  await page.getByRole('dialog', { name: 'Hyphantes', exact: true }).waitFor();
   await followup.dispatchEvent('compositionend');
   assert.deepEqual(await cmd('asrSnapshot'), beforeVoice);
-  checks.push('Genie owns F8; composing Escape does not close Genie or start/cancel dictation');
+  checks.push('Hyphantes owns F8; composing Escape does not close Hyphantes or start/cancel dictation');
   await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => !!document.activeElement.closest('[role="dialog"]')), true);
   await assert.rejects(cmd('sendMessage', { sessionId, text: draft, revision: 1 }), /genie_busy/);
   mkdirSync('test-results', { recursive: true });
@@ -74,22 +74,22 @@ try {
   assert.equal(count(), 1); checks.push('IME guard, Unicode repeated-range capture, focus trap, main IPC exclusion, exact apply/undo and no transcript pollution');
 
   await composer().fill('This wording works.'); await select(19, 19); mode = 'same';
-  const beforeSame=count(); await button('Genie').click(); await poll(async()=>count()===beforeSame+1); await ready(); assert.equal(await button('Use in draft').count(), 0);
-  const before = count(); await page.getByLabel('Tell Genie more', { exact: true }).fill('Saved unfinished follow-up.');
-  await page.keyboard.press('Escape'); await button('Genie').waitFor();
-  await button('Genie').click(); await ready(); assert.equal(count(), before);
-  assert.equal(await page.getByLabel('Tell Genie more', { exact: true }).inputValue(), 'Saved unfinished follow-up.');
-  await page.reload(); await page.getByRole('dialog', { name: 'Genie' }).waitFor();
-  assert.equal(count(), before); assert.equal(await page.getByLabel('Tell Genie more', { exact: true }).inputValue(), 'Saved unfinished follow-up.');
+  const beforeSame=count(); await button('Hyphantes').click(); await poll(async()=>count()===beforeSame+1); await ready(); assert.equal(await button('Use in draft').count(), 0);
+  const before = count(); await page.getByLabel('Tell Hyphantes more', { exact: true }).fill('Saved unfinished follow-up.');
+  await page.keyboard.press('Escape'); await button('Hyphantes').waitFor();
+  await button('Hyphantes').click(); await ready(); assert.equal(count(), before);
+  assert.equal(await page.getByLabel('Tell Hyphantes more', { exact: true }).inputValue(), 'Saved unfinished follow-up.');
+  await page.reload(); await page.getByRole('dialog', { name: 'Hyphantes' }).waitFor();
+  assert.equal(count(), before); assert.equal(await page.getByLabel('Tell Hyphantes more', { exact: true }).inputValue(), 'Saved unfinished follow-up.');
   checks.push('Exact no-change suppression, Escape, matching resume and renderer reload without inference');
 
-  mode = 'clarify'; await page.getByLabel('Tell Genie more', { exact: true }).fill('무슨 뜻인지 /end');
-  await button('Ask Genie').click(); await ready(); assert.equal((await cmd('loadSession', { sessionId })).session.state, 'draft');
+  mode = 'clarify'; await page.getByLabel('Tell Hyphantes more', { exact: true }).fill('무슨 뜻인지 /end');
+  await button('Ask Hyphantes').click(); await ready(); assert.equal((await cmd('loadSession', { sessionId })).session.state, 'draft');
   assert.equal(mock.requests.at(-1).messages.at(-1).content, '무슨 뜻인지 /end');
   assert.equal(JSON.parse(mock.requests.at(-1).messages.at(-2).content).suggested_text, 'This wording works.');
-  mode = 'suggest'; await page.getByLabel('Tell Genie more', { exact: true }).fill('Yes, the question was unexpected.');
-  await button('Ask Genie').click(); await button('Use in draft').waitFor();
-  mode = 'bad'; await page.getByLabel('Tell Genie more', { exact: true }).fill('Another wording?'); await button('Ask Genie').click(); await button('Retry help').waitFor();
+  mode = 'suggest'; await page.getByLabel('Tell Hyphantes more', { exact: true }).fill('Yes, the question was unexpected.');
+  await button('Ask Hyphantes').click(); await button('Use in draft').waitFor();
+  mode = 'bad'; await page.getByLabel('Tell Hyphantes more', { exact: true }).fill('Another wording?'); await button('Ask Hyphantes').click(); await button('Retry help').waitFor();
   assert.equal(await button('Use in draft').count(), 0); checks.push('Ordinary Korean follow-ups, actual assistant JSON history, literal /end and invalidation of old candidates');
 
   mode = 'suggest'; await button('Change target').click();
@@ -107,9 +107,9 @@ try {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(720, 640));
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.screenshot({ path: `test-results/genie-${packaged ? 'packaged' : 'native'}-narrow.png` });
-  const bounds = await page.getByRole('dialog', { name: 'Genie' }).boundingBox(), viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+  const bounds = await page.getByRole('dialog', { name: 'Hyphantes' }).boundingBox(), viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
   assert.ok(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewport.width && bounds.y + bounds.height <= viewport.height);
-  for (const control of [page.getByLabel('Tell Genie more', { exact: true }), button('Ask Genie')]) {
+  for (const control of [page.getByLabel('Tell Hyphantes more', { exact: true }), button('Ask Hyphantes')]) {
     const box = await control.boundingBox();
     assert.ok(box.y >= bounds.y && box.y + box.height <= bounds.y + bounds.height - 12, 'Follow-up controls must be fully visible without scrolling at minimum size');
   }
@@ -117,22 +117,22 @@ try {
   checks.push('Explicit selected-target restart, visible narrow follow-up controls, no outer nested scrolling and reduced-motion layout');
 
   mode = 'hold'; await button('Start over').click(); await poll(() => !!release); const heldCount = count();
-  await button('Close Genie').click(); await button('Genie').waitFor(); release(); release = null;
-  await button('Genie').click(); await button('Retry help').waitFor(); assert.equal(count(), heldCount);
+  await button('Close Hyphantes').click(); await button('Hyphantes').waitFor(); release(); release = null;
+  await button('Hyphantes').click(); await button('Retry help').waitFor(); assert.equal(count(), heldCount);
   mode = 'suggest'; await button('Retry help').click(); await ready();
-  await button('Close Genie').click(); assert.equal(await composer().inputValue(), 'This wording works.');
+  await button('Close Hyphantes').click(); assert.equal(await composer().inputValue(), 'This wording works.');
   const beforeClose = count(); await close(); await launch();
   assert.equal(await composer().inputValue(), 'This wording works.'); assert.equal((await cmd('genieSnapshot')).episode, null); assert.equal(count(), beforeClose);
-  await button('Start with your own topic').click(); await composer().fill('I want say this better.'); await button('Genie').click(); await ready();
+  await button('Start with your own topic').click(); await composer().fill('I want say this better.'); await button('Hyphantes').click(); await ready();
   assert.deepEqual(JSON.parse(mock.requests.at(-1).messages[1].content).main_chat, []);
   await button('Use in draft').click(); await button('Undo replacement').waitFor(); await close(); await launch();
   assert.equal(await composer().inputValue(), 'caught off guard'); assert.equal((await cmd('loadSession', { sessionId })).messages.length, 0);
   checks.push('Explicit cancellation/retry, preserved unsent draft, ephemeral restart, direct-entry context and durable applied draft');
   await button('Record').click(); await poll(async () => (await cmd('asrSnapshot')).progress?.samples >= 16000);
-  assert.equal(await button('Genie').isDisabled(), true); await button('Stop and transcribe').click();
+  assert.equal(await button('Hyphantes').isDisabled(), true); await button('Stop and transcribe').click();
   await poll(async () => (await composer().inputValue()).includes('한국어도 말해요.'));
   const voiceText = await composer().inputValue(); await select(voiceText.length, voiceText.length);
-  await button('Genie').click(); await ready(); await button('Use in draft').click(); await button('Undo replacement').waitFor();
+  await button('Hyphantes').click(); await ready(); await button('Use in draft').click(); await button('Undo replacement').waitFor();
   const voice = (await cmd('asrSnapshot')).records.find(r => r.inserted && !r.submitted);
   assert.ok(voice); assert.equal(voice.draftBinding.textHash, createHash('sha256').update('caught off guard').digest('hex'));
   assert.equal((await cmd('loadSession', { sessionId })).messages.length, 0);
@@ -145,7 +145,7 @@ try {
   const display = rawDraft.replace(/\r\n/g, '\n');
   await poll(async () => await composer().inputValue() === display);
   const selectedStart = display.lastIndexOf('same'); await select(selectedStart, selectedStart + 4);
-  await button('Genie').click(); await button('Replace selection').waitFor();
+  await button('Hyphantes').click(); await button('Replace selection').waitFor();
   assert.equal(JSON.parse(mock.requests.at(-1).messages[1].content).target_selection.start, rawDraft.lastIndexOf('same'));
   await button('Replace selection').click(); await button('Undo replacement').waitFor();
   assert.equal((await cmd('loadSession', { sessionId })).session.draft, 'First.\r\nsame\r\ncaught off guard');

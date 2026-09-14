@@ -200,7 +200,7 @@ export class Coordinator {
       const dictation = this.dictation?.snapshot();
       const audio = audioRequestHistory(id, dictation?.records ?? [], this.speech?.store.records.values() ?? []);
       return { attempts: orderAttempts([...stored, ...audio]), notices: [
-        'Genie requests made before request history support was added were not retained.',
+        'Hyphantes requests made before request history support was added were not retained.',
         ...(dictation?.warning ? ['Some speech recognition history could not be loaded.'] : []),
         ...(this.speech?.store.warning ? ['Some speech synthesis history could not be loaded.'] : [])
       ] } as CommandResults[K];

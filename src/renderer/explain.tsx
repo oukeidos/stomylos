@@ -19,7 +19,7 @@ window.stomylos.subscribe(event => {
 function useExplain() { useSyncExternalStore(f => { listeners.add(f); return () => { listeners.delete(f); }; }, () => version); }
 function fail(cause: unknown) {
   const code = cause instanceof Error ? cause.message : '';
-  return code.includes('api_key_missing') ? 'Add your API key in Settings.' : code.includes('genie_busy') ? 'Close Genie first.' : code.includes('stale') || code.includes('selection') ? 'Select the text again.' : 'Could not get the explanation. Please try again.';
+  return code.includes('api_key_missing') ? 'Add your API key in Settings.' : code.includes('genie_busy') ? 'Close Hyphantes first.' : code.includes('stale') || code.includes('selection') ? 'Select the text again.' : 'Could not get the explanation. Please try again.';
 }
 async function open(target: ExplainTarget | { sessionId: string; messageId: string }, origin: HTMLElement | null) {
   if (genieBusy()) return;

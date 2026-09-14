@@ -54,7 +54,7 @@ export function useReplyContext(view: SessionView, focusInput: () => void) {
     busy, saving, failed: editable && failed, revision: current.current?.revision,
     control: (disabled: boolean) => editable && <IconButton ref={bindIcon} label="Lighter replies" icon="feather"
       className="reply-context-action" aria-pressed={confirmed?.mode === 'one_point'} aria-busy={pending}
-      tooltip="Encourages shorter replies"
+      tooltip="As briefly as possible"
       disabled={disabled || saving} onClick={() => void persist()} />,
     recovery: <>{editable && pending && <span className="sr-only" role="status">Saving reply choice…</span>}{editable && failed && <p className="destructive" role="alert">Couldn’t save. Try again. <button disabled={saving} onClick={() => void persist(true)}>Retry</button></p>}</>,
   };

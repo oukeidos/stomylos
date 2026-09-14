@@ -51,17 +51,17 @@ export async function closeGenieForApp() {
 }
 const errors: Record<string, string> = {
   genie_limit: 'This help conversation has reached its size limit. Shorten your reply, return to writing, or start over.',
-  genie_stale: 'The original draft or conversation changed. Return to writing and open Genie again.',
+  genie_stale: 'The original draft or conversation changed. Return to writing and open Hyphantes again.',
   genie_busy: 'Wait for this action to finish, or cancel the current request.',
-  genie_output: 'Genie could not provide a usable response. You can retry or return to writing.',
-  request_timeout: 'Genie took too long to respond. You can retry or return to writing.',
+  genie_output: 'Hyphantes could not provide a usable response. You can retry or return to writing.',
+  request_timeout: 'Hyphantes took too long to respond. You can retry or return to writing.',
   request_cancelled: 'Request cancelled. The provider may still charge for it; Retry makes a new request.',
   save_required: 'Save your changes before continuing.',
   genie_range: 'Select the text again before requesting help.'
 };
 export function genieError(error: unknown) {
   const code = error instanceof Error ? error.message : String(error);
-  return errors[code] ?? 'Genie could not finish this request. Your original draft is preserved. You can retry or return to writing.';
+  return errors[code] ?? 'Hyphantes could not finish this request. Your original draft is preserved. You can retry or return to writing.';
 }
 export function GenieDock({ sessionId, textarea, storageError }: { sessionId: string; textarea: RefObject<HTMLTextAreaElement | null>; storageError: string | null }) {
   const state = useGenie(), e = state.episode?.sessionId === sessionId && state.episode.open ? state.episode : null;
@@ -110,13 +110,13 @@ export function GenieDock({ sessionId, textarea, storageError }: { sessionId: st
       onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (saving || pending) event.preventDefault(); }}
       onOpenAutoFocus={event => { event.preventDefault(); followup.current?.focus(); }}
       onCloseAutoFocus={event => { event.preventDefault(); restoreFocus(); }}>
-      <div className="dialog-heading"><Dialog.Title><Icon name="help" />Genie</Dialog.Title>
+      <div className="dialog-heading"><Dialog.Title><Icon name="help" />Hyphantes</Dialog.Title>
         <TooltipButton className="icon-button" aria-label="Start over" tooltip="Start over" disabled={!e || saving || pending || !!storageError} onClick={() => run(async () => {
           if (!e) return; pending = true; notify();
           try { receive(await window.stomylos.command('genieTarget', { episodeId: e.id, range: e.range, operationId: crypto.randomUUID() })); }
           finally { pending = false; notify(); }
         })}><Icon name="refresh" /></TooltipButton>
-        <TooltipButton className="icon-button" aria-label="Close Genie" tooltip="Back to writing" disabled={saving || pending} onClick={() => run(close)}><Icon name="close" /></TooltipButton></div>
+        <TooltipButton className="icon-button" aria-label="Close Hyphantes" tooltip="Back to writing" disabled={saving || pending} onClick={() => run(close)}><Icon name="close" /></TooltipButton></div>
       <p className="sr-only" id="genie-description">Help with your unsent draft. Apply a suggestion to your draft, then send it separately. Close or press Escape to return to writing.</p>
       <div className="genie-columns"><section className={`genie-original ${changing ? 'changing-target' : ''}`} aria-label="Original draft">
         <div className="genie-target-heading"><strong>{target?.scope === 'selection' ? 'Selected text' : 'Entire draft'}</strong>
@@ -154,15 +154,15 @@ export function GenieDock({ sessionId, textarea, storageError }: { sessionId: st
             })}><Icon name="apply" /></TooltipButton>}
           </div>}
         </div>)}</div>
-        <div role="status" className="genie-status">{boot && !e?.open ? 'Saving your draft…' : saving ? 'Saving replacement…' : e?.phase === 'waiting' ? 'Genie is thinking…' : e?.phase === 'ready' && !current?.reply?.reply && !e.candidateId ? 'No replacement suggested.' : ''}</div>
+        <div role="status" className="genie-status">{boot && !e?.open ? 'Saving your draft…' : saving ? 'Saving replacement…' : e?.phase === 'waiting' ? 'Hyphantes is thinking…' : e?.phase === 'ready' && !current?.reply?.reply && !e.candidateId ? 'No replacement suggested.' : ''}</div>
         {current?.error && <p role="alert" className="draft-error">{genieError(current.error)}</p>}
         {(error || storageError) && <p role="alert" className="draft-error">{storageError ? 'Your changes could not be saved. Keep this window open and retry saving.' : error}</p>}
         {storageError && <button onClick={() => run(() => window.stomylos.command('retrySaving', undefined))}>Retry saving</button>}
         <div className="genie-recovery">{e?.phase === 'waiting' && <button onClick={() => run(() => window.stomylos.command('genieCancel', { episodeId: e.id }))}>Cancel request</button>}
           {e && ['failed', 'interrupted'].includes(e.phase) && <button disabled={pending || !!storageError} onClick={() => run(() => window.stomylos.command('genieRetry', { episodeId: e.id, operationId: crypto.randomUUID() }))}>Retry help</button>}
         </div>
-        <div className="genie-composer"><label className="sr-only" htmlFor="genie-followup">Tell Genie more</label>
-        <textarea id="genie-followup" ref={followup} value={e?.followup ?? ''} disabled={!e || saving || pending} placeholder="Ask Genie…"
+        <div className="genie-composer"><label className="sr-only" htmlFor="genie-followup">Tell Hyphantes more</label>
+        <textarea id="genie-followup" ref={followup} value={e?.followup ?? ''} disabled={!e || saving || pending} placeholder="Ask Hyphantes…"
           onChange={event => { if (!e) return; const text = event.target.value;
             if (new TextEncoder().encode(text).length > 8000) { setError(errors.genie_limit); return; }
             const revision = Math.max(followupRevision.current, e.followupRevision) + 1; followupRevision.current = revision;
@@ -170,7 +170,7 @@ export function GenieDock({ sessionId, textarea, storageError }: { sessionId: st
             run(() => window.stomylos.command('genieDraft', { episodeId: e.id, text, revision }));
           }} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
           onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.repeat && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); run(submit); } }} />
-        <TooltipButton className="primary icon-button" aria-label="Ask Genie" tooltip="Ask Genie · Enter" disabled={!e?.followup.trim() || e.phase !== 'ready' || pending || changing || !!storageError} onClick={() => run(submit)}><Icon name="send" /></TooltipButton></div>
+        <TooltipButton className="primary icon-button" aria-label="Ask Hyphantes" tooltip="Ask Hyphantes · Enter" disabled={!e?.followup.trim() || e.phase !== 'ready' || pending || changing || !!storageError} onClick={() => run(submit)}><Icon name="send" /></TooltipButton></div>
       </section></div>
     </Dialog.Content></Dialog.Root>;
 }

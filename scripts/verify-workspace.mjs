@@ -66,7 +66,7 @@ try {
   const helpBounds = await page.locator('.genie-history').boundingBox(), applyBounds = await button('Use in draft').boundingBox();
   assert.ok(applyBounds.y >= helpBounds.y && applyBounds.y + applyBounds.height <= helpBounds.y + helpBounds.height + 1, 'Latest apply action stays visible after resize');
   await shot('05-genie-minimum');
-  await button('Close Genie').click();
+  await button('Close Hyphantes').click();
   await button('End chat').click();
   const review = page.getByRole('button', { name:/^Analysis details/ });
   await review.waitFor(); assert.equal(await review.getAttribute('aria-expanded'), 'false');
@@ -76,7 +76,7 @@ try {
   await button('Learning').click();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await shot('07-library-minimum');
-  checks.push('Attached focus-isolated Genie without overlay; main draft visible; minimum-size transcript/follow-up/apply fit; optional feedback; report library fits minimum width');
+  checks.push('Attached focus-isolated Hyphantes without overlay; main draft visible; minimum-size transcript/follow-up/apply fit; optional feedback; report library fits minimum width');
   assert.deepEqual(errors, []);
   writeFileSync(`${output}/report.json`, JSON.stringify({ packaged, directory, checks, regions, errors, paidRequests:0 }, null, 2));
   console.log(JSON.stringify({ output, checks, errors }));

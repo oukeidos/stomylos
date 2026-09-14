@@ -78,11 +78,11 @@ try {
   await send('I enjoy a quiet walk.'); await complete(); await atBottom('initial');
   await resize(900,620); await atBottom('shorter_window');
   await input.fill('A short line.\n'.repeat(8)); await atBottom('multiline');
-  await button('Genie').click(); await button('Use in draft').waitFor(); await atBottom('genie_open');
-  await button('Close Genie').click(); await atBottom('genie_closed');
+  await button('Hyphantes').click(); await button('Use in draft').waitFor(); await atBottom('genie_open');
+  await button('Close Hyphantes').click(); await atBottom('genie_closed');
   await button('Show history').click(); await atBottom('library_open');
   await button('Hide history').click(); await atBottom('library_closed');
-  report.checks.push('Viewport shrink, multiline draft, Genie and library reflow preserve following');
+  report.checks.push('Viewport shrink, multiline draft, Hyphantes and library reflow preserve following');
 
   // A small genuine upward gesture must pause even inside the old 80px zone.
   await main.hover(); await page.mouse.wheel(0,-45); await page.waitForTimeout(120);
@@ -105,7 +105,7 @@ try {
   assert.ok((await measure('keyboard_up')).gap > 80);
   await page.keyboard.press('End'); await atBottom('keyboard_bottom');
   await input.fill('Another short draft.');
-  await button('Genie').click(); await button('Use in draft').waitFor(); await button('Close Genie').click();
+  await button('Hyphantes').click(); await button('Use in draft').waitFor(); await button('Close Hyphantes').click();
   await send('Tell me more.'); await complete();
   await button('Retry reply').waitFor();
   await main.hover(); await page.mouse.wheel(0,-250); await page.waitForTimeout(120);

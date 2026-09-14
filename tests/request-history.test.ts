@@ -45,7 +45,7 @@ it('includes all stored request categories without relying on active memory or i
   insert('genie_request_attempts',{...base,id:'genie-a',session_id:'s',settings:JSON.stringify({model:'genie-model'})});
   insert('genie_request_attempts',{...base,id:'genie-other',session_id:'other',settings:'{}'});
   const attempts=requestHistory(db,'s');
-  expect(attempts.map(a=>a.kind)).toEqual(['Conversation','Partner selection','Grammar analysis','Search routing · Primary','Search routing · Fallback','Starter generation','Memory update','Memory update · Input 1','Memory cleanup (legacy)','Intention starter generation (legacy)','Explain','Genie']);
+  expect(attempts.map(a=>a.kind)).toEqual(['Conversation','Partner selection','Grammar analysis','Search routing · Primary','Search routing · Fallback','Starter generation','Memory update','Memory update · Input 1','Memory cleanup (legacy)','Intention starter generation (legacy)','Explain','Hyphantes']);
   expect(attempts).toHaveLength(12); expect(new Set(attempts.map(a=>a.id)).size).toBe(12);
   expect(attempts.find(a=>a.kind==='Explain')?.settings).toEqual({model:'explain-model'});
   expect(attempts.find(a=>a.kind.startsWith('Intention'))?.model).toBe('legacy-router');
