@@ -12,9 +12,7 @@
 - Blend the Memory editing-lock notice into Settings with a neutral status row and a quiet chat-return action.
 - Simplify Voice, Usage & budget and Connection & data with expandable details, visible Grok API attribution and the existing sample playback icon.
 - Highlight Web search when Auto is selected, matching the other composer toggles.
-
 - Unify button tooltips and dismiss them after activation, focus return, Escape and owner hiding; prevent overlapping tooltips while preserving keyboard discovery.
-
 - Group associative recall by learner turn in Conversation details and omit capacity moves to Older from the chat memory changes.
 - Include Explain, Genie, speech synthesis and legacy background attempts in Conversation request details, show reported costs independently of token totals, and retain new Genie request metadata across restarts without saving help text.
 - Combine memory age selection and counts with search, consolidate guidance in About memory, and show indexing issues only through an attention icon.
@@ -22,9 +20,7 @@
 - Exclude memory created in the current conversation from associative recall, whether stored in HOT or COLD memory.
 - Retain and display all returned distinct valid web sources without a ten-source storage cap.
 - Restore the Cancel grammar analysis button by forwarding its command through the desktop bridge.
-
 - Restore Explain generation, retries and saved history by admitting its database operations in the background worker.
-
 - Freeze baseline memory before current-input extraction and use dispatched reply evidence for memory controls and unsent retries.
 - Exclude identical text from associative recall even when records have different IDs.
 - Group memory used by dispatched replies into recent memory, older recollections and associative recall in Conversation details.
