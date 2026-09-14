@@ -57,6 +57,20 @@ npm start
 Button tips appear on hover or keyboard navigation. Activating a button or pressing
 Escape dismisses its tip; returning from a dialog keeps focus without reopening it.
 
+## Conversation guidance
+
+After a complete exchange, click the flame button beside Hyphantes for **Dadouchos**.
+A short English reflection appears above your draft while you keep writing.
+The same button hides or reopens it; reopening unchanged context reuses the result.
+Sending your message clears the guide. If a request fails or is interrupted, use
+**Retry** to try again.
+
+Dadouchos uses Gemma 4 31B and only the latest three complete exchanges (or the
+available one or two). Your unfinished draft and long-term memory are not sent
+for guidance. Guide text is temporary; request settings, status and usage remain
+in Conversation details. It offers a direction for reflection and leaves the
+content and wording of your reply to you.
+
 ## Provider data policy
 
 Text requests ask OpenRouter to exclude providers that collect data by setting

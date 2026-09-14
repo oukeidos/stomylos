@@ -48,5 +48,6 @@ export function requestHistory(db: Database.Database, sessionId: string): Reques
     add(row, 'Explain', parse(row.request_body));
   for (const row of rows('SELECT a.*,o.body,o.body_hash FROM opener_attempts a JOIN conversation_openers o ON o.session_id=a.session_id WHERE a.session_id=?')) add(row, 'Conversation opener', parse(row.body));
   for (const row of rows('SELECT * FROM genie_request_attempts WHERE session_id=?')) add(row, 'Hyphantes', parse(row.settings));
+  for (const row of rows('SELECT * FROM dadouchos_request_attempts WHERE session_id=?')) add(row, 'Dadouchos', parse(row.settings));
   return result;
 }

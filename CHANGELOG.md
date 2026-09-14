@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add optional Gemma 31B Dadouchos guidance above the composer, toggled by one flame button, with recent-exchange input and content-free request history.
 - Replace the Hyphantes wand with the selected pen nib icon in the composer and help dialog while retaining the current Muse icon.
 - Rename visible Genie controls to Hyphantes and update composer tooltips to the selected English copy without trailing periods, retaining the final question mark.
 

@@ -1,3 +1,4 @@
+import { dadouchosBody, dadouchosIdentity } from '../src/main/dadouchos';
 import { memoryAddBody } from '../src/main/memory-add';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync, readdirSync } from 'node:fs';
@@ -94,6 +95,7 @@ it('checks the actual wire for every active text request shape and keeps search 
     const search = searchSnapshot(); for (const ordinal of [0, 1]) add(`search-gate-${ordinal}`, searchRouterBody(search, searchInput('', 'Search the web.'), ordinal));
     const source = { sessionId: 's', revision: 0, contextHash: 'x', text: 'I go yesterday.', messages: [] };
     for (const selection of [false, true]) add(`genie-${selection}`, genieBody(source, { start: 0, end: source.text.length, direction: 'none', scope: selection ? 'selection' : 'draft' }, [{role:'assistant',content:'Earlier help.'}], 'Make it natural.'), genieIdentity);
+    for (const shape of ['initial','retry','preview']) add('dadouchos-'+shape, dadouchosBody({sessionId:'s',hash:'h',messages:[{role:'user',content:'You said it was open.'},{role:'assistant',content:'I was mistaken. I am sorry.'}]}), dadouchosIdentity);
     add('explain', explainBody({ preceding_message: null, full_passage: 'A short phrase.', selected_text: 'short', selection: { start: 2, end: 7, offset_unit: 'utf16' } }), explainIdentity);
     const grammar = grammarSnapshot(); add('grammar', grammarBody(grammar, []), grammar.response_identity);
     add('report', patternBody([]), patternContract.identity);
@@ -138,7 +140,7 @@ it('sends Lighter and Standard conversation prefixes unchanged through search an
     const gateway=new OpenRouter(()=>'synthetic');
     for(const mode of ['one_point','standard'] as const) {
       const s=store.createSession();store.setReplyContext(s.id,randomUUID(),0,mode);store.searchMode(s.id,'off');
-      store.selectManual(s.id,'model_04');store.submit(s.id,'A synthetic answer.',randomUUID(),1);store.commitRoute(s.id,null,'fixture',null);
+      store.selectManual(s.id,'model_03');store.submit(s.id,'A synthetic answer.',randomUUID(),1);store.commitRoute(s.id,null,'fixture',null);
       const request=store.prepareChat(s.id,randomUUID()), body=store.chatBody(request.id);
       for(const search of [false,true]) {
         const source=withSearch(body,search),before=JSON.stringify(source);

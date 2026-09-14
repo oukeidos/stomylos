@@ -339,6 +339,7 @@ export function validateEnvelope(raw: Json, identity: Json): { content: string; 
   if (!choice || typeof choice !== 'object' || Array.isArray(choice) || choice.error != null) throw new AppFailure('response_choices');
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new AppFailure('response_message');
   if (message.refusal != null && message.refusal !== '' && message.refusal !== false) throw new AppFailure('response_refusal');
+  if (message.tool_calls?.length || message.function_call) throw new AppFailure('response_tool_call');
   if (choice.finish_reason !== 'stop') throw new AppFailure('response_incomplete');
   if (typeof message.content !== 'string' || !message.content.trim()) throw new AppFailure('response_empty');
   return { content: message.content, metadata: { ...safeMetadata(raw), finish_reason: 'stop' } };

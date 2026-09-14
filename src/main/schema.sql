@@ -883,3 +883,14 @@ ALTER TABLE memory_add_jobs ADD COLUMN source_manifest TEXT;
 CREATE UNIQUE INDEX memory_add_one_session ON memory_add_jobs(session_id) WHERE source_kind='session';
 CREATE TRIGGER immutable_memory_add_manifest BEFORE UPDATE OF source_kind,source_manifest ON memory_add_jobs
 BEGIN SELECT RAISE(ABORT, 'Immutable memory ADD source'); END;
+
+-- Public schema 38 -> 39: content-free Dadouchos request history.
+CREATE TABLE dadouchos_request_attempts (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  parent_id TEXT,
+  status TEXT NOT NULL CHECK(status IN ('dispatched','succeeded','failed','interrupted')),
+  created_at TEXT NOT NULL, dispatched_at TEXT, finished_at TEXT,
+  settings TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', failure TEXT
+);
+CREATE INDEX dadouchos_requests_session ON dadouchos_request_attempts(session_id,created_at,id);

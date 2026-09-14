@@ -1,3 +1,5 @@
+import { DadouchosController } from './dadouchos-controller';
+import { dadouchosSource } from './dadouchos';
 import { validateSessionMemorySize } from './memory-add';
 import { openerIdentity } from './opener';
 import type { MemoryEmbeddingController } from './memory-embedding-controller';
@@ -28,6 +30,7 @@ import { characters, conversationBody, conversationRequestSnapshot, grammarBody,
 
 type PendingSave = { attempt: () => Promise<unknown>; resolve: (value: any) => void };
 export class Coordinator {
+  readonly dadouchos: DadouchosController;
   readonly genie: GenieController;
   readonly explain: ExplainController;
   readonly patterns: PatternReportController;
@@ -65,6 +68,17 @@ export class Coordinator {
       retrySave: () => this.command('retrySaving', undefined)
     });
     this.explain = new ExplainController(db, gateway, record => this.emit({ type: 'explain', record }), () => this.settings.keyPresent);
+    this.dadouchos = new DadouchosController(gateway, {
+      source: async id => {
+        if (this.activity.storageError || this.activity.closing || this.backupLocked || this.deleting.has(id)) throw new AppFailure('save_required');
+        if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
+        if (this.interactive || this.activity.phase !== 'idle' || this.genie.locked || this.dictation?.locked || this.dictation?.needsSave || await this.db.call('endBlocker')) throw new AppFailure('dadouchos_unavailable');
+        return dadouchosSource(await this.db.call('view', id));
+      },
+      emit: snapshot => this.emit({type:'dadouchos',snapshot}),
+      start: async (id, session, parent, settings) => { await this.write('dadouchosRequestStart', id, session, parent, settings); this.emit({type:'session-changed',sessionId:session,revision:++this.revision}); },
+      finish: async (id, metadata, failure, session) => { await this.write('dadouchosRequestFinish', id, metadata, failure); this.emit({type:'session-changed',sessionId:session,revision:++this.revision}); }
+    });
     this.genie = new GenieController(gateway, {
       source: (id, text, revision) => this.genieSource(id, text, revision),
       save: (source, text, revision) => this.saveGenieDraft(source, text, revision),
@@ -112,7 +126,7 @@ export class Coordinator {
     } catch (error) { if (!this.activity.storageError) throw error; }
     return { endBlocker: this.cachedEndBlockers[0]?.sessionId ?? null, endBlockers: this.cachedEndBlockers, revision, sessions: page.sessions, historyHasMore: page.hasMore, unfinished, activity, settings, characters };
   }
-  databaseFailed() { if (this.exiting) return; this.patterns.databaseFailed(); this.speech?.stop(); this.emit({ type: 'dictation-interrupt' }); this.activity.storageError = 'database_worker_stopped'; this.backupReject?.(new AppFailure('save_required')); void this.publish().catch(() => undefined); }
+  databaseFailed() { this.dadouchos.dispose(); if (this.exiting) return; this.patterns.databaseFailed(); this.speech?.stop(); this.emit({ type: 'dictation-interrupt' }); this.activity.storageError = 'database_worker_stopped'; this.backupReject?.(new AppFailure('save_required')); void this.publish().catch(() => undefined); }
   memoryIndexChanged() {
     this.emit({ type: 'memory-changed', characterId: 'shared', revision: ++this.revision });
   }
@@ -150,6 +164,8 @@ export class Coordinator {
   }
   async withBackup<T>(operation: () => Promise<T>): Promise<T> {
     if (this.backupLocked) throw new AppFailure('backup_busy');
+    this.dadouchos.dispose();
+    if (this.dadouchos.busy) throw new AppFailure('backup_busy');
     this.assertBackupIdle(); this.backupLocked = true;
     let active = true;
     const failed = new Promise<never>((_, reject) => { this.backupReject = reject; });
@@ -183,6 +199,8 @@ export class Coordinator {
     try { return await pending; } finally { this.commandsInFlight.delete(pending); }
   }
   private async runCommand<K extends keyof CommandArgs>(name: K, args: CommandArgs[K]): Promise<CommandResults[K]> {
+    if (name === 'dadouchosSnapshot') return this.dadouchos.snapshot() as CommandResults[K];
+    if (name === 'dadouchosClose' || name === 'dadouchosDispose') { const id=(args as CommandArgs['dadouchosClose']).sessionId; if(name==='dadouchosClose') this.dadouchos.hide(id); else this.dadouchos.dispose(id); return undefined as CommandResults[K]; }
     if (name === 'genieSnapshot') return this.genie.snapshot() as CommandResults[K];
     if (name === 'genieDraft') { const a = args as CommandArgs['genieDraft']; this.genie.updateDraft(a.episodeId, a.text, a.revision); return undefined as CommandResults[K]; }
     if (name === 'genieClose' || name === 'genieCancel') { await this.genie.cancel((args as CommandArgs['genieClose']).episodeId, name === 'genieClose'); return undefined as CommandResults[K]; }
@@ -206,6 +224,7 @@ export class Coordinator {
       ] } as CommandResults[K];
     }
     if (name === 'loadSession') {
+      if(this.dadouchos.snapshot().sessionId !== (args as CommandArgs['loadSession']).sessionId) this.dadouchos.dispose();
       const view = await this.db.call('view', (args as CommandArgs['loadSession']).sessionId);
       await this.speech?.load(view.messages); return view as CommandResults[K];
     }
@@ -284,6 +303,7 @@ export class Coordinator {
     }
     if (this.dictation?.locked && ['saveDraft', 'sendMessage', 'endSession', 'newSession', 'replaceStarter', 'generateOpener', 'setOpening', 'setReplyContext', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) throw new AppFailure('asr_busy');
     if (['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) this.speech?.stop();
+    if (['newSession','changePartner','endSession','deleteSession','retryReply','useSelectedPartner','retryPartnerSelection'].includes(name)) this.dadouchos.dispose();
     switch (name) {
       case 'setMemoryPreference': {
         const value = await this.admitMemory(() => this.write('setMemoryPreference', args.enabled, args.revision));
@@ -309,7 +329,9 @@ export class Coordinator {
         this.emit({type:'memory-changed', characterId:'shared', revision:++this.revision});
         await this.publish(); return result;
       }
-      case 'genieOpen': this.speech?.stop(); return this.genie.open(args);
+      case 'dadouchosOpen': return this.dadouchos.open(id,args.operationId);
+      case 'dadouchosRetry': return this.dadouchos.open(id,args.operationId,true);
+      case 'genieOpen': this.dadouchos.hide(); this.speech?.stop(); return this.genie.open(args);
       case 'genieSubmit': return this.genie.submit(args);
       case 'genieRetry': return this.genie.retry(args.episodeId, args.operationId);
       case 'genieTarget': return this.genie.target(args.episodeId, args.range, args.operationId);
@@ -323,6 +345,7 @@ export class Coordinator {
         await this.dictation.transcribe(args.id); return;
       }
       case 'asrBegin': {
+        this.dadouchos.cancel();
         if (!this.dictation) throw new AppFailure('asr_unavailable');
         await this.dictationEligible(id);
         const known = this.drafts.get(id);
@@ -400,13 +423,15 @@ export class Coordinator {
         return;
       case 'newSession': { const session = await this.write('createSession'); await this.publish(session.id); return session.id; }
       case 'sendMessage': {
+        this.dadouchos.cancel();
         await this.genie.dispose(id);
         if ((this.drafts.get(id)?.revision ?? -1) > args.revision) throw new AppFailure('draft_changed');
-        if (args.text === '/end') { this.drafts.set(id, { revision: args.revision, text: '' }); await this.write('saveDraft', id, ''); await this.end(id); return; }
+        if (args.text === '/end') { this.dadouchos.dispose(id); this.drafts.set(id, { revision: args.revision, text: '' }); await this.write('saveDraft', id, ''); await this.end(id); return; }
         if (this.interactive) throw new AppFailure('reply_in_progress');
         if (!this.settings.keyPresent) throw new AppFailure('api_key_missing');
         const message = await this.write('submit', id, args.text, randomUUID(), args.expectedReplyContextRevision)
           .catch(async error => { await this.publish(id); throw error; });
+        this.dadouchos.dispose(id);
         // Publish the durable lock even if later dictation or dispatch work fails.
         await this.publish(id);
         await this.dictation?.submitted(id, args.dictationIds ?? [], message.id, message.content);
@@ -895,13 +920,14 @@ export class Coordinator {
     this.speech?.stop(); this.emit({ type: 'dictation-interrupt' });
     // Start independent cleanup together; none is a prerequisite for the main deadline.
     return Promise.allSettled([
-      this.genie.dispose(), this.explain.dispose(), this.patterns.close(),
+      (this.dadouchos.dispose(), this.dadouchos.settle()), this.genie.dispose(), this.explain.dispose(), this.patterns.close(),
       this.speech?.close(), this.dictation?.close(), this.cold?.close(), this.db.close()
     ]).then(() => undefined);
   }
   private async close(current?: () => boolean): Promise<boolean> {
     this.activity.closing = true; await this.publish();
     if (current && !current()) return false;
+    this.dadouchos.dispose(); await this.dadouchos.settle();
     await this.genie.dispose();
     if (current && !current()) return false;
     await this.explain.dispose();

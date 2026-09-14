@@ -1,3 +1,4 @@
+import type { DadouchosCommandArgs, DadouchosCommandResults } from './dadouchos';
 import type { ReplyMode, ReplyContextView } from './reply-context';
 import type { VoiceId } from './voice';
 import type { ExplainCommandArgs, ExplainCommandResults } from './explain';
@@ -72,7 +73,7 @@ export interface SpeechItem { assetKey?: string; attemptId?: string; voice?: Voi
 export interface SpeechRecovery { assetKey: string; attemptId: string; voice: VoiceId; sessionId?: string; messageId?: string }
 export interface SpeechPreview { state: SpeechItem['state']; error?: string; audioId?: string; assetKey: string; attemptId?: string }
 export interface SpeechSnapshot { voice: VoiceId; selectionRevision: number; preview: SpeechPreview | null; recoveries: SpeechRecovery[]; revision: number; mode: 'manual' | 'automatic'; warning: string | null; cacheBytes: number; items: SpeechItem[] }
-export type AppEvent = { type: 'usage-changed' } | { type: 'explain'; record: import('./explain').ExplainRecord } | { type: 'pattern'; snapshot: import('./pattern-report').PatternState } | { type: 'genie'; snapshot: import('./genie').GenieSnapshot } | { type: 'dictation'; snapshot: import('./asr').DictationSnapshot } |
+export type AppEvent = { type: 'dadouchos'; snapshot: import('./dadouchos').DadouchosSnapshot } | { type: 'usage-changed' } | { type: 'explain'; record: import('./explain').ExplainRecord } | { type: 'pattern'; snapshot: import('./pattern-report').PatternState } | { type: 'genie'; snapshot: import('./genie').GenieSnapshot } | { type: 'dictation'; snapshot: import('./asr').DictationSnapshot } |
   { type: 'memory-changed'; characterId: string; revision: number } |
   { type: 'dictation-interrupt' } | { type: 'speech'; snapshot: SpeechSnapshot } |
   { type: 'speech-preview-play'; audioId: string; selectionRevision: number; token: number } |
@@ -83,7 +84,7 @@ export type AppEvent = { type: 'usage-changed' } | { type: 'explain'; record: im
   { type: 'session-changed'; revision: number; sessionId: string } |
   { type: 'session-deleted'; revision: number; sessionId: string } |
   { type: 'close-requested'; revision: number; retry?: boolean } | { type: 'exit-copy-requested'; id: number } | { type: 'close-cancelled' };
-export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, PatternCommandArgs {
+export interface CommandArgs extends DadouchosCommandArgs, ExplainCommandArgs, GenieCommandArgs, PatternCommandArgs {
   setMemoryPreference: { enabled: boolean; revision: number };
   usageSnapshot: undefined;
   usageBudget: { amount: string | null };
@@ -155,7 +156,7 @@ export interface CommandArgs extends ExplainCommandArgs, GenieCommandArgs, Patte
   exitCopyText: { id: number; text: string };
   close: undefined;
 }
-export interface CommandResults extends ExplainCommandResults, GenieCommandResults, PatternCommandResults {
+export interface CommandResults extends DadouchosCommandResults, ExplainCommandResults, GenieCommandResults, PatternCommandResults {
   setMemoryPreference: import('./memory-control').MemoryPreference;
   exitOptions: void; exitPrepared: void; exitCopyText: void;
   usageSnapshot: import('./usage').UsageSnapshot;

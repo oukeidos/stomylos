@@ -147,6 +147,7 @@ export class Store {
       this.run("UPDATE opener_attempts SET status='interrupted',failure='interrupted_unknown_outcome',finished_at=? WHERE status IN ('queued','dispatched')", now());
       for (const a of this.all<{id:string}>("SELECT id FROM opener_attempts WHERE status='received'")) this.acceptOpener(a.id);
       this.run("UPDATE genie_request_attempts SET status='interrupted',failure='interrupted_unknown_outcome',finished_at=? WHERE status='dispatched'", now());
+      this.run("UPDATE dadouchos_request_attempts SET status='interrupted',failure='interrupted_unknown_outcome',finished_at=? WHERE status='dispatched'", now());
     });
   }
   openerView(id: string) {
@@ -261,6 +262,18 @@ export class Store {
     if (typeof metadata.finish_reason === 'string') safe.finish_reason = metadata.finish_reason;
     if (typeof metadata.elapsed_seconds === 'number' && Number.isFinite(metadata.elapsed_seconds) && metadata.elapsed_seconds >= 0) safe.elapsed_seconds = metadata.elapsed_seconds;
     this.run("UPDATE genie_request_attempts SET status=?,metadata=?,failure=?,finished_at=?,dispatched_at=CASE WHEN ?='queued_not_dispatched' THEN NULL ELSE dispatched_at END WHERE id=? AND status='dispatched'",
+      failure === 'request_cancelled' || failure === 'queued_not_dispatched' ? 'interrupted' : failure ? 'failed' : 'succeeded', JSON.stringify(safe), failure, now(), failure, id);
+  }
+  dadouchosRequestStart(id: string, sessionId: string, parentId: string | null, settings: Json) {
+    this.session(sessionId);
+    this.run("INSERT OR IGNORE INTO dadouchos_request_attempts(id,session_id,parent_id,status,created_at,dispatched_at,settings) VALUES(?,?,?,'dispatched',?,?,?)",
+      id, sessionId, parentId, now(), now(), JSON.stringify({...requestSettings(settings),prompt_sha256: settings.prompt_sha256}));
+  }
+  dadouchosRequestFinish(id: string, metadata: Json, failure: string | null) {
+    const safe = safeMetadata(metadata);
+    if (typeof metadata.finish_reason === 'string') safe.finish_reason = metadata.finish_reason;
+    if (typeof metadata.elapsed_seconds === 'number' && Number.isFinite(metadata.elapsed_seconds) && metadata.elapsed_seconds >= 0) safe.elapsed_seconds = metadata.elapsed_seconds;
+    this.run("UPDATE dadouchos_request_attempts SET status=?,metadata=?,failure=?,finished_at=?,dispatched_at=CASE WHEN ?='queued_not_dispatched' THEN NULL ELSE dispatched_at END WHERE id=? AND status='dispatched'",
       failure === 'request_cancelled' || failure === 'queued_not_dispatched' ? 'interrupted' : failure ? 'failed' : 'succeeded', JSON.stringify(safe), failure, now(), failure, id);
   }
   explainPrepare(target: ExplainTarget) { return this.explanations.prepare(target); }

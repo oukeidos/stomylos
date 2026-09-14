@@ -1,3 +1,5 @@
+import { validateDadouchosCommand } from './dadouchos-ipc';
+import { dadouchosCommands } from '../shared/dadouchos';
 import { validBudget } from '../shared/usage';
 import { isVoice } from '../shared/voice';
 import { validateExplainCommand } from './explain-ipc';
@@ -12,7 +14,7 @@ import { ASR } from '../shared/asr';
 import { dictationId } from './asr-store';
 import { validApiKey } from '../shared/credentials';
 
-const commands: (keyof CommandArgs)[] = [...explainCommands, ...patternCommands, ...genieCommands, 'exitOptions', 'exitPrepared', 'exitCopyText', 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'retryMemoryAdd', 'skipMemoryAdd', 'setMemoryPreference', 'coldPage','coldStatus','coldDelete','coldRetry','memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'requestHistory', 'loadSession', 'saveDraft', 'replaceStarter', 'generateOpener', 'setOpening', 'setReplyContext', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
+const commands: (keyof CommandArgs)[] = [...dadouchosCommands, ...explainCommands, ...patternCommands, ...genieCommands, 'exitOptions', 'exitPrepared', 'exitCopyText', 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'retryMemoryAdd', 'skipMemoryAdd', 'setMemoryPreference', 'coldPage','coldStatus','coldDelete','coldRetry','memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'requestHistory', 'loadSession', 'saveDraft', 'replaceStarter', 'generateOpener', 'setOpening', 'setReplyContext', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
   'searchMode', 'sendMessage', 'retryReply', 'endSession', 'newSession', 'retryAnalysis', 'cancelAnalysis', 'retryStarterRenewal', 'continueEnd', 'cancelEnd', 'retryMemory', 'skipMemory', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'manageKey', 'close'];
 const noArgs = new Set(['coldStatus','coldRetry','exitOptions', 'usageSnapshot', 'speechPreviewStop', 'retryDeletionCleanup', 'asrSnapshot', 'speechSnapshot', 'speechStop', 'speechClear', 'memoryManagement', 'currentMemory', 'snapshot', 'newSession', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'close']);
 export function validateCommand(name: unknown, args: unknown): asserts name is keyof CommandArgs {
@@ -20,6 +22,7 @@ export function validateCommand(name: unknown, args: unknown): asserts name is k
   if (typeof name !== 'string' || !commands.includes(name as keyof CommandArgs)) return bad();
   if (name.startsWith('explain')) { validateExplainCommand(name, args); return; }
   if (name.startsWith('pattern')) { validatePatternCommand(name, args); return; }
+  if (name.startsWith('dadouchos')) { validateDadouchosCommand(name, args); return; }
   if (name.startsWith('genie')) { validateGenieCommand(name, args); return; }
   if (noArgs.has(name)) { if (args !== undefined) bad(); return; }
   if (!args || typeof args !== 'object' || Array.isArray(args)) return bad();

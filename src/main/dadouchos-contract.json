@@ -1,0 +1,7 @@
+{
+  "version": "dadouchos_v1",
+  "model": "google/gemma-4-31b-it",
+  "reasoning": { "enabled": false, "exclude": true },
+  "max_tokens": 4096,
+  "timeout_ms": 120000
+}

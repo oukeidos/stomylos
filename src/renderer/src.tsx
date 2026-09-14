@@ -1,3 +1,4 @@
+import { DadouchosDock, DadouchosButton } from './dadouchos';
 import { TooltipButton } from './tooltip-button';
 import { historySubtitle } from './history-subtitle';
 import { useReplyContext } from './reply-context';
@@ -292,6 +293,7 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
     <div className="composer">
       <GenieDock sessionId={id} textarea={textarea} storageError={app.activity.storageError} />
       {starter && !genie.locked && <div className="starter-dock" aria-label="Conversation starter">{starter}</div>}
+      <DadouchosDock sessionId={id} hidden={genie.locked} disabled={blocked || sending || busy || unresolved || dictation.locked} />
       <DictationPanel sessionId={id} disabled={blocked || sending || busy || unresolved || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} />
       <textarea ref={textarea} data-voice-composer aria-label="Your message" title="Enter to send · Shift+Enter for a new line · F8 for voice input" placeholder={view.session.state === 'draft' && view.session.opening_kind === 'user' ? "What's on your mind?" : 'Your message…'} value={draft.text}
       readOnly={dictation.locked || genie.locked || blocked} disabled={app.activity.closing} onSelect={event => { selection.current = captureGenieRange(event.currentTarget, currentDraft(id).text); }} onChange={event => editDraft(id, event.target.value)}
@@ -301,7 +303,7 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
       } }} />
       <div className="composer-actions"><TooltipButton className="icon-button genie-help" data-explain-return aria-label="Hyphantes" tooltip="Hyphantes · Weaving words" disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length >= 24 || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing}
         onPointerDown={() => { if (textarea.current) selection.current = captureGenieRange(textarea.current, currentDraft(id).text); }}
-        onClick={() => { if (!composing.current && textarea.current) act(() => openGenie(id, selection.current ?? captureGenieRange(textarea.current!, currentDraft(id).text))); }}><Icon name="help" /></TooltipButton><TooltipButton className="icon-button search-toggle" aria-pressed={view.session.search_mode === 'auto'}
+        onClick={() => { if (!composing.current && textarea.current) act(() => openGenie(id, selection.current ?? captureGenieRange(textarea.current!, currentDraft(id).text))); }}><Icon name="help" /></TooltipButton><DadouchosButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length < 1 || users.length >= 24 || view.session.state !== 'active' || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} /><TooltipButton className="icon-button search-toggle" aria-pressed={view.session.search_mode === 'auto'}
           aria-label={`Web search: ${view.session.search_mode === 'auto' ? 'Auto' : 'Off'}`}
           tooltip={view.session.search_mode === 'auto' ? 'Web search: Auto - Seeking, they find what is better' : 'Web search: Off - Dig within'}
           disabled={blocked || sending || busy || unresolved || genie.locked || dictation.locked || !!app.activity.storageError || app.activity.closing}
