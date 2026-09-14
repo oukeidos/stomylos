@@ -13,7 +13,7 @@ const paths = {
   sidebar: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></>,
   book: <><path d="M12 5v15M3 4h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v15h-5a5 5 0 0 0-4 1 5 5 0 0 0-4-1H3Z" /></>,
   settings: <><path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="3" /><circle cx="15" cy="17" r="3" /></>,
-  help: <><path d="m4 20 11-11 4 4L8 24ZM14 3v4M12 5h4M20 6v4M18 8h4" transform="translate(0 -3)" /></>,
+  help: <><path d="m3 21 4-13 9-5 5 5-5 9-13 4M12 7l5 5M3 21l7-7" /><circle cx="12" cy="12" r="2" /></>,
   mic: <><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M8 21h8" /></>,
   down: <path d="M12 4v16m-7-7 7 7 7-7" />,
   send: <path d="M12 20V4m-7 7 7-7 7 7" />,

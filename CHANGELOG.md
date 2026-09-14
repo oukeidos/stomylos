@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Replace the Hyphantes wand with the selected pen nib icon in the composer and help dialog while retaining the current Muse icon.
 - Rename visible Genie controls to Hyphantes and update composer tooltips to the selected English copy without trailing periods, retaining the final question mark.
 
 ## 0.6.0 — 2026-09-14
