@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-09-14
 
 - Restore reply generation through the database worker with Memory On or Off, bound optional recall failures and preserve memory lookup during recovery before a reply request exists.
 - Refine Older memory pagination with compact arrow controls, a quiet range display and consistent loading, retry and keyboard focus behavior.
