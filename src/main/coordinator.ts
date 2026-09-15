@@ -122,6 +122,7 @@ export class Coordinator {
     try {
       [page, unfinished, this.cachedEndBlockers] = await Promise.all([this.db.call('sessionPage'), this.db.call('unfinished'), this.db.call('endBlockers')]);
       settings.memory = await this.db.call('memoryPreference');
+      settings.wordCloud = await this.db.call('wordCloudPreference');
       this.cachedPage = page; this.cachedUnfinished = unfinished;
     } catch (error) { if (!this.activity.storageError) throw error; }
     return { endBlocker: this.cachedEndBlockers[0]?.sessionId ?? null, endBlockers: this.cachedEndBlockers, revision, sessions: page.sessions, historyHasMore: page.hasMore, unfinished, activity, settings, characters };
@@ -305,6 +306,10 @@ export class Coordinator {
     if (['sendMessage', 'endSession', 'newSession', 'replaceStarter', 'useSelectedPartner', 'retryPartnerSelection', 'retryReply', 'close'].includes(name)) this.speech?.stop();
     if (['newSession','changePartner','endSession','deleteSession','retryReply','useSelectedPartner','retryPartnerSelection'].includes(name)) this.dadouchos.dispose();
     switch (name) {
+      case 'setWordCloudPreference': {
+        const enabled = await this.write('setWordCloudPreference', args.enabled);
+        this.settings.wordCloud = enabled; await this.publish(); return enabled;
+      }
       case 'setMemoryPreference': {
         const value = await this.admitMemory(() => this.write('setMemoryPreference', args.enabled, args.revision));
         if (!value.enabled) this.memory?.abort.abort();

@@ -1,3 +1,4 @@
+import type { WordCloudPreference } from './word-cloud-preference';
 import { MemoryManager, type MemoryManagerHandle } from './memory-manager';
 import { UsageSettings } from './usage';
 import { forwardRef, useImperativeHandle, useId, useRef, useState } from 'react';
@@ -8,14 +9,14 @@ import { IconButton } from './icon-button';
 import { CredentialSettings } from './credentials';
 import { BackupSettings } from './backup';
 
-const tabs = [{ id: 'voice', label: 'Voice' }, { id: 'memory', label: 'Memory' }, { id: 'usage', label: 'Usage & budget' }, { id: 'data', label: 'Connection & data' }] as const;
+const tabs = [{ id: 'appearance', label: 'Appearance' }, { id: 'voice', label: 'Voice' }, { id: 'memory', label: 'Memory' }, { id: 'usage', label: 'Usage & budget' }, { id: 'data', label: 'Connection & data' }] as const;
 export type SettingsTab = typeof tabs[number]['id'];
 
 export interface SettingsHandle { beforeLeave(): Promise<boolean> }
 export const SettingsDialog = forwardRef<SettingsHandle, {
   open: boolean; onOpenChange(open: boolean): void; tab: SettingsTab; onTabChange(tab: SettingsTab): void;
-  settings: Settings; beforeBackup(): Promise<void>; returnFocus(): void; errorText(error: unknown): string; openChat(id: string): void;
-}>(function SettingsDialog({ open, onOpenChange, tab, onTabChange, settings, returnFocus, errorText, beforeBackup, openChat }, ref) {
+  wordCloud: WordCloudPreference; settings: Settings; beforeBackup(): Promise<void>; returnFocus(): void; errorText(error: unknown): string; openChat(id: string): void;
+}>(function SettingsDialog({ wordCloud, open, onOpenChange, tab, onTabChange, settings, returnFocus, errorText, beforeBackup, openChat }, ref) {
   const memory = useRef<MemoryManagerHandle>(null);
   const leave = async () => !backupBusy && (await memory.current?.beforeLeave() ?? true);
   useImperativeHandle(ref, () => ({beforeLeave:leave}));
@@ -39,6 +40,11 @@ export const SettingsDialog = forwardRef<SettingsHandle, {
         </div>
         {tabs.map(item => <section key={item.id} className="settings-panel" role="tabpanel" id={`${id}-${item.id}-panel`} aria-labelledby={`${id}-${item.id}-tab`} tabIndex={0} hidden={tab !== item.id} inert={tab !== item.id}>
           {item.id !== 'memory' && <h3 className="settings-title">{item.label}</h3>}
+          {item.id === 'appearance' && <section className="setting">
+            <label className="check"><input type="checkbox" role="switch" checked={wordCloud.enabled === true}
+              disabled={wordCloud.busy || wordCloud.enabled === undefined} onChange={event => void wordCloud.change(event.target.checked)} />Show word cloud in new chats</label>
+            {wordCloud.error && <p role="alert" className="note">Could not save this setting. Try changing it again.</p>}
+          </section>}
           {item.id === 'voice' && <SpeechSettings active={open && tab === 'voice'} />}
           {item.id === 'usage' && <UsageSettings active={open && tab === 'usage'} />}
           {item.id === 'memory' && <MemoryManager preference={settings.memory} ref={memory} active={open && tab === 'memory'} errorText={errorText} openChat={id => { onOpenChange(false); openChat(id); }} />}

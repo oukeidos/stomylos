@@ -894,3 +894,11 @@ CREATE TABLE dadouchos_request_attempts (
   settings TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', failure TEXT
 );
 CREATE INDEX dadouchos_requests_session ON dadouchos_request_attempts(session_id,created_at,id);
+
+-- next
+-- Public schema 39 -> 40: local word-cloud visibility preference.
+CREATE TABLE word_cloud_preferences (
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  enabled INTEGER NOT NULL CHECK(enabled IN (0,1))
+);
+INSERT INTO word_cloud_preferences VALUES(1,1);

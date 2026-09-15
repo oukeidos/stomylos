@@ -1,0 +1,1206 @@
+{
+  "id": "stomylos-word-cloud-en-v1",
+  "version": 1,
+  "entries": [
+    {
+      "word": "breakfast",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "lunch",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "dinner",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "snack",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "coffee",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "tea",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "bread",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "fruit",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "dessert",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "recipe",
+      "category": "scene",
+      "group": "food_drink"
+    },
+    {
+      "word": "room",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "desk",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "bed",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "kitchen",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "window",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "balcony",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "laundry",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "dishes",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "sofa",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "trash",
+      "category": "scene",
+      "group": "home_chores"
+    },
+    {
+      "word": "package",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "gift",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "clothes",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "shoes",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "bag",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "wallet",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "glasses",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "headphones",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "battery",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "receipt",
+      "category": "scene",
+      "group": "belongings_shopping"
+    },
+    {
+      "word": "home",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "office",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "shop",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "market",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "restaurant",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "cafe",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "park",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "library",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "gym",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "station",
+      "category": "scene",
+      "group": "everyday_places"
+    },
+    {
+      "word": "bus",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "train",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "subway",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "car",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "bicycle",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "traffic",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "ticket",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "hotel",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "suitcase",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "airport",
+      "category": "scene",
+      "group": "transport_travel"
+    },
+    {
+      "word": "meeting",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "email",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "deadline",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "task",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "project",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "lesson",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "exam",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "homework",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "notebook",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "mistake",
+      "category": "scene",
+      "group": "work_learning"
+    },
+    {
+      "word": "friend",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "family",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "neighbor",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "colleague",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "stranger",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "pet",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "birthday",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "party",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "invitation",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "promise",
+      "category": "scene",
+      "group": "people_relationships"
+    },
+    {
+      "word": "song",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "movie",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "book",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "concert",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "game",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "photo",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "story",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "drawing",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "comedy",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "podcast",
+      "category": "scene",
+      "group": "culture_hobbies"
+    },
+    {
+      "word": "phone",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "app",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "screen",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "message",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "subscription",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "update",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "video",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "website",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "internet",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "notification",
+      "category": "scene",
+      "group": "digital_life"
+    },
+    {
+      "word": "rain",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "snow",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "wind",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "sun",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "moon",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "flower",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "tree",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "river",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "beach",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "mountain",
+      "category": "scene",
+      "group": "nature_weather"
+    },
+    {
+      "word": "sleep",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "nap",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "dream",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "shower",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "haircut",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "exercise",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "walk",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "break",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "habit",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "energy",
+      "category": "scene",
+      "group": "body_rest_routine"
+    },
+    {
+      "word": "appointment",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "reservation",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "delivery",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "queue",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "delay",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "bill",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "discount",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "refund",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "budget",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "vacation",
+      "category": "scene",
+      "group": "arrangements_money"
+    },
+    {
+      "word": "want",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "wish",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "hope",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "miss",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "prefer",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "wonder",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "expect",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "imagine",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "remember",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "forget",
+      "category": "action",
+      "group": "wants_thoughts"
+    },
+    {
+      "word": "try",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "choose",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "avoid",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "start",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "finish",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "stop",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "change",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "learn",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "practice",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "improve",
+      "category": "action",
+      "group": "choices_progress"
+    },
+    {
+      "word": "buy",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "sell",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "order",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "pay",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "save",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "spend",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "borrow",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "find",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "keep",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "lose",
+      "category": "action",
+      "group": "possessions_money"
+    },
+    {
+      "word": "cook",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "grow",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "taste",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "clean",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "wash",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "fix",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "build",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "move",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "pack",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "wear",
+      "category": "action",
+      "group": "daily_tasks"
+    },
+    {
+      "word": "meet",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "visit",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "call",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "help",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "share",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "thank",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "ask",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "listen",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "argue",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "apologize",
+      "category": "action",
+      "group": "social_actions"
+    },
+    {
+      "word": "travel",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "explore",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "watch",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "read",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "play",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "sing",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "dance",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "relax",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "wait",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "cancel",
+      "category": "action",
+      "group": "leisure_changes"
+    },
+    {
+      "word": "happy",
+      "category": "state",
+      "group": "positive_feelings"
+    },
+    {
+      "word": "excited",
+      "category": "state",
+      "group": "positive_feelings"
+    },
+    {
+      "word": "proud",
+      "category": "state",
+      "group": "positive_feelings"
+    },
+    {
+      "word": "grateful",
+      "category": "state",
+      "group": "positive_feelings"
+    },
+    {
+      "word": "curious",
+      "category": "state",
+      "group": "positive_feelings"
+    },
+    {
+      "word": "calm",
+      "category": "state",
+      "group": "positive_feelings"
+    },
+    {
+      "word": "confident",
+      "category": "state",
+      "group": "positive_feelings"
+    },
+    {
+      "word": "lucky",
+      "category": "state",
+      "group": "positive_feelings"
+    },
+    {
+      "word": "tired",
+      "category": "state",
+      "group": "uncomfortable_feelings"
+    },
+    {
+      "word": "sleepy",
+      "category": "state",
+      "group": "uncomfortable_feelings"
+    },
+    {
+      "word": "bored",
+      "category": "state",
+      "group": "uncomfortable_feelings"
+    },
+    {
+      "word": "lonely",
+      "category": "state",
+      "group": "uncomfortable_feelings"
+    },
+    {
+      "word": "nervous",
+      "category": "state",
+      "group": "uncomfortable_feelings"
+    },
+    {
+      "word": "worried",
+      "category": "state",
+      "group": "uncomfortable_feelings"
+    },
+    {
+      "word": "disappointed",
+      "category": "state",
+      "group": "uncomfortable_feelings"
+    },
+    {
+      "word": "annoyed",
+      "category": "state",
+      "group": "uncomfortable_feelings"
+    },
+    {
+      "word": "hungry",
+      "category": "state",
+      "group": "body_daily_state"
+    },
+    {
+      "word": "thirsty",
+      "category": "state",
+      "group": "body_daily_state"
+    },
+    {
+      "word": "comfortable",
+      "category": "state",
+      "group": "body_daily_state"
+    },
+    {
+      "word": "busy",
+      "category": "state",
+      "group": "body_daily_state"
+    },
+    {
+      "word": "free",
+      "category": "state",
+      "group": "body_daily_state"
+    },
+    {
+      "word": "ready",
+      "category": "state",
+      "group": "body_daily_state"
+    },
+    {
+      "word": "awake",
+      "category": "state",
+      "group": "body_daily_state"
+    },
+    {
+      "word": "lazy",
+      "category": "state",
+      "group": "body_daily_state"
+    },
+    {
+      "word": "quiet",
+      "category": "state",
+      "group": "surroundings"
+    },
+    {
+      "word": "noisy",
+      "category": "state",
+      "group": "surroundings"
+    },
+    {
+      "word": "crowded",
+      "category": "state",
+      "group": "surroundings"
+    },
+    {
+      "word": "empty",
+      "category": "state",
+      "group": "surroundings"
+    },
+    {
+      "word": "messy",
+      "category": "state",
+      "group": "surroundings"
+    },
+    {
+      "word": "dusty",
+      "category": "state",
+      "group": "surroundings"
+    },
+    {
+      "word": "cozy",
+      "category": "state",
+      "group": "surroundings"
+    },
+    {
+      "word": "awkward",
+      "category": "state",
+      "group": "surroundings"
+    },
+    {
+      "word": "cheap",
+      "category": "state",
+      "group": "qualities"
+    },
+    {
+      "word": "expensive",
+      "category": "state",
+      "group": "qualities"
+    },
+    {
+      "word": "useful",
+      "category": "state",
+      "group": "qualities"
+    },
+    {
+      "word": "broken",
+      "category": "state",
+      "group": "qualities"
+    },
+    {
+      "word": "heavy",
+      "category": "state",
+      "group": "qualities"
+    },
+    {
+      "word": "soft",
+      "category": "state",
+      "group": "qualities"
+    },
+    {
+      "word": "slow",
+      "category": "state",
+      "group": "qualities"
+    },
+    {
+      "word": "simple",
+      "category": "state",
+      "group": "qualities"
+    },
+    {
+      "word": "funny",
+      "category": "state",
+      "group": "experience_evaluation"
+    },
+    {
+      "word": "strange",
+      "category": "state",
+      "group": "experience_evaluation"
+    },
+    {
+      "word": "familiar",
+      "category": "state",
+      "group": "experience_evaluation"
+    },
+    {
+      "word": "beautiful",
+      "category": "state",
+      "group": "experience_evaluation"
+    },
+    {
+      "word": "delicious",
+      "category": "state",
+      "group": "experience_evaluation"
+    },
+    {
+      "word": "difficult",
+      "category": "state",
+      "group": "experience_evaluation"
+    },
+    {
+      "word": "easy",
+      "category": "state",
+      "group": "experience_evaluation"
+    },
+    {
+      "word": "special",
+      "category": "state",
+      "group": "experience_evaluation"
+    },
+    {
+      "word": "today",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "yesterday",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "tomorrow",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "morning",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "evening",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "tonight",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "weekend",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "holiday",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "spring",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "summer",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "autumn",
+      "category": "time",
+      "group": "time_season"
+    },
+    {
+      "word": "winter",
+      "category": "time",
+      "group": "time_season"
+    }
+  ]
+}

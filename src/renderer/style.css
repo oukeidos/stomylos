@@ -529,3 +529,10 @@ footer.help-open { max-height: calc(100dvh - 150px); overflow-y: auto; }
 .dadouchos-heading .ui-icon { width: 16px; height: 16px; }
 .dadouchos-dock p { margin: 4px 0 0; font-size: 15px; line-height: 1.7; white-space: pre-wrap; }
 .dadouchos-dock button { padding: 4px 9px; margin-top: 8px; font-size: 12px; }
+
+/* An irregular stream of equal-weight words, with an independent scatter layer. */
+.word-cloud { position: relative; max-width: 844px; margin: 0 auto; font-size: 18px; line-height: 1.35; font-weight: 400; color: #69786e; pointer-events: none; user-select: none; overflow: clip; }
+.word-cloud-measure { position: absolute; visibility: hidden; white-space: nowrap; }
+.word-cloud-anchor { position: absolute; top: 0; left: 0; width: 0; height: 0; will-change: transform; }
+.word-cloud-slot { position: absolute; display: block; width: max-content; white-space: nowrap; }
+.word-cloud-drift { display: block; transform: translate(-50%,-50%); }

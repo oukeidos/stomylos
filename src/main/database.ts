@@ -57,6 +57,14 @@ function signature(db: Database.Database) {
     .map((r: any) => ({ ...r, sql: normalizeSql(r.sql) }));
 }
 export class Store {
+  wordCloudPreference(): boolean {
+    return this.all<{enabled: number}>('SELECT enabled FROM word_cloud_preferences WHERE id=1')[0].enabled === 1;
+  }
+  setWordCloudPreference(enabled: boolean): boolean {
+    if (typeof enabled !== 'boolean') throw new AppFailure('invalid_command');
+    this.run('UPDATE word_cloud_preferences SET enabled=? WHERE id=1', Number(enabled));
+    return this.wordCloudPreference();
+  }
   private db!: Database.Database;
   private unlock: () => void;
   private closed = false;

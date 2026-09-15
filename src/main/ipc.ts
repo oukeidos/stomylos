@@ -14,7 +14,7 @@ import { ASR } from '../shared/asr';
 import { dictationId } from './asr-store';
 import { validApiKey } from '../shared/credentials';
 
-const commands: (keyof CommandArgs)[] = [...dadouchosCommands, ...explainCommands, ...patternCommands, ...genieCommands, 'exitOptions', 'exitPrepared', 'exitCopyText', 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'retryMemoryAdd', 'skipMemoryAdd', 'setMemoryPreference', 'coldPage','coldStatus','coldDelete','coldRetry','memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'requestHistory', 'loadSession', 'saveDraft', 'replaceStarter', 'generateOpener', 'setOpening', 'setReplyContext', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
+const commands: (keyof CommandArgs)[] = [...dadouchosCommands, ...explainCommands, ...patternCommands, ...genieCommands, 'exitOptions', 'exitPrepared', 'exitCopyText', 'usageSnapshot', 'usageBudget', 'setSessionBookmark', 'deleteSession', 'retryDeletionCleanup', 'asrSnapshot', 'asrContext', 'asrBegin', 'asrChunk', 'asrFinish', 'asrTranscribe', 'asrCancel', 'asrRetrySave', 'asrInserted', 'speechVoice', 'speechPreview', 'speechPreviewStop', 'speechRecover', 'speechSnapshot', 'speechMode', 'speechContext', 'speechListen', 'speechRetrySave', 'speechStop', 'speechClear', 'retryMemoryAdd', 'skipMemoryAdd', 'setWordCloudPreference', 'setMemoryPreference', 'coldPage','coldStatus','coldDelete','coldRetry','memoryManagement', 'editMemory', 'currentMemory', 'snapshot', 'listSessions', 'requestHistory', 'loadSession', 'saveDraft', 'replaceStarter', 'generateOpener', 'setOpening', 'setReplyContext', 'selectPartner', 'changePartner', 'useSelectedPartner', 'retryPartnerSelection',
   'searchMode', 'sendMessage', 'retryReply', 'endSession', 'newSession', 'retryAnalysis', 'cancelAnalysis', 'retryStarterRenewal', 'continueEnd', 'cancelEnd', 'retryMemory', 'skipMemory', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'manageKey', 'close'];
 const noArgs = new Set(['coldStatus','coldRetry','exitOptions', 'usageSnapshot', 'speechPreviewStop', 'retryDeletionCleanup', 'asrSnapshot', 'speechSnapshot', 'speechStop', 'speechClear', 'memoryManagement', 'currentMemory', 'snapshot', 'newSession', 'retrySaving', 'backupExport', 'backupRestore', 'refreshKey', 'close']);
 export function validateCommand(name: unknown, args: unknown): asserts name is keyof CommandArgs {
@@ -43,6 +43,10 @@ export function validateCommand(name: unknown, args: unknown): asserts name is k
   }
   if (name === 'coldDelete') {
     if (Object.keys(value).length !== 3 || typeof value.id !== 'string' || !value.id || value.id.length > 1000 || typeof value.hash !== 'string' || !/^[a-f0-9]{64}$/.test(value.hash) || !Number.isSafeInteger(value.revision) || (value.revision as number) < 0) bad();
+    return;
+  }
+  if (name === 'setWordCloudPreference') {
+    if (Object.keys(value).length !== 1 || typeof value.enabled !== 'boolean') bad();
     return;
   }
   if (name === 'setMemoryPreference') {

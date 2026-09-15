@@ -61,7 +61,7 @@ export interface SessionPage { sessions: SessionSummary[]; hasMore: boolean; off
 export interface DeletionAssets { speechKeys: string[]; dictationIds: string[] }
 export interface Starter { id: string; text: string; version: string }
 export interface Character { id: string; label: string; description: string; model: string; reasoning?: Json }
-export interface Settings { memory?: import('./memory-control').MemoryPreference; keyPresent: boolean; keyPath: string; dataPath: string; appVersion: string; development: boolean; simulation?: boolean; credentials?: import('./credentials').KeyStatus }
+export interface Settings { wordCloud?: boolean; memory?: import('./memory-control').MemoryPreference; keyPresent: boolean; keyPath: string; dataPath: string; appVersion: string; development: boolean; simulation?: boolean; credentials?: import('./credentials').KeyStatus }
 export interface Activity {
   sessionId: string | null; requestId: string | null; phase: 'idle' | 'preparing' | 'routing' | 'reply';
   streamingMessageId: string | null; streamingText: string;
@@ -85,6 +85,7 @@ export type AppEvent = { type: 'dadouchos'; snapshot: import('./dadouchos').Dado
   { type: 'session-deleted'; revision: number; sessionId: string } |
   { type: 'close-requested'; revision: number; retry?: boolean } | { type: 'exit-copy-requested'; id: number } | { type: 'close-cancelled' };
 export interface CommandArgs extends DadouchosCommandArgs, ExplainCommandArgs, GenieCommandArgs, PatternCommandArgs {
+  setWordCloudPreference: { enabled: boolean };
   setMemoryPreference: { enabled: boolean; revision: number };
   usageSnapshot: undefined;
   usageBudget: { amount: string | null };
@@ -157,6 +158,7 @@ export interface CommandArgs extends DadouchosCommandArgs, ExplainCommandArgs, G
   close: undefined;
 }
 export interface CommandResults extends DadouchosCommandResults, ExplainCommandResults, GenieCommandResults, PatternCommandResults {
+  setWordCloudPreference: boolean;
   setMemoryPreference: import('./memory-control').MemoryPreference;
   exitOptions: void; exitPrepared: void; exitCopyText: void;
   usageSnapshot: import('./usage').UsageSnapshot;

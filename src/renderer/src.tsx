@@ -1,3 +1,6 @@
+import { WordCloud } from './word-cloud';
+import { cloudSession } from './word-cloud-selection';
+import { useWordCloudPreference } from './word-cloud-preference';
 import { DadouchosDock, DadouchosButton } from './dadouchos';
 import { TooltipButton } from './tooltip-button';
 import { historySubtitle } from './history-subtitle';
@@ -325,7 +328,9 @@ function App() {
   const [openingBusy, setOpeningBusy] = useState(false);
   const [composing, setComposing] = useState(false);
   const settingsGuard = useRef<SettingsHandle>(null);
-  const app = useApp(); const [selected, setSelected] = useState<string | null>(null); const [view, setView] = useState<SessionView | null>(null);
+  const app = useApp();
+  const wordCloud = useWordCloudPreference(app?.settings.wordCloud);
+  const [selected, setSelected] = useState<string | null>(null); const [view, setView] = useState<SessionView | null>(null);
   const [error, setError] = useState<string | null>(null); const [settings, setSettings] = useState(false); const [newDialog, setNewDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Pick<SessionSummary, 'id' | 'title' | 'created_at'> | null>(null);
   useEffect(() => {
@@ -493,6 +498,7 @@ function App() {
 
     <main inert={genie.locked} ref={scroll.scroller} tabIndex={0} aria-label="Conversation">
       <div className="page" ref={scroll.content}>{view ? <>
+        <WordCloud key={view.session.id} sessionId={view.session.id} enabled={wordCloud.enabled} {...cloudSession(view)} paused={settings || details || newDialog || !!deleteTarget || !!app.endBlocker || genie.locked} />
         <div className="transcript">{view.messages.filter(message => !(canChangeOpening && message.origin === 'starter')).map(message => <Bubble key={message.id} message={message} metadata={view.requests.find(r => r.id === message.request_id) ? JSON.parse(view.requests.find(r => r.id === message.request_id)!.metadata) : undefined} partner="Partner" />)}</div>
 
         {app.activity.sessionId === view.session.id && app.activity.phase === 'routing' && <p className="note" role="status">Choosing your conversation partner…</p>}
@@ -539,7 +545,7 @@ function App() {
     {view.session.state === 'ended' && view.session.draft && <Disclosure title="Unsent draft"><p className="retained-text">{view.session.draft}</p></Disclosure>}
     {view.session.state === 'ended' && <DictationPanel sessionId={view.session.id} disabled />}
   </>}</Modal>
-  <SettingsDialog ref={settingsGuard} openChat={id => act(() => show(id))} beforeBackup={async () => { if (app.activity.storageError) throw new Error('save_required'); if (composing || dictationBusy()) throw new Error('backup_busy'); await flushAllDrafts(); }} open={settings} onOpenChange={setSettings} tab={settingsTab} onTabChange={setSettingsTab} settings={app.settings} errorText={errorText} returnFocus={() => settingsTrigger.current?.focus({ preventScroll: true })} />
+  <SettingsDialog wordCloud={wordCloud} ref={settingsGuard} openChat={id => act(() => show(id))} beforeBackup={async () => { if (app.activity.storageError) throw new Error('save_required'); if (composing || dictationBusy()) throw new Error('backup_busy'); await flushAllDrafts(); }} open={settings} onOpenChange={setSettings} tab={settingsTab} onTabChange={setSettingsTab} settings={app.settings} errorText={errorText} returnFocus={() => settingsTrigger.current?.focus({ preventScroll: true })} />
   <Modal open={newDialog} onOpenChange={setNewDialog} title="Start a new chat?"><p className="note">Your current chat is still open. End it to save the conversation and start a fresh one. Any unsent draft will be kept separately.</p>
     <div className="dialog-actions"><button onClick={() => { setNewDialog(false); if (unfinished) act(() => show(unfinished.id)); }}>Keep current chat</button><button className="primary" onClick={() => act(startNew)}>End and start new</button></div>
   </Modal></div>;
