@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Expand chats to 512 learner messages, 48,000 learner bytes and 160,000 total bytes while retaining a 6,000-byte message limit, limiting Hyphantes to recent exchanges and increasing new grammar analyses to 128,000 output tokens and ten minutes with historical retries preserved.
 - Remove DeepSeek V4 Pro from new conversation choices while preserving existing conversations and their saved model settings.
 - Add a local word cloud with continuously arriving irregular clumps, changing shapes and varied text sizes that stays until the first message is sent, then gently scatters, with an Appearance setting and reduced-motion support.
 - Add optional Gemma 31B Dadouchos guidance above the composer, toggled by one flame button, with recent-exchange input and content-free request history.

@@ -1,3 +1,5 @@
+import { conversationLimits } from '../shared/conversation-limits';
+import { genieRecentMessages } from './genie';
 import { DadouchosController } from './dadouchos-controller';
 import { dadouchosSource } from './dadouchos';
 import { validateSessionMemorySize } from './memory-add';
@@ -93,11 +95,11 @@ export class Coordinator {
     if (this.interactive) throw new AppFailure('reply_in_progress');
     if (this.dictation?.locked || this.dictation?.needsSave) throw new AppFailure('asr_busy');
     const view = await this.db.call('view', id), last = view.messages.at(-1), known = this.drafts.get(id);
-    if (view.session.state === 'ended' || last?.role === 'user' || last?.delivery === 'interrupted' || view.messages.filter(isLearner).length >= 24) throw new AppFailure('genie_session_unavailable');
+    if (view.session.state === 'ended' || last?.role === 'user' || last?.delivery === 'interrupted' || view.messages.filter(isLearner).length >= conversationLimits.turns) throw new AppFailure('genie_session_unavailable');
     if (!known || known.revision !== revision || known.text !== text || view.session.draft !== text) throw new AppFailure('genie_stale');
     return { sessionId: id, text, revision,
       contextHash: hash(JSON.stringify([view.session.opening_kind, view.session.opening_revision, view.messages])),
-      messages: view.messages.map(({ role, content }) => ({ role, content })) };
+      messages: genieRecentMessages(view.messages) };
   }
   private async saveGenieDraft(source: GenieSource, text: string, revision: number) {
     const current = await this.genieSource(source.sessionId, source.text, source.revision);
@@ -718,7 +720,7 @@ export class Coordinator {
       const body = grammarBody(snapshot, source);
       if (signal.aborted) throw new AppFailure('queued_not_dispatched');
       await this.write('dispatch', request.id); await this.publish(request.session_id);
-      const result = await providerComplete(this.prepareProvider, this.gateway, 'model', request.id, body, snapshot.response_identity, signal, 120_000);
+      const result = await providerComplete(this.prepareProvider, this.gateway, 'model', request.id, body, snapshot.response_identity, signal, snapshot.timeout_seconds * 1000);
       if (signal.aborted) throw new AppFailure('request_cancelled');
       await this.write('receiveEndResponse', request.session_id, 'grammar', request.id, result.content, result.metadata);
       validateGrammar(result.content, source, snapshot); await this.write('saveAnalysis', request.id, result.content, result.metadata);

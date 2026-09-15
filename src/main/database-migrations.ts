@@ -49,11 +49,12 @@ import source19 from './migrations/schema-v19.sql?raw';
 import step20 from './migrations/020.sql?raw';
 import step21 from './migrations/021.sql?raw';
 import current from './schema.sql?raw';
+import step42 from './migrations/042.sql?raw';
 import { AppFailure } from './errors';
 
 // v0.1.0 ships schema 13. Keep published source schemas and steps immutable.
 export const minimumPublicSchema = 13;
-export const currentSchema = 41;
+export const currentSchema = 42;
 const source39 = current.replace(/\n-- Public schema 39 -> 40:[\s\S]*$/, '');
 const source38 = current.replace(/\n-- Public schema 38 -> 39:[\s\S]*$/, '');
 const source37 = current.replace(/\n-- Public schema 37 -> 38:[\s\S]*$/, '');
@@ -87,7 +88,7 @@ function dataFingerprint(db: Database.Database): string {
   }
   return digest.digest('hex');
 }
-const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }, { from: 21, to: 22, sql: step22 }, { from: 22, to: 23, sql: step23 }, { from: 23, to: 24, sql: step24 }, { from: 24, to: 25, sql: step25 }, { from: 25, to: 26, sql: step26 }, { from: 26, to: 27, sql: step27 }, { from: 27, to: 28, sql: step28 }, { from: 28, to: 29, sql: step29 }, { from: 29, to: 30, sql: step30 }, { from: 30, to: 31, sql: step31 }, { from: 31, to: 32, sql: step32 }, { from: 32, to: 33, sql: step33 }, { from: 33, to: 34, sql: step34 }, { from: 34, to: 35, sql: step35 }, { from: 35, to: 36, sql: step36 }, { from: 36, to: 37, sql: step37 }, { from: 37, to: 38, sql: step38 }, { from: 38, to: 39, sql: step39 }, { from: 39, to: 40, sql: step40 }, { from: 40, to: 41, sql: step41 }];
+const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }, { from: 21, to: 22, sql: step22 }, { from: 22, to: 23, sql: step23 }, { from: 23, to: 24, sql: step24 }, { from: 24, to: 25, sql: step25 }, { from: 25, to: 26, sql: step26 }, { from: 26, to: 27, sql: step27 }, { from: 27, to: 28, sql: step28 }, { from: 28, to: 29, sql: step29 }, { from: 29, to: 30, sql: step30 }, { from: 30, to: 31, sql: step31 }, { from: 31, to: 32, sql: step32 }, { from: 32, to: 33, sql: step33 }, { from: 33, to: 34, sql: step34 }, { from: 34, to: 35, sql: step35 }, { from: 35, to: 36, sql: step36 }, { from: 36, to: 37, sql: step37 }, { from: 37, to: 38, sql: step38 }, { from: 38, to: 39, sql: step39 }, { from: 39, to: 40, sql: step40 }, { from: 40, to: 41, sql: step41 }, { from: 41, to: 42, sql: step42 }];
 export function inspectMigration(db: Database.Database): number {
   const version = Number(db.pragma('user_version', { simple: true }));
   if (version < minimumPublicSchema || version > currentSchema) throw new AppFailure('unsupported_schema_version');

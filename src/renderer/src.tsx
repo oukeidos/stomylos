@@ -1,3 +1,4 @@
+import { conversationBudget, conversationLimits, conversationLimitText } from '../shared/conversation-limits';
 import { WordCloud } from './word-cloud';
 import { cloudSession } from './word-cloud-selection';
 import { useWordCloudPreference } from './word-cloud-preference';
@@ -59,6 +60,7 @@ function errorText(error: unknown): string {
     asr_busy: 'Finish or cancel the current voice input before continuing.',
     api_key_missing: 'No API key is available. Your draft is saved; you can still browse previous chats.',
     session_limit: 'This chat has reached its size limit. End it and start a new chat to continue.',
+    ...conversationLimitText,
     reply_in_progress: 'Please wait for the current reply, or end this chat.',
     reply_unresolved: 'Retry the interrupted reply or end this chat before sending another message.',
     partner_selection_failed: 'Auto could not choose another partner. Choose one yourself or retry selection.',
@@ -264,12 +266,9 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
   const [sending, setSending] = useState(false); const busy = app.activity.sessionId === id && app.activity.phase !== 'idle';
   const last = view.messages.at(-1); const unresolved = last?.role === 'user' || last?.delivery === 'interrupted';
   const retryLabel = (JSON.parse(view.session.chat_config).characters as Character[]).find(c => c.model === view.partner.retryModel)?.label ?? 'the previous partner';
-  const users = view.messages.filter(m => m.origin === 'learner'); const encoder = new TextEncoder();
-  const userBytes = users.reduce((total, m) => total + encoder.encode(m.content).length, 0);
-  const totalBytes = view.messages.reduce((total, m) => total + encoder.encode(m.content).length, 0);
-  const draftBytes = encoder.encode(draft.text).length;
-  const overBudget = draft.text !== '/end' && (users.length >= 24 || userBytes + draftBytes > 6000 || totalBytes + draftBytes > 24000);
-  const near = users.length >= 19 || userBytes >= 4800 || totalBytes >= 19200;
+  const users = view.messages.filter(m => m.origin === 'learner');
+  const allowance = conversationBudget(view.messages, draft.text === '//end' ? '/end' : draft.text);
+  const overBudget = draft.text !== '/end' && !allowance.allowed, near = allowance.near;
   useEffect(() => { const timer = setTimeout(() => { void flushDraft(id).catch(() => undefined); }, 350); return () => clearTimeout(timer); }, [id, draft.revision]);
   useEffect(() => { const node = textarea.current; if (node) { node.style.height = 'auto'; node.style.height = `${Math.min(node.scrollHeight, 160)}px`; } }, [draft.text]);
   const send = () => act(async () => {
@@ -285,7 +284,7 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
   });
   return <footer className={genie.locked ? 'help-open' : undefined}>
     {replyChoice.recovery}
-    {overBudget && <p className="limit-note">This draft exceeds the remaining chat allowance. It is preserved; shorten or copy it before sending.</p>}
+    {overBudget && <p className="limit-note">{allowance.reason && conversationLimitText[allowance.reason]}</p>}
     {view.outdatedOpening && <p className="limit-note" role="status">This question is outdated. Choose another question or start with your own message. Your draft is preserved.</p>}
     {near && <p className="limit-note">This chat is nearing its size limit. You can end it and continue in a new chat.</p>}
     {unresolved && !busy && <div className="reply-recovery"><span>{view.partner.pending?.state === 'failed' ? 'Auto selection is incomplete.' : 'The last reply is incomplete.'}{view.partner.pending && view.partner.canRetryReply ? ` Retry reply uses ${retryLabel}.` : ''}</span>
@@ -304,9 +303,9 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
       onKeyDown={event => { if (event.key === 'Enter' && !event.repeat && !dictationBusy() && !event.shiftKey && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) {
         event.preventDefault(); if (draft.text === '/end' || (!busy && !unresolved)) send();
       } }} />
-      <div className="composer-actions"><TooltipButton className="icon-button genie-help" data-explain-return aria-label="Hyphantes" tooltip="Hyphantes · Weaving words" disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length >= 24 || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing}
+      <div className="composer-actions"><TooltipButton className="icon-button genie-help" data-explain-return aria-label="Hyphantes" tooltip="Hyphantes · Weaving words" disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length >= conversationLimits.turns || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing}
         onPointerDown={() => { if (textarea.current) selection.current = captureGenieRange(textarea.current, currentDraft(id).text); }}
-        onClick={() => { if (!composing.current && textarea.current) act(() => openGenie(id, selection.current ?? captureGenieRange(textarea.current!, currentDraft(id).text))); }}><Icon name="help" /></TooltipButton><DadouchosButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length < 1 || users.length >= 24 || view.session.state !== 'active' || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} /><TooltipButton className="icon-button search-toggle" aria-pressed={view.session.search_mode === 'auto'}
+        onClick={() => { if (!composing.current && textarea.current) act(() => openGenie(id, selection.current ?? captureGenieRange(textarea.current!, currentDraft(id).text))); }}><Icon name="help" /></TooltipButton><DadouchosButton sessionId={id} disabled={blocked || genie.locked || sending || busy || unresolved || dictation.locked || users.length < 1 || users.length >= conversationLimits.turns || view.session.state !== 'active' || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} /><TooltipButton className="icon-button search-toggle" aria-pressed={view.session.search_mode === 'auto'}
           aria-label={`Web search: ${view.session.search_mode === 'auto' ? 'Auto' : 'Off'}`}
           tooltip={view.session.search_mode === 'auto' ? 'Web search: Auto - Seeking, they find what is better' : 'Web search: Off - Dig within'}
           disabled={blocked || sending || busy || unresolved || genie.locked || dictation.locked || !!app.activity.storageError || app.activity.closing}

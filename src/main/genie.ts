@@ -6,9 +6,27 @@ import contract from './genie-contract.json';
 import { AppFailure } from './errors';
 import { strictJson } from './strict-json';
 import type { GenieRange, GenieReply, GenieSource } from '../shared/genie';
-import type { Json } from '../shared/types';
+import type { Json, Message } from '../shared/types';
 
 export const genieLimits = { draft: 100_000, followup: 8_000, body: 256_000 } as const;
+export const genieWindow = Object.freeze({ pairs: 3, bytes: 24_000 });
+/** Project whole completed exchanges; source staleness still hashes the full session. */
+export function genieRecentMessages(messages: Message[]) {
+  const pairs: Message[][] = [];
+  for (let i = 0; i < messages.length - 1; i++) {
+    const user = messages[i], reply = messages[i + 1];
+    if (user.origin === 'learner' && user.role === 'user' && user.delivery === 'complete' &&
+        reply.origin === 'model' && reply.role === 'assistant' && reply.delivery === 'complete') {
+      pairs.push([user, reply]); i++;
+    }
+  }
+  const selected = pairs.slice(-genieWindow.pairs);
+  const opening = messages.find(m => m.origin === 'starter' && m.delivery === 'complete');
+  const packet = () => (selected.length ? selected.flat() : opening ? [opening] : []).map(({ role, content }) => ({ role, content }));
+  while (selected.length > 1 && Buffer.byteLength(JSON.stringify(packet())) > genieWindow.bytes) selected.shift();
+  if (Buffer.byteLength(JSON.stringify(packet())) > genieWindow.bytes) throw new AppFailure('genie_context_limit');
+  return packet();
+}
 export const genieIdentity = { allowed_models: contract.accepted_models, provider: contract.expected_provider };
 export const genieTimeout = contract.timeout_seconds * 1000;
 export function genieRange(text: string, range: GenieRange): GenieRange {

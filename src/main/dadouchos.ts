@@ -1,3 +1,4 @@
+import { conversationLimits } from '../shared/conversation-limits';
 import { createHash } from 'node:crypto';
 import type { SessionView, Message } from '../shared/types';
 import { AppFailure } from './errors';
@@ -9,7 +10,7 @@ export const dadouchosPromptHash = createHash('sha256').update(prompt).digest('h
 export interface DadouchosSource { sessionId: string; hash: string; messages: {role: 'user' | 'assistant'; content: string}[] }
 export function dadouchosSource(view: SessionView): DadouchosSource {
   const { session, messages } = view, last = messages.at(-1);
-  if (session.state !== 'active' || view.partner.pending || view.endProcessing || !last || last.role !== 'assistant' || last.delivery !== 'complete' || messages.filter(m=>m.origin==='learner').length >= 24)
+  if (session.state !== 'active' || view.partner.pending || view.endProcessing || !last || last.role !== 'assistant' || last.delivery !== 'complete' || messages.filter(m=>m.origin==='learner').length >= conversationLimits.turns)
     throw new AppFailure('dadouchos_unavailable');
   const pairs: Message[][] = [];
   for (let i=0;i<messages.length;i++) {

@@ -50,6 +50,7 @@ export async function closeGenieForApp() {
   if (snapshot.episode?.open && snapshot.episode.phase !== 'saving') await window.stomylos.command('genieClose', { episodeId: snapshot.episode.id });
 }
 const errors: Record<string, string> = {
+  genie_context_limit: 'The latest exchange is too large for Hyphantes. Your draft is preserved.',
   genie_limit: 'This help conversation has reached its size limit. Shorten your reply, return to writing, or start over.',
   genie_stale: 'The original draft or conversation changed. Return to writing and open Hyphantes again.',
   genie_busy: 'Wait for this action to finish, or cancel the current request.',

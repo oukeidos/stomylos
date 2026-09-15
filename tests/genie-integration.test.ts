@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import Database from 'better-sqlite3';
 import { Coordinator } from '../src/main/coordinator';
 import { Store, type StoreMethod } from '../src/main/database';
 import type { DatabaseClient } from '../src/main/db-client';
@@ -82,7 +83,10 @@ it('retains the applied draft across process restart without persisting or dispa
   expect(c.genie.snapshot().episode).toBeNull(); expect(complete).toHaveBeenCalledTimes(1);
 });
 it('detects a changed context and retains the original if Apply is stale', async () => {
-  const e = await open(); store.setOpening(id, 'outside', 0, 'user');
+  const e = await open();
+  // New chats already start in user mode; simulate an actual outside context change.
+  const outside = new Database(join(dir, 'stomylos.sqlite3'));
+  try { outside.prepare('UPDATE sessions SET opening_revision=opening_revision+1 WHERE id=?').run(id); } finally { outside.close(); }
   await expect(c.command('genieApply', { episodeId: e.id, candidateId: e.candidateId!, revision: 2, operationId: 'apply' })).rejects.toThrow('genie_stale');
   expect(store.session(id).draft).toBe('I enjoys walking.');
 });

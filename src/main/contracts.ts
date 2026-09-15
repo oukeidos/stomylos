@@ -9,6 +9,8 @@ import { isDeepStrictEqual } from 'node:util';
 import { version } from '../../package.json';
 import runtime from './runtime-config.json';
 import grammarV1 from './grammar-v1-config.json';
+import grammarV2 from './grammar-v2-config.json';
+import { conversationBudget } from '../shared/conversation-limits';
 import conversationV5 from './conversation-v5-config.json';
 import conversationV9 from './conversation-v9-config.json';
 import conversationV8 from './conversation-v8-config.json';
@@ -143,13 +145,14 @@ export function grammarSnapshot(): Json {
 }
 function grammarContract(snapshot: Json) {
   const selected = snapshot.version === runtime.grammar.contract_version ? runtime
+    : snapshot.version === grammarV2.grammar.contract_version ? grammarV2
     : snapshot.version === grammarV1.grammar.contract_version ? grammarV1 : null;
   if (!selected || snapshot.prompt !== selected.grammarPrompt || snapshot.prompt_sha256 !== hash(selected.grammarPrompt) ||
     snapshot.schema_sha256 !== hash(JSON.stringify(selected.grammar.request_parameters.response_format)) ||
     snapshot.prompt_id !== selected.grammar.prompt.id || snapshot.validation_version !== 'stomylos_validation_v1' ||
     snapshot.recovery_version !== 'stomylos_grammar_retry_v1' ||
     !isDeepStrictEqual(snapshot.parameters, selected.grammar.request_parameters) ||
-    !isDeepStrictEqual(snapshot.response_identity, selected.grammar.response_identity) || snapshot.timeout_seconds !== 120) {
+    !isDeepStrictEqual(snapshot.response_identity, selected.grammar.response_identity) || snapshot.timeout_seconds !== selected.grammar.transport.timeout_seconds) {
     throw new AppFailure('unsupported_grammar_settings');
   }
   return selected;
@@ -351,10 +354,4 @@ export function validateEnvelope(raw: Json, identity: Json): { content: string; 
   if (typeof message.content !== 'string' || !message.content.trim()) throw new AppFailure('response_empty');
   return { content: message.content, metadata: { ...safeMetadata(raw), finish_reason: 'stop' } };
 }
-export function budget(messages: Message[], next = '') {
-  const users = messages.filter(isLearner);
-  const userBytes = users.reduce((n, m) => n + Buffer.byteLength(m.content), Buffer.byteLength(next));
-  const totalBytes = messages.reduce((n, m) => n + Buffer.byteLength(m.content), Buffer.byteLength(next));
-  return { allowed: users.length < 24 && userBytes <= 6000 && totalBytes <= 24000,
-    near: users.length >= 19 || userBytes >= 4800 || totalBytes >= 19200 };
-}
+export const budget = conversationBudget;

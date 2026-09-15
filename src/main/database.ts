@@ -529,7 +529,8 @@ export class Store {
       if (current.state === 'ended' || !text.trim() || text === '/end') throw new AppFailure('invalid_submission');
       validateOpeningSource(current, messages);
       if (messages.length && (messages.at(-1)?.role === 'user' || messages.at(-1)?.delivery !== 'complete')) throw new AppFailure('reply_unresolved');
-      if (!budget(messages, content).allowed) throw new AppFailure('session_limit');
+      const allowance = budget(messages, content);
+      if (!allowance.allowed) throw new AppFailure(allowance.reason!);
       const message: Message = { id: messageId, session_id: id, sequence: (messages.at(-1)?.sequence ?? -1) + 1,
         role: 'user', content, origin: 'learner', delivery: 'complete', request_id: null };
       this.run("INSERT INTO messages(id,session_id,sequence,role,content,origin,delivery) VALUES(?,?,?,'user',?,'learner','complete')", message.id, id, message.sequence, content);
