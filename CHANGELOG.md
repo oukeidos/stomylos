@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Link newly generated session memories to conversation messages with Luna, order them before FIFO storage, and retry source linking without regenerating saved notes.
 - Show later memory items first within each batch in Recent and Older while preserving stored order and FIFO eviction.
 - Expand chats to 512 learner messages, 48,000 learner bytes and 160,000 total bytes while retaining a 6,000-byte message limit, limiting Hyphantes to recent exchanges and increasing new grammar analyses to 128,000 output tokens and ten minutes with historical retries preserved.
 - Remove DeepSeek V4 Pro from new conversation choices while preserving existing conversations and their saved model settings.

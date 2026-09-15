@@ -1,0 +1,1 @@
+For each record, identify the conversation messages it was derived from, including messages needed to resolve references. Return each record ID with its source message IDs.

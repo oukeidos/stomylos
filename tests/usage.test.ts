@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { UsageStore, reportedMoney, usageMonth } from '../src/main/usage-store';
 import { budgetState, displayMoney, sumMoney } from '../src/shared/usage';
 import { validateCommand } from '../src/main/ipc';
+import {prepareProviderRequest} from '../src/main/provider-policy';
 import { OpenRouter } from '../src/main/transport';
 import { SpeechTransport } from '../src/main/tts';
 import { previewSource } from '../src/shared/voice';
@@ -84,12 +85,13 @@ it('captures complete and failed chat-family responses with one charge per actua
   vi.stubGlobal('fetch', fetch);
   const gateway = new OpenRouter(() => 'synthetic-key', 'http://127.0.0.1/not-called', store);
   store.setBudget('0.01');
-  await expect(gateway.complete({ model: 'test' }, identity, signal(), 1000)).rejects.toThrow('response_incomplete');
-  await gateway.complete({ model: 'test' }, identity, signal(), 1000);
+  const routed=prepareProviderRequest({model:'test'}, {allowed_models:['test'],provider:null}),body=routed.body,identity=routed.identity!;
+  await expect(gateway.complete(body, identity, signal(), 1000)).rejects.toThrow('response_incomplete');
+  await gateway.complete(body, identity, signal(), 1000);
   expect(store.snapshot()).toMatchObject({ total: '0.1', requests: 2, unreported: 0, level: 'reached' });
   expect(fetch).toHaveBeenCalledTimes(2);
-  await expect(new OpenRouter(() => null, undefined, store).complete({}, identity, signal(), 1000)).rejects.toThrow('api_key_missing');
-  await expect(gateway.complete({}, identity, AbortSignal.abort(), 1000)).rejects.toThrow('request_cancelled');
+  await expect(new OpenRouter(() => null, undefined, store).complete(body, identity, signal(), 1000)).rejects.toThrow('api_key_missing');
+  await expect(gateway.complete(body, identity, AbortSignal.abort(), 1000)).rejects.toThrow('request_cancelled');
   expect(store.snapshot().requests).toBe(2);
 });
 

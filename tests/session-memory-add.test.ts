@@ -18,7 +18,7 @@ afterEach(()=>{for(const f of fixtures.splice(0)){f.store.close();f.db.close();r
 function fixture(){const dir=mkdtempSync('/tmp/stomylos-session-add-'),store=new Store(dir,resolve('native/advisory-lock.node')),db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);return f;}
 function session(store:Store){const s=store.createSession();store.searchMode(s.id,'off');store.selectManual(s.id,'model_01');return s;}
 function send(store:Store,id:string,text='I like green tea.'){store.submit(id,text);store.commitRoute(id,null,'fixture',null);return store.startChat(store.prepareChat(id,crypto.randomUUID()).id);}
-function prepare(store:Store){const j=store.memoryAddReady()!;const a=store.prepareMemoryAdd(j.ordinal,crypto.randomUUID());const effective=store.prepareProvider('memory_add',a.id,JSON.parse(a.body),JSON.parse(j.config).identity);expect(effective.body.max_tokens).toBe(128000);store.dispatchMemoryAdd(a.id);return a;}
+function prepare(store:Store){const j=store.memoryAddReady()!;const a=store.prepareMemoryAdd(j.ordinal,crypto.randomUUID());const effective=store.prepareProvider('memory_add',a.id,JSON.parse(a.body),(a.phase==='link'?JSON.parse(j.config).linker:JSON.parse(j.config)).identity);expect(effective.body.max_tokens).toBe(a.phase==='link'?4096:128000);store.dispatchMemoryAdd(a.id);return a;}
 function controller(f:ReturnType<typeof fixture>,gateway:Gateway,keyPresent=true) {
  const client={ready:Promise.resolve(),call:async(method:StoreMethod,...args:any[])=>(f.store[method] as Function).apply(f.store,args),close:async()=>f.store.close()} as unknown as DatabaseClient;
  return new Coordinator(client,gateway,{keyPresent,keyPath:'',dataPath:f.dir,appVersion:'test',development:true},()=>{},()=>true);
@@ -39,12 +39,13 @@ it('freezes the complete displayed session only at End with no dates and session
  expect(cfg.source_manifest_hash).toBe(memoryHash(job.source_manifest));
  expect(cfg.body.messages[0].content).toBe(readFileSync('src/main/session-memory-add-prompt.txt','utf8'));
  const a=prepare(store);store.receiveMemoryAdd(a.id,'{"add":["The user enjoyed the visit."]}',{});store.acceptMemoryAdd(a.id);store.acceptMemoryAdd(a.id);
+ const link=prepare(store);expect(link.phase).toBe('link');store.receiveMemoryAdd(link.id,'{"sources":[{"id":1,"ids":[1,3]}]}',{});store.acceptMemoryAdd(link.id);
  const m=db.prepare('SELECT * FROM memory_item_metadata').get() as Json;
  expect(m).toMatchObject({source_message_id:null,source_session_id:s.id,source_order:job.ordinal,item_index:0});
  expect(m.observed_at).toBe(db.prepare('SELECT sent_at_utc FROM message_times WHERE message_id=?').pluck().get(job.message_id));
  expect(store.currentMemory().revision).toBe(1);expect(store.endBlocker()).toBeNull();
  expect(store.requestHistory(s.id).find(a=>a.kind==='Memory update · Session')?.messageId).toBeUndefined();
- expect(store.requestHistory(s.id).filter(a=>a.kind.includes('Memory')).map(a=>a.kind)).toEqual(['Memory update · Session']);
+ expect(store.requestHistory(s.id).filter(a=>a.kind.includes('Memory')).map(a=>a.kind)).toEqual(['Memory update · Session','Memory source linking · Session']);
 });
 it('omits interrupted replies and drafts while retaining the user turn whose reply failed',()=>{
  const {store}=fixture(),s=session(store),r=send(store,s.id);store.finishReply(r.request.id,r.bubble.id,'Earlier reply',{});
@@ -61,7 +62,8 @@ it.each(['undispatched','off','excluded','empty'])('does not backfill %s session
 });
 it('resumes received results without redispatch and archives every overflowing record with session provenance',async()=>{
  const f=fixture(),s=session(f.store),r=send(f.store,s.id);f.store.finishReply(r.request.id,r.bubble.id,'Thanks',{});f.store.end(s.id);
- const a=prepare(f.store);f.store.receiveMemoryAdd(a.id,JSON.stringify({add:['a'.repeat(2998),'b'.repeat(2998),'Newest']}),{});
+ const a=prepare(f.store);f.store.receiveMemoryAdd(a.id,JSON.stringify({add:['a'.repeat(2998),'b'.repeat(2998),'Newest']}),{});f.store.acceptMemoryAdd(a.id);
+ const link=prepare(f.store);f.store.receiveMemoryAdd(link.id,'{"sources":[{"id":1,"ids":[1]},{"id":2,"ids":[1]},{"id":3,"ids":[1]}]}',{});
  f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
  const complete=vi.fn(async()=>{throw Error('No inference');});const c=controller(f,{complete,async stream(){throw Error('No chat');}},false);
  try{await c.initialize();await vi.waitFor(()=>expect(f.store.endBlocker()).toBeNull());expect(complete).not.toHaveBeenCalled();
@@ -69,12 +71,12 @@ it('resumes received results without redispatch and archives every overflowing r
  expect(f.db.prepare('SELECT source_message_id,source_session_id FROM cold_memories').all()).toEqual([{source_message_id:null,source_session_id:s.id},{source_message_id:null,source_session_id:s.id}]);
  }finally{await c.command('close',undefined);}
 });
-it('does not infer during Send; End blocks until the single Terra response is saved',async()=>{
+it('does not infer during Send; End blocks until Terra extraction and Luna linking are saved',async()=>{
  const f=fixture(),s=session(f.store);let release!:(v:any)=>void;const calls:Json[]=[];
  const c=controller(f,{async complete(body){calls.push(body);return new Promise(resolve=>release=resolve);},async stream(){return {content:'Thanks.',metadata:{}};}});
  try{await c.command('sendMessage',{sessionId:s.id,text:'I like tea.',revision:0});await vi.waitFor(()=>expect(f.store.messages(s.id).at(-1)).toMatchObject({role:'assistant',delivery:'complete'}));
  expect(calls).toEqual([]);await c.command('endSession',{sessionId:s.id});await vi.waitFor(()=>expect(calls).toHaveLength(1));expect(f.store.endBlocker()).toBe(s.id);
- release({content:'{"add":["The user likes tea."]}',metadata:{}});await vi.waitFor(()=>expect(f.store.endBlocker()).toBeNull());expect(calls[0].max_tokens).toBe(128000);
+ release({content:'{"add":["The user likes tea."]}',metadata:{}});await vi.waitFor(()=>expect(calls).toHaveLength(2));expect(calls[1].model).toBe('openai/gpt-5.6-luna');expect(f.store.endBlocker()).toBe(s.id);release({content:'{"sources":[{"id":1,"ids":[1]}]}',metadata:{}});await vi.waitFor(()=>expect(f.store.endBlocker()).toBeNull());expect(calls[0].max_tokens).toBe(128000);
  }finally{release?.({content:'{"add":[]}',metadata:{}});await c.command('close',undefined);}
 });
 it('keeps active chats active on restart, makes unknown outcomes explicit, and retries the exact session',()=>{
@@ -107,10 +109,10 @@ it.each([true,false])('uses only the visible generated opening (visible=%s), exc
 });
 it('rolls back a save failure and applies the received response once without another attempt',()=>{
  const {store,db}=fixture(),s=session(store),r=send(store,s.id);store.finishReply(r.request.id,r.bubble.id,'Thanks',{});store.end(s.id);const a=prepare(store);
- store.receiveMemoryAdd(a.id,'{"add":["The user likes tea."]}',{});
+ store.receiveMemoryAdd(a.id,'{"add":["The user likes tea."]}',{});store.acceptMemoryAdd(a.id);const link=prepare(store);store.receiveMemoryAdd(link.id,'{"sources":[{"id":1,"ids":[1]}]}',{});
  db.exec("CREATE TRIGGER test_save_fault BEFORE UPDATE ON shared_memory BEGIN SELECT RAISE(ABORT,'test save fault'); END");
- expect(()=>store.acceptMemoryAdd(a.id)).toThrow('test save fault');expect(store.currentMemory().revision).toBe(0);expect(store.view(s.id).memory.addJobs![0].state).toBe('received');
- db.exec('DROP TRIGGER test_save_fault');store.acceptMemoryAdd(a.id);expect(store.currentMemory().revision).toBe(1);expect(store.view(s.id).memory.addAttempts).toHaveLength(1);
+ expect(()=>store.acceptMemoryAdd(link.id)).toThrow('test save fault');expect(store.currentMemory().revision).toBe(0);expect(store.view(s.id).memory.addJobs![0].state).toBe('received');
+ db.exec('DROP TRIGGER test_save_fault');store.acceptMemoryAdd(link.id);expect(store.currentMemory().revision).toBe(1);expect(store.view(s.id).memory.addAttempts).toHaveLength(2);
 });
 it('reports oversized input before provider dispatch and allows explicit skip',async()=>{
  const f=fixture(),s=session(f.store),r=send(f.store,s.id,'a'.repeat(5000));f.store.finishReply(r.request.id,r.bubble.id,'Thanks',{});f.store.end(s.id);

@@ -819,6 +819,7 @@ export class Coordinator {
         if(!job || (job.state!=='received'&&!this.settings.keyPresent))break;
         const sessionId=job.session_id; this.memory!.sessionId=sessionId;
         const attempt=await this.write('prepareMemoryAdd',job.ordinal,randomUUID());
+        const config=attempt.phase==='link'?JSON.parse(job.config).linker:JSON.parse(job.config);
         const started=performance.now(); let content:string|null=null; let metadata:Json={};
         try {
           if(attempt.status!=='received') {
@@ -826,10 +827,10 @@ export class Coordinator {
             const launch=await this.admitMemory(async()=>{
               if(abort.signal.aborted)throw new AppFailure('request_cancelled');
               if(job.source_kind==='session')validateSessionMemorySize(JSON.parse(attempt.body));
-              const routed=await this.prepareProvider('memory_add',attempt.id,JSON.parse(attempt.body),JSON.parse(job.config).identity);
+              const routed=await this.prepareProvider('memory_add',attempt.id,JSON.parse(attempt.body),config.identity);
               await this.write('dispatchMemoryAdd',attempt.id);
               if(abort.signal.aborted)throw new AppFailure('request_cancelled');
-              return {response:this.gateway.complete(routed.body,routed.identity!,abort.signal,JSON.parse(job.config).timeout_ms)
+              return {response:this.gateway.complete(routed.body,routed.identity!,abort.signal,config.timeout_ms)
                 .then(result=>({result}),error=>({error}))};
             });
             await this.publish(sessionId);

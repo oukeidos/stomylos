@@ -26,13 +26,17 @@ export function memoryAddBody(input: Json, sent?: RecordedTime | null): Json {
     messages:[{role:'system',content:prompt},{role:'user',content:JSON.stringify(wire)}],
     response_format:{type:'json_schema',json_schema:{name:'add_only_v1',strict:true,schema:{type:'object',properties:{add:{type:'array',items:{type:'string',minLength:1}}},required:['add'],additionalProperties:false}}}, provider:{require_parameters:true} };
 }
-export function addAndFifo(before: FlatMemoryDocument, content: string, messageId: string, version = memoryAddVersion) {
+export function addAndFifo(before: FlatMemoryDocument, content: string, messageId: string, version = memoryAddVersion, order?: number[]) {
   let value: any;
   try { value=JSON.parse(content); } catch { throw new AppFailure('memory_add_format'); }
   if (!value || Object.keys(value).length!==1 || !Array.isArray(value.add) || value.add.length>4096 ||
     value.add.some((s: unknown)=>typeof s!=='string'||!s.trim())) throw new AppFailure('memory_add_format');
   const added = (value.add as string[]).map((text,index)=>({id:'add_'+memoryHash(JSON.stringify([version,messageId,index])).slice(0,24),text:normalizeMemoryText(text)}));
   if(added.some(r=>Array.from(r.text).length+2>activeMemoryCharacterCap))throw new AppFailure('memory_add_item_capacity');
+  if(order){
+    if(order.length!==added.length||new Set(order).size!==added.length||order.some(i=>!Number.isInteger(i)||i<0||i>=added.length))throw new AppFailure('memory_source_format');
+    const original=[...added];added.splice(0,added.length,...order.map(i=>original[i]));
+  }
   const document = structuredClone(before), evicted = [];
   document.database_records.push(...added);
   while (memoryCharacters(document)>activeMemoryCharacterCap) evicted.push(document.database_records.shift()!);

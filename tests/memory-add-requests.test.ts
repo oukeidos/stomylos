@@ -14,3 +14,10 @@ it.each(['request_timeout','transport_failed'])('shows uncertain billing for %s 
  const html=render([row]);expect(html).toContain('may already have been billed');expect(html).toContain('2.40');
  const unsent=render([{...row,status:'interrupted',failure:'queued_not_dispatched'}]);expect(unsent).not.toContain('may already have been billed');
 });
+it('explains linking-only retry and preserves ordinary recovery labels',async()=>{
+ const {MemoryInputRecovery,memoryInputProgress}=await import('../src/renderer/memory-input-recovery');
+ const jobs=[{ordinal:1,session_id:'s',source_kind:'session',phase:'link',state:'failed',failure:'memory_source_format'}];
+ const html=renderToStaticMarkup(createElement(MemoryInputRecovery,{jobs,disabled:false,onAction(){}}));
+ expect(html).toContain('Retry source linking');expect(html).toContain('Generated notes are saved for retry');expect(html).toContain('Skipping discards these unapplied notes');
+ expect(memoryInputProgress([{...jobs[0],state:'running'}],'s',null).summary).toContain('Linking memory sources');
+});
