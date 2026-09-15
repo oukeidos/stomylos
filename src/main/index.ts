@@ -50,7 +50,7 @@ if (launch) {
     launch = undefined;
     void app.whenReady().then(() => {
       const message = error instanceof Error && error.message === 'legacy_lock_transition_required'
-        ? `Close all older Stomylos versions and maintenance tools. Then rename the old lock file at ${join(directory, 'stomylos.lock')} and reopen Stomylos. Your history has not been opened or changed.`
+        ? `Close all older Stomylos versions and maintenance tools. Rename the old lock file at ${join(directory, 'stomylos.lock')} to any other unused name in the same folder, such as stomylos.lock.old, then reopen Stomylos. Do not change the database or backup files. Your history has not been opened or changed.`
         : `The application could not protect its data directory (${error instanceof Error ? error.message : String(error)}).`;
       dialog.showErrorBox('Stomylos could not start', message);
       app.exit(1);
