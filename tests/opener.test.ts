@@ -91,6 +91,7 @@ it('uses shared provider dispatch and save-only recovery without repeating infer
   const coord=new Coordinator(db,{complete:vi.fn(),stream:complete} as any,{keyPresent:true} as any,()=>{},()=>true);
   await coord.command('generateOpener',{sessionId:s.id,operationId:'run',expectedRevision:0});
   await vi.waitFor(async()=>expect((await coord.snapshot()).activity.storageError).toBe('operation_failed'));
+  expect((await coord.snapshot()).activity.operation).toBe('opener');
   expect(complete).toHaveBeenCalledTimes(1);
   await coord.command('retrySaving',undefined);
   await vi.waitFor(()=>expect(store.openerView(s.id)?.generated).toBe(true));

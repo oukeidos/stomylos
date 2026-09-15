@@ -63,6 +63,8 @@ export interface Starter { id: string; text: string; version: string }
 export interface Character { id: string; label: string; description: string; model: string; reasoning?: Json }
 export interface Settings { wordCloud?: boolean; memory?: import('./memory-control').MemoryPreference; keyPresent: boolean; keyPath: string; dataPath: string; appVersion: string; development: boolean; simulation?: boolean; credentials?: import('./credentials').KeyStatus }
 export interface Activity {
+  memoryProcessing?: boolean;
+  operation?: 'reply' | 'opener';
   sessionId: string | null; requestId: string | null; phase: 'idle' | 'preparing' | 'routing' | 'reply';
   streamingMessageId: string | null; streamingText: string;
   storageError: string | null; error: string | null; closing: boolean;

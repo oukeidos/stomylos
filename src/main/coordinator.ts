@@ -119,7 +119,7 @@ export class Coordinator {
   private cachedEndBlockers: { sessionId: string; title: string }[] = [];
   async initialize() { await this.db.ready; if (!(await this.db.call('endBlocker'))) await this.db.call('createSession'); this.pumpMemory(); await this.cold?.initialize(); }
   async snapshot(): Promise<AppSnapshot> {
-    const revision = this.revision; const activity = { ...this.activity }; const settings = { ...this.settings };
+    const revision = this.revision; const activity = { ...this.activity, memoryProcessing: !!this.memory }; const settings = { ...this.settings };
     let page = this.cachedPage; let unfinished = this.cachedUnfinished;
     try {
       [page, unfinished, this.cachedEndBlockers] = await Promise.all([this.db.call('sessionPage'), this.db.call('unfinished'), this.db.call('endBlockers')]);
@@ -522,7 +522,7 @@ export class Coordinator {
     if (view.session.state === 'ended' || last?.role === 'user' || last?.delivery === 'interrupted') throw new AppFailure('asr_session_unavailable');
   }
   private startOpener(id: string, attempt: Json) {
-    this.activity = { ...this.activity, sessionId: id, requestId: null, phase: 'preparing', error: null, streamingMessageId: null, streamingText: '' };
+    this.activity = { ...this.activity, operation: 'opener', sessionId: id, requestId: null, phase: 'preparing', error: null, streamingMessageId: null, streamingText: '' };
     const abort = new AbortController();
     const promise = (async () => {
       try {
@@ -545,7 +545,7 @@ export class Coordinator {
     this.interactive = { abort, promise };
   }
   private startReply(id: string, kind: 'send' | 'retry' | 'different_model' | 'retry_selection' = 'send') {
-    this.activity = { ...this.activity, sessionId: id, requestId: null, phase: 'preparing', error: null, streamingMessageId: null, streamingText: '' };
+    this.activity = { ...this.activity, operation: 'reply', sessionId: id, requestId: null, phase: 'preparing', error: null, streamingMessageId: null, streamingText: '' };
     const abort = new AbortController();
     const promise = this.reply(id, abort.signal, kind).catch(error => { this.activity.error = failureCode(error); }).finally(async () => {
       this.activity.phase = 'idle'; this.activity.requestId = null; this.interactive = null; await this.publish(id).catch(() => undefined);

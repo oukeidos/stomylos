@@ -158,6 +158,7 @@ it('marks while a reply streams without stopping or redispatching it', async () 
   await controller.command('setSessionBookmark', { sessionId: id, bookmarked: true });
   expect(store.view(id).bookmarked).toBe(true); expect(calls).toHaveLength(before);
   expect(snapshots.at(-1)?.activity.phase).not.toBe('idle');
+  expect(snapshots.at(-1)?.activity.operation).toBe('reply');
   await controller.command('close', undefined);
 });
 

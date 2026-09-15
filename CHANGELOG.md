@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the end-of-chat memory dialog and cancel control stationary through loading, automatic stage handoffs and error recovery.
+- Keep conversation progress and retry notices aligned with replies, and show opener progress and errors in the opener dock.
 - Use Electron to prevent duplicate data access and focus the existing window, removing the custom C build requirement and safely rejecting the old file-lock protocol.
 - Link newly generated session memories to conversation messages with Luna, order them before FIFO storage, and retry source linking without regenerating saved notes.
 - Show later memory items first within each batch in Recent and Older while preserving stored order and FIFO eviction.

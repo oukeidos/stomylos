@@ -1,3 +1,4 @@
+import { ConversationStatus, OpenerDock, conversationProgress } from './conversation-status';
 import { conversationBudget, conversationLimits, conversationLimitText } from '../shared/conversation-limits';
 import { WordCloud } from './word-cloud';
 import { cloudSession } from './word-cloud-selection';
@@ -154,12 +155,13 @@ const Partner = memo(function Partner({ view, characters, act, blocked }: { view
 });
 const Bubble = memo(function Bubble({ message, partner, starterAction, metadata }: { message: Message; partner: string; starterAction?: ReactNode; metadata?: import('../shared/types').Json }) {
   const content = useStream(message.id, message.content, message.delivery === 'streaming');
+  if (!content && message.origin === 'model' && message.delivery === 'streaming') return null;
   return <article className={`bubble ${message.role === 'user' ? 'user' : ''}`} data-message-id={message.id} data-message-origin={message.origin} aria-label={message.role === 'user' ? 'Your message' : message.origin === 'starter' ? 'Starter question' : partner}>
     {content && message.role === 'assistant' && message.origin === 'model' ? <Explainable message={message}><AssistantMarkdown content={content} withSource /></Explainable>
       : <p>{content || (message.delivery === 'streaming' ? <span className="typing" aria-label="Waiting for reply">•••</span> : 'No reply text was received.')}</p>}
     {metadata && <SearchSources metadata={metadata} />}
     {message.role !== 'user' && <div className="bubble-heading">{starterAction}
-      {message.delivery !== 'complete' && <span className="delivery" role="status">{message.delivery === 'streaming' ? 'Writing…' : 'Interrupted'}</span>}<ExplainHistory message={message} /><SpeechControl message={message} /></div>}
+      {message.delivery === 'interrupted' && <span className="delivery" role="status">Interrupted</span>}<ExplainHistory message={message} /><SpeechControl message={message} /></div>}
   </article>;
 });
 function Disclosure({ title, subtitle, children, onToggle, initialOpen = false }: { title: string; subtitle?: string; children: ReactNode; onToggle?: () => void; initialOpen?: boolean }) {
@@ -256,6 +258,19 @@ function RequestDetails({ view }: { view: SessionView }) {
   </Disclosure>;
 }
 
+function ReplyRecovery({ view, app, act, afterAcceptedAction }: { view: SessionView; app: AppSnapshot; act: (fn: () => Promise<unknown>) => void; afterAcceptedAction: () => () => void }) {
+  const id = view.session.id;
+  const busy = app.activity.sessionId === id && app.activity.phase !== 'idle';
+  const last = view.messages.at(-1);
+  const unresolved = last?.role === 'user' || last?.delivery === 'interrupted';
+  const retryLabel = (JSON.parse(view.session.chat_config).characters as Character[]).find(c => c.model === view.partner.retryModel)?.label ?? 'the previous partner';
+  return unresolved && !busy ? <div className="reply-recovery"><span>{view.partner.pending?.state === 'failed' ? 'Auto selection is incomplete.' : 'The last reply is incomplete.'}{view.partner.pending && view.partner.canRetryReply ? ` Retry reply uses ${retryLabel}.` : ''}</span>
+      {view.partner.canRetryReply && <TooltipButton tooltip={view.partner.retryModel ? `Retry with ${view.partner.retryModel}` : undefined} onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('retryReply', { sessionId: id }); accepted(); })}>Retry reply</TooltipButton>}
+      {view.partner.canUseSelected && <button onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('useSelectedPartner', { sessionId: id }); accepted(); })}>Use selected partner</button>}
+      {view.partner.pending?.state === 'failed' && <button onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('retryPartnerSelection', { sessionId: id }); accepted(); })}>Retry selection</button>}
+    </div> : null;
+}
+
 function Composer({ view, app, act, openingAction, starter, blocked, onComposition, afterAcceptedAction }: { view: SessionView; app: AppSnapshot; act: (fn: () => Promise<unknown>) => void; openingAction?: ReactNode; starter?: ReactNode; blocked: boolean; onComposition: (value: boolean) => void; afterAcceptedAction: () => () => void }) {
   const dictation = useDictation(); const genie = useGenie();
   const selection = useRef<ReturnType<typeof captureGenieRange> | null>(null);
@@ -265,7 +280,6 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
   useEffect(() => { if (openingRevision.current !== view.session.opening_revision) { openingRevision.current = view.session.opening_revision; textarea.current?.focus({ preventScroll: true }); } }, [view.session.opening_revision]);
   const [sending, setSending] = useState(false); const busy = app.activity.sessionId === id && app.activity.phase !== 'idle';
   const last = view.messages.at(-1); const unresolved = last?.role === 'user' || last?.delivery === 'interrupted';
-  const retryLabel = (JSON.parse(view.session.chat_config).characters as Character[]).find(c => c.model === view.partner.retryModel)?.label ?? 'the previous partner';
   const users = view.messages.filter(m => m.origin === 'learner');
   const allowance = conversationBudget(view.messages, draft.text === '//end' ? '/end' : draft.text);
   const overBudget = draft.text !== '/end' && !allowance.allowed, near = allowance.near;
@@ -282,19 +296,17 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
       if (submitted.text !== '/end') accepted();
     } finally { setSending(false); }
   });
+  const opener = conversationProgress(view, app.activity);
   return <footer className={genie.locked ? 'help-open' : undefined}>
-    {replyChoice.recovery}
+    <div className="composer-notices">{replyChoice.recovery}
     {overBudget && <p className="limit-note">{allowance.reason && conversationLimitText[allowance.reason]}</p>}
     {view.outdatedOpening && <p className="limit-note" role="status">This question is outdated. Choose another question or start with your own message. Your draft is preserved.</p>}
     {near && <p className="limit-note">This chat is nearing its size limit. You can end it and continue in a new chat.</p>}
-    {unresolved && !busy && <div className="reply-recovery"><span>{view.partner.pending?.state === 'failed' ? 'Auto selection is incomplete.' : 'The last reply is incomplete.'}{view.partner.pending && view.partner.canRetryReply ? ` Retry reply uses ${retryLabel}.` : ''}</span>
-      {view.partner.canRetryReply && <TooltipButton tooltip={view.partner.retryModel ? `Retry with ${view.partner.retryModel}` : undefined} onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('retryReply', { sessionId: id }); accepted(); })}>Retry reply</TooltipButton>}
-      {view.partner.canUseSelected && <button onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('useSelectedPartner', { sessionId: id }); accepted(); })}>Use selected partner</button>}
-      {view.partner.pending?.state === 'failed' && <button onClick={() => act(async () => { const accepted = afterAcceptedAction(); await window.stomylos.command('retryPartnerSelection', { sessionId: id }); accepted(); })}>Retry selection</button>}
-    </div>}
+
+    </div>
     <div className="composer">
       <GenieDock sessionId={id} textarea={textarea} storageError={app.activity.storageError} />
-      {starter && !genie.locked && <div className="starter-dock" aria-label="Conversation starter">{starter}</div>}
+      {!genie.locked && <OpenerDock busy={opener.openerBusy} failed={view.session.state === 'draft' && !!view.opener?.failure}>{starter}</OpenerDock>}
       <DadouchosDock sessionId={id} hidden={genie.locked} disabled={blocked || sending || busy || unresolved || dictation.locked} />
       <DictationPanel sessionId={id} disabled={blocked || sending || busy || unresolved || !app.settings.keyPresent || !!app.activity.storageError || app.activity.closing} />
       <textarea ref={textarea} data-voice-composer aria-label="Your message" title="Enter to send · Shift+Enter for a new line · F8 for voice input" placeholder={view.session.state === 'draft' && view.session.opening_kind === 'user' ? "What's on your mind?" : 'Your message…'} value={draft.text}
@@ -368,7 +380,7 @@ function App() {
     forgetDraft(id);
     if (selectedRef.current === id) { selectedRef.current = null; setSelected(null); setView(null); setDetails(false); }
   }), []);
-  useEffect(() => { if (app?.activity.error) setError(errorText(app.activity.error)); }, [app?.activity.error]);
+  useEffect(() => { if (app?.activity.error && app.activity.operation !== 'opener') setError(errorText(app.activity.error)); }, [app?.activity.error, app?.activity.operation]);
   const show = useCallback(async (id: string) => { if (genieBusy()) return; if (!await beforeDictationNavigation()) return; if (selectedRef.current) await flushDraft(selectedRef.current); setLearning(false); setSelected(id); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus({ preventScroll: true })); }, []);
   const openLearning = async () => { if (genieBusy() || composing || !await beforeDictationNavigation()) return false; if (selectedRef.current) await flushDraft(selectedRef.current); await window.stomylos.command('speechStop', undefined); setHistoryOpen(true); setLearning(true); return true; };
   const backToChat = () => { setLearning(false); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus({ preventScroll: true })); };
@@ -426,7 +438,8 @@ function App() {
     finally { setDeleting(false); }
   };
   const canChangeOpening = view?.session.state === 'draft' && JSON.parse(view.session.chat_config).opening?.version === 'stomylos_opening_v1';
-  const openerBusy = !!view?.opener && app.activity.sessionId === view.session.id && app.activity.phase !== 'idle';
+  const progress = view ? conversationProgress(view, app.activity) : { openerBusy: false, reply: null };
+  const openerBusy = progress.openerBusy;
   const openerLabel = openerBusy ? 'Thinking…' : view?.opener?.generated ? (view.session.opening_kind === 'starter' ? 'Hide opener' : 'Show opener') : 'Give me something';
   const openerTooltip = openerBusy ? 'Thinking…' : view?.opener?.generated ? (view.session.opening_kind === 'starter' ? 'Set it aside for later' : 'Shall we read its beginning again?') : 'Tell me, Muse';
   const openingAction = canChangeOpening && <TooltipButton className="icon-button opening-action" aria-label={view?.opener ? openerLabel : view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} tooltip={view?.opener ? openerTooltip : view?.session.opening_kind === 'starter' ? 'Start with your own topic' : 'Show a starter question'} aria-pressed={view?.session.opening_kind === 'starter'}
@@ -500,8 +513,8 @@ function App() {
         <WordCloud key={view.session.id} sessionId={view.session.id} enabled={wordCloud.enabled} {...cloudSession(view)} paused={settings || details || newDialog || !!deleteTarget || !!app.endBlocker || genie.locked} />
         <div className="transcript">{view.messages.filter(message => !(canChangeOpening && message.origin === 'starter')).map(message => <Bubble key={message.id} message={message} metadata={view.requests.find(r => r.id === message.request_id) ? JSON.parse(view.requests.find(r => r.id === message.request_id)!.metadata) : undefined} partner="Partner" />)}</div>
 
-        {app.activity.sessionId === view.session.id && app.activity.phase === 'routing' && <p className="note" role="status">Choosing your conversation partner…</p>}
-        {app.activity.sessionId === view.session.id && app.activity.phase === 'preparing' && <p className="note" role="status">{openerBusy ? 'Thinking…' : 'Preparing your reply…'}</p>}
+        <ConversationStatus text={progress.reply} />
+        {view.session.state !== 'ended' && <ReplyRecovery view={view} app={app} act={act} afterAcceptedAction={scroll.afterAcceptedAction} />}
         {view.session.state === 'ended' && <>
           {memoryInputProgress(view.memory.addJobs ?? [], view.session.id, view.memory.blockedBy).summary && <section className="end-summary" aria-label="Memory processing">
             <span role="status">{memoryInputProgress(view.memory.addJobs ?? [], view.session.id, view.memory.blockedBy).summary}</span>
@@ -510,18 +523,17 @@ function App() {
           <div className="ended-marker">{!view.endProcessing && labels[view.session.analysis_state]}{view.session.draft && <TooltipButton className="icon-button retained-draft-link" aria-label="View unsent draft" tooltip="View unsent draft" onClick={() => setDetails(true)}><Icon name="info" /></TooltipButton>}</div>
 
         </>}
-      </> : <p className="note">{selected ? 'Loading conversation…' : 'No conversation selected. Start a new chat when you are ready.'}</p>}</div>
+      </> : <p className="conversation-status note">{selected ? 'Loading conversation…' : 'No conversation selected. Start a new chat when you are ready.'}</p>}</div>
     </main>
     {scroll.away && !genie.locked && <div className="latest-position"><TooltipButton className="latest-message" aria-label="Go to latest message" tooltip="Go to latest message" onClick={() => {
       scroll.resume();
       const target = document.querySelector<HTMLTextAreaElement>('.composer textarea') ?? scroll.scroller.current;
       target?.focus({ preventScroll: true });
     }}><Icon name="down" /><span aria-live="polite">{scroll.unread ? 'New reply' : 'Latest message'}</span></TooltipButton></div>}
-    {canChangeOpening && view?.opener?.failure && !openerBusy && <p className="note" role="alert">Could not prepare an opener. Use “Give me something” to try again.</p>}
     <div className="conversation-footer">{view && view.session.state !== 'ended' ? <Composer key={view.session.id} view={view} app={app} act={act} blocked={openingBusy} onComposition={setComposing} afterAcceptedAction={scroll.afterAcceptedAction} openingAction={<>{openingAction}{starterAction}</>} starter={canChangeOpening && starter && <Bubble message={starter} partner="Partner" />} /> : <footer className="ended-footer">
       <>{unfinished && <IconButton label="Return to current chat" icon="back" onClick={() => act(() => show(unfinished.id))} />}</></footer>}</div>
   </div>
-  {app.endBlocker && <EndProcessingDialog key={app.endBlocker} sessionId={app.endBlocker} storageError={app.activity.storageError ?? null} errorText={errorText} />}
+  {app.endBlocker && <EndProcessingDialog key={app.endBlocker} sessionId={app.endBlocker} automaticMemory={!!app.activity.memoryProcessing} storageError={app.activity.storageError ?? null} errorText={errorText} />}
   <ExplainDialog sessionId={view?.session.id ?? null} />
   <DictationNavigationDialog />
   <Modal open={!!deleteTarget} onOpenChange={open => { if (!open && !deleting) setDeleteTarget(null); }} title="Delete this chat?">
