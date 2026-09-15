@@ -7,7 +7,7 @@ const exact = (value: any, keys: string[]) => value && typeof value === 'object'
 
 export function openingKind(snapshot: Json): OpeningKind {
   if (snapshot.opening === undefined) return 'starter';
-  if (!['stomylos_conversation_v4', 'stomylos_conversation_v5', 'stomylos_conversation_v6', 'stomylos_conversation_v7', 'stomylos_conversation_v8', 'stomylos_conversation_v9'].includes(snapshot.version) || !exact(snapshot.opening, ['version', 'kind']) ||
+  if (!['stomylos_conversation_v4', 'stomylos_conversation_v5', 'stomylos_conversation_v6', 'stomylos_conversation_v7', 'stomylos_conversation_v8', 'stomylos_conversation_v9', 'stomylos_conversation_v10'].includes(snapshot.version) || !exact(snapshot.opening, ['version', 'kind']) ||
       snapshot.opening.version !== openingVersion || !['starter', 'user'].includes(snapshot.opening.kind)) {
     throw new AppFailure('unsupported_opening');
   }

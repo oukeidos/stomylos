@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Remove DeepSeek V4 Pro from new conversation choices while preserving existing conversations and their saved model settings.
 - Add a local word cloud with continuously arriving irregular clumps, changing shapes and varied text sizes that stays until the first message is sent, then gently scatters, with an Appearance setting and reduced-motion support.
 - Add optional Gemma 31B Dadouchos guidance above the composer, toggled by one flame button, with recent-exchange input and content-free request history.
 - Replace the Hyphantes wand with the selected pen nib icon in the composer and help dialog while retaining the current Muse icon.

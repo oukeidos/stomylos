@@ -568,7 +568,7 @@ export class Coordinator {
       let scores: Record<string, number> | null = null; let fallback: string | null = null;
       let request = view.requests.find(r => r.role === 'router' && JSON.parse(r.config).purpose !== 'partner_reselection');
       const saved = JSON.parse(view.session.chat_config);
-      if (!request && ['stomylos_conversation_v8', 'stomylos_conversation_v9'].includes(saved.version)) {
+      if (!request && ['stomylos_conversation_v8', 'stomylos_conversation_v9', 'stomylos_conversation_v10'].includes(saved.version)) {
         if (view.session.manual_character) fallback = 'manual_override';
         else {
           request = await this.write('createRequest', id, 'router', routerSnapshot(saved));
@@ -578,7 +578,7 @@ export class Coordinator {
       } else {
         if (request) {
           fallback = 'router_already_attempted';
-          if (['stomylos_conversation_v8', 'stomylos_conversation_v9'].includes(saved.version)) {
+          if (['stomylos_conversation_v8', 'stomylos_conversation_v9', 'stomylos_conversation_v10'].includes(saved.version)) {
             request = view.requests.findLast(r => r.role === 'router' && JSON.parse(r.config).purpose !== 'partner_reselection')!;
             if (request.status === 'succeeded' && request.response_content !== null) { scores = routerScores(request.response_content, saved); fallback = null; }
           }

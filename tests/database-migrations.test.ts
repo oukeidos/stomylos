@@ -301,3 +301,20 @@ it('admits v9 contracts in 36 to 37 without rewriting data, with rollback and id
   expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
   migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
 });
+
+it.each([32,40])('admits v10 from schema %i with rollback, preserved drafts and idempotent recovery', version => {
+  const schema=version===32?current.replace(/\n-- Public schema 32 -> 33:[\s\S]*$/, ''):current;
+  const {db,dir}=fixture(schema,version);db.transaction(()=>new StarterStore(db).initialize())();
+  db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(flatDocument,memoryHash(flatDocument));
+  db.exec("INSERT INTO sessions(id,state,created_at,draft,chat_config,opening_kind) VALUES('legacy','draft','2026-09-15','Keep the saved draft','{}','user')");
+  const before=db.prepare('SELECT id,state,draft,chat_config FROM sessions').all();
+  const execute=db.exec.bind(db), fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=execute(sql);if(sql.includes('Admit conversation v10'))throw new Error('admission fault');return result;});
+  expect(()=>migrateDatabase(db,dir)).toThrow('admission fault');fault.mockRestore();
+  expect(db.pragma('user_version',{simple:true})).toBe(version);
+  expect(db.prepare('SELECT id,state,draft,chat_config FROM sessions').all()).toEqual(before);
+  const backup=join(dir,`stomylos.pre-migration-v${version}.sqlite3`),bytes=readFileSync(backup);
+  migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
+  expect(db.prepare('SELECT id,state,draft,chat_config FROM sessions').all()).toEqual(before);
+  expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
+  migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
+});

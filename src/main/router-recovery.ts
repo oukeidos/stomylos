@@ -1,7 +1,8 @@
 import { prepareProviderRequest, type ProviderRequest } from './provider-policy';
 import { isDeepStrictEqual } from 'node:util';
+import previousNine from './conversation-v9-config.json';
 import previousEight from './conversation-v8-config.json';
-import { eightRouterPrompts, retainedRouterPrompts } from './compact-router';
+import { eightRouterPrompts, retainedRouterPrompts, currentRouterPrompts } from './compact-router';
 import type { Json, RequestRecord } from '../shared/types';
 import { AppFailure, failureCode } from './errors';
 import { config, hash, routerScores } from './contracts';
@@ -18,11 +19,11 @@ export function recoverySnapshot(primary: Json): Json {
 }
 export function validateRecovery(snapshot: Json) {
   const index = snapshot.recovery_attempt;
-  const selected = Object.values(eightRouterPrompts).includes(snapshot.prompt) ? previousEight : config;
+  const selected = Object.values(eightRouterPrompts).includes(snapshot.prompt) ? previousEight : Object.values(retainedRouterPrompts).includes(snapshot.prompt) ? previousNine : config;
   if (snapshot.recovery_version !== routerRecoveryVersion || ![0, 1].includes(index) ||
     snapshot.parameters?.model !== routerRecoveryPolicy.models[index as 0 | 1] ||
     snapshot.timeout_seconds * 1000 !== routerRecoveryPolicy.attemptMs[index as 0 | 1] ||
-    snapshot.prompt_sha256 !== hash(snapshot.prompt) || ![...Object.values(eightRouterPrompts), ...Object.values(retainedRouterPrompts)].includes(snapshot.prompt) ||
+    snapshot.prompt_sha256 !== hash(snapshot.prompt) || ![...Object.values(eightRouterPrompts), ...Object.values(retainedRouterPrompts), ...Object.values(currentRouterPrompts)].includes(snapshot.prompt) ||
     !isDeepStrictEqual(snapshot.parameters.reasoning, selected.router.model.reasoning) ||
     !isDeepStrictEqual(snapshot.parameters.response_format, selected.router.response_format) ||
     !isDeepStrictEqual(snapshot.parameters.provider, { only: selected.router.provider.only, require_parameters: true, data_collection: 'deny', allow_fallbacks: false }) ||

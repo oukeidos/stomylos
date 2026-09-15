@@ -18,3 +18,10 @@ import retainedStarter from './compact-router-retained-starter.txt?raw';
 import retainedReselection from './compact-router-retained-reselection.txt?raw';
 export const retainedRouterVersion = 'stomylos_compact_router_v3';
 export const retainedRouterPrompts = { direct: retainedDirect, starter: retainedStarter, opener: retainedOpener, reselection: retainedReselection };
+
+import currentOpener from './compact-router-six-partners-opener.txt?raw';
+import currentDirect from './compact-router-six-partners-direct.txt?raw';
+import currentStarter from './compact-router-six-partners-starter.txt?raw';
+import currentReselection from './compact-router-six-partners-reselection.txt?raw';
+export const currentRouterVersion = 'stomylos_compact_router_v4';
+export const currentRouterPrompts = { direct: currentDirect, starter: currentStarter, opener: currentOpener, reselection: currentReselection };

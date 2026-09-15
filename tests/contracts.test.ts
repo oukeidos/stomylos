@@ -71,7 +71,7 @@ it('preserves C sessions and rejects mixed universal/C contracts', () => {
   expect(body.messages[0].content).toBe(saved.system_prompt);
   expect(body.messages[1].content).toBe(saved.seed_template.replace('{{QUESTION}}', 'Public question?'));
   const current = conversationSnapshot();
-  expect(current.version).toBe('stomylos_conversation_v9');
+  expect(current.version).toBe('stomylos_conversation_v10');
   expect(eligible(null, saved)).toEqual(['model_03', 'model_04']);
   expect(eligible(null, current)).toEqual(['model_02', 'model_09']);
   for (const mixed of [
