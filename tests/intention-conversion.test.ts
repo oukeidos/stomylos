@@ -10,7 +10,7 @@ import { emptyMemory, memoryHash, memoryJson } from '../src/main/memory-updater'
 // @ts-expect-error Standalone external converter.
 import { convertIntentionStarters } from '../scripts/convert-intention-starters.mjs';
 let directory: string, store: Store | undefined;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-intention-conversion-')); });
 afterEach(() => { store?.close(); store = undefined; rmSync(directory, { recursive: true, force: true }); });
 it('preserves the exact v9-to-v10 conversion before opening the current schema without backfill', () => {

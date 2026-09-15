@@ -5,14 +5,14 @@ import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { Store } from '../src/main/database';
 let dir:string,store:Store,db:Database.Database;
-beforeEach(()=>{dir=mkdtempSync('/tmp/stomylos-composer-preferences-');store=new Store(dir,resolve('native/advisory-lock.node'));db=(store as any).db;});
+beforeEach(()=>{dir=mkdtempSync('/tmp/stomylos-composer-preferences-');store=new Store(dir,'isolated' as const);db=(store as any).db;});
 afterEach(()=>{store.close();rmSync(dir,{recursive:true,force:true});});
 const pref=()=>({search:db.prepare('SELECT mode FROM search_preferences').pluck().get(),reply:db.prepare('SELECT mode FROM reply_preferences').pluck().get()});
 it('remembers both choices before any send, survives restart, and never rewrites prior chats',()=>{
  const s=store.createSession();expect(pref()).toEqual({search:'auto',reply:'one_point'});
  store.searchMode(s.id,'off');store.setReplyContext(s.id,'choice',0,'standard');
  expect(pref()).toEqual({search:'off',reply:'standard'});expect(store.messages(s.id).filter(m=>m.origin==='learner')).toEqual([]);
- store.end(s.id);const original=store.session(s.id);store.close();store=new Store(dir,resolve('native/advisory-lock.node'));db=(store as any).db;
+ store.end(s.id);const original=store.session(s.id);store.close();store=new Store(dir,'isolated' as const);db=(store as any).db;
  const next=store.createSession();expect(next.search_mode).toBe('off');expect(store.replyContextView(next.id).mode).toBe('standard');
  store.searchMode(next.id,'auto');store.setReplyContext(next.id,'later',0,'one_point');expect(store.session(s.id)).toEqual(original);
  // An old acknowledgement must not reapply its choice to the newer preference.

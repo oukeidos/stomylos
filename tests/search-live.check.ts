@@ -67,7 +67,7 @@ it('runs the frozen 20-reply acceptance matrix within the 44-attempt / USD5 enve
       }
       activeJob = job.id; const data = join(directory, job.id); mkdirSync(data, { mode: 0o700, recursive: true });
       const fixed = { utc: gate.frozenAt, timezone: 'UTC', utc_offset_minutes: 0, local_date: gate.frozenAt.slice(0, 10) };
-      let store = new Store(data, resolve('native/advisory-lock.node'), () => 0, () => fixed);
+      let store = new Store(data, 'isolated' as const, () => 0, () => fixed);
       let saved: Json | null = null;
       try {
         const session = store.createSession(), id = session.id;
@@ -98,7 +98,7 @@ it('runs the frozen 20-reply acceptance matrix within the 44-attempt / USD5 enve
           routingSeconds, firstAnswerSeconds: first, totalSeconds: (performance.now() - started) / 1000,
           gate: store.searchView(id), request: store.request(request.id), body };
         report.results = report.results.filter((r: Json) => r.job !== job.id); report.results.push(saved); save();
-        const before = store.view(id); store.close(); store = new Store(data, resolve('native/advisory-lock.node'));
+        const before = store.view(id); store.close(); store = new Store(data, 'isolated' as const);
         expect(store.view(id)).toEqual(before);
         console.log(JSON.stringify({ job: job.id, status: saved.request.status, gate: saved.gate?.turn.decision,
           searchCalls: JSON.parse(saved.request.metadata).search?.web_search_requests ?? null,

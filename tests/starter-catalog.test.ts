@@ -16,7 +16,7 @@ import { emptyMemory, memoryJson, memoryHash } from '../src/main/memory-updater'
 const dirs: string[] = [], stores: Store[] = [], dbs: Database.Database[] = [];
 afterEach(() => { for (const s of stores.splice(0)) s.close(); for (const d of dbs.splice(0)) if (d.open) d.close(); for (const d of dirs.splice(0)) rmSync(d,{recursive:true,force:true}); });
 function dir() { const d = mkdtempSync(join(tmpdir(),'stomylos-catalog-')); dirs.push(d); return d; }
-function fresh() { const directory = dir(), store = new Store(directory,resolve('native/advisory-lock.node')); stores.push(store); const db = (store as unknown as {db:Database.Database}).db; return {directory,store,db}; }
+function fresh() { const directory = dir(), store = new Store(directory,'isolated' as const); stores.push(store); const db = (store as unknown as {db:Database.Database}).db; return {directory,store,db}; }
 function count(db: Database.Database, id: string) { return db.prepare('SELECT answer_count,skip_count FROM starter_catalog_entries WHERE question_id=?').get(id); }
 it('bundles exactly the English-only matrix and rejects corrupted payloads', () => {
   const rows = readCatalog(); expect(rows).toHaveLength(5000); expect(Object.keys(catalogManifest.joint_cells)).toHaveLength(80);
@@ -97,7 +97,7 @@ it('migrates v18 atomically, preserves legacy drafts/evidence, seeds exact count
   expect(db.prepare('SELECT input_json,config FROM starter_renewal_jobs').get()).toEqual(source);
   expect(db.prepare('SELECT status,failure,response_content FROM starter_renewal_attempts').get()).toEqual({status:'interrupted',failure:'feature_removed',response_content:'saved response'});
   migrateDatabase(db,directory); expect(readFileSync(join(directory,'stomylos.pre-migration-v18.sqlite3'))).toEqual(backup);
-  db.close(); const store=new Store(directory,resolve('native/advisory-lock.node'));stores.push(store);
+  db.close(); const store=new Store(directory,'isolated' as const);stores.push(store);
   expect(store.endStatus('ended')?.complete).toBe(true); expect(new StarterStore((store as any).db).view('ended')?.retired).toBe(true);
   expect(()=>store.resumeEndResponse('ended','starter')).not.toThrow();
   expect(()=>store.dispatchStarter('attempt')).toThrow('feature_removed');
@@ -118,7 +118,7 @@ it('preserves an exact legacy parked opening across migration and counts its sub
   legacy.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind,parked_starter,opening_revision) VALUES(?,'draft',?,?,'user',?,?)").run(saved.id,saved.created_at,saved.chat_config,JSON.stringify(parked),saved.opening_revision);
   const before=legacy.prepare('SELECT * FROM sessions').get();migrateDatabase(legacy,legacyDir);
   expect(legacy.prepare('SELECT * FROM sessions').get()).toEqual(before);legacy.close();
-  const reopened=new Store(legacyDir,resolve('native/advisory-lock.node'));stores.push(reopened);
+  const reopened=new Store(legacyDir,'isolated' as const);stores.push(reopened);
   reopened.setOpening(saved.id,'restore-legacy',saved.opening_revision,'starter');
   expect(reopened.messages(saved.id)).toEqual([original]);
   reopened.submit(saved.id,'My answer.','legacy-answer');reopened.submit(saved.id,'My answer.','legacy-answer');

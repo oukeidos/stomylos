@@ -8,7 +8,7 @@ import { Store } from '../src/main/database';
 import { conversationRequestSnapshot, conversationSnapshot, grammarSnapshot } from '../src/main/contracts';
 const external = process.env.STOMYLOS_OPENING_CONVERTER!;
 const root = mkdtempSync('/tmp/stomylos-opening-continuity-');
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 const fixtures: string[] = [];
 for (const version of [3, 4]) for (const state of ['draft', 'active']) it(`preserves and resumes the exact v${version} ${state} fixture through external v5 conversion`, () => {
   const base = join(root, `v${version}-${state}`); mkdirSync(base);

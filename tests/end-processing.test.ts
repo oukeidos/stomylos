@@ -14,7 +14,7 @@ const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const fn of cleanups.splice(0)) await fn(); });
 function fixture(behavior: (kind: string, body: Json, signal: AbortSignal) => Promise<string>) {
   const dir = mkdtempSync(join(tmpdir(), 'stomylos-end-'));
-  let store = new Store(dir, resolve('native/advisory-lock.node'));
+  let store = new Store(dir, 'isolated' as const);
   const client = { ready: Promise.resolve(), call: async (method: StoreMethod, ...args: any[]) => (store[method] as Function).apply(store, args), close: async () => store.close() } as unknown as DatabaseClient;
   const calls: string[] = [], bodies: {kind: string; body: Json}[] = [];
   const gateway: Gateway = { async complete(body, _identity, signal) {
@@ -26,7 +26,7 @@ function fixture(behavior: (kind: string, body: Json, signal: AbortSignal) => Pr
   cleanups.push(async () => { await controller.command('close', undefined); rmSync(dir, { recursive: true, force: true }); });
   const session = store.createSession(); store.searchMode(session.id, 'off'); store.selectManual(session.id, 'model_04');
   store.submit(session.id, 'I like quiet museums.'); store.commitRoute(session.id, null, 'public_fixture', null); store.freezeMemory(session.id);
-  return { get store() { return store; }, reopen() { store.close(); store = new Store(dir, resolve('native/advisory-lock.node')); }, controller, id: session.id, calls, settings, bodies };
+  return { get store() { return store; }, reopen() { store.close(); store = new Store(dir, 'isolated' as const); }, controller, id: session.id, calls, settings, bodies };
 }
 function valid(kind: string, body: Json) {
   if (kind === 'update') return '{"add":[],"update":[],"delete":[]}';

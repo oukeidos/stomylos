@@ -11,7 +11,7 @@ import schema from '../src/main/schema.sql?raw';
 const fixtures:{dir:string;store:Store;db:Database.Database}[]=[];
 afterEach(()=>{ for(const f of fixtures.splice(0)){f.store.close();if(f.db.open)f.db.close();rmSync(f.dir,{recursive:true,force:true});} });
 function fixture() {
- const dir=mkdtempSync('/tmp/stomylos-memory-control-'),store=new Store(dir,resolve('native/advisory-lock.node'));
+ const dir=mkdtempSync('/tmp/stomylos-memory-control-'),store=new Store(dir,'isolated' as const);
  const db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);
  const document=memoryJson({character_id:'shared',revision:3,database_records:[{id:'a',text:'MEMORY_SENTINEL likes tea.'}]});
  db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(document,memoryHash(document));
@@ -49,12 +49,12 @@ it('settings stays locked by end work; existing cancellation stays terminal afte
  expect(()=>toggle(f.store,false)).toThrow('end_processing_pending');expect(f.store.memoryPreference().enabled).toBe(true);
  f.store.cancelEnd(s.id);toggle(f.store,false);toggle(f.store,true);
  expect(()=>f.store.saveMemory(a.id,'{"add":[],"update":[],"delete":[]}',{})).toThrow();expect(()=>f.store.retryMemory(s.id)).toThrow('end_processing_cancelled');
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));expect(f.store.memoryJob(s.id)?.state).toBe('skipped');expect(f.store.endBlocker()).toBeNull();expect(f.store.memoryPreference().enabled).toBe(true);
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);expect(f.store.memoryJob(s.id)?.state).toBe('skipped');expect(f.store.endBlocker()).toBeNull();expect(f.store.memoryPreference().enabled).toBe(true);
 });
 it('persists Off and unbound drafts, rejects stale/conflicting commands and applies no backfill at End',()=>{
  const f=fixture(),s=f.store.createSession();const before=f.store.memoryPreference();toggle(f.store,false);
  expect(f.store.setMemoryPreference(false,before.revision)).toEqual(f.store.memoryPreference());expect(()=>f.store.setMemoryPreference(true,before.revision)).toThrow('memory_setting_conflict');
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));expect(f.store.memoryPreference().enabled).toBe(false);expect(f.store.view(s.id).memoryPolicy?.firstEnabled).toBeNull();
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);expect(f.store.memoryPreference().enabled).toBe(false);expect(f.store.view(s.id).memoryPolicy?.firstEnabled).toBeNull();
  send(f.store,s.id);f.store.end(s.id);expect(f.store.memoryJob(s.id)).toBeNull();toggle(f.store,true);expect(f.store.memoryJob(s.id)).toBeNull();
  for(const value of [{enabled:0,revision:0},{enabled:false,revision:-1},{enabled:true,revision:1,extra:true}]) expect(()=>validateCommand('setMemoryPreference',value)).toThrow();
  expect(()=>validateCommand('setMemoryPreference',{enabled:false,revision:0})).not.toThrow();
@@ -68,7 +68,7 @@ it('upgrades schema 25 with exact history preservation, dispatch-only defaults a
  expect(f.db.prepare('SELECT * FROM session_memory_policy').all()).toEqual([{session_id:s.id,first_enabled:1,updates_disabled:0}]);
  expect(f.db.prepare('SELECT * FROM model_requests ORDER BY id').all()).toEqual(history);expect(f.db.prepare('SELECT * FROM session_memories ORDER BY session_id').all()).toEqual(snapshots);
  const backup=readFileSync(join(f.dir,'stomylos.pre-migration-v25.sqlite3'));migrateDatabase(f.db,f.dir);expect(readFileSync(join(f.dir,'stomylos.pre-migration-v25.sqlite3'))).toEqual(backup);
- f.store=new Store(f.dir,resolve('native/advisory-lock.node'));expect(f.store.memoryPreference()).toEqual({enabled:true,revision:0});
+ f.store=new Store(f.dir,'isolated' as const);expect(f.store.memoryPreference()).toEqual({enabled:true,revision:0});
 });
 
 it('rolls back a failed v26 step and preserves its backup on retry',()=>{
@@ -78,7 +78,7 @@ it('rolls back a failed v26 step and preserves its backup on retry',()=>{
  expect(()=>migrateDatabase(f.db,f.dir)).toThrow('injected-v26');f.db.exec=execute;
  expect(f.db.pragma('user_version',{simple:true})).toBe(25);expect(f.db.prepare("SELECT name FROM sqlite_master WHERE name='memory_preferences'").get()).toBeUndefined();
  const backup=readFileSync(join(f.dir,'stomylos.pre-migration-v25.sqlite3'));migrateDatabase(f.db,f.dir);expect(readFileSync(join(f.dir,'stomylos.pre-migration-v25.sqlite3'))).toEqual(backup);
- f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ f.store=new Store(f.dir,'isolated' as const);
 });
 
 it('keeps an older no-memory conversation contract dispatchable without inventing a snapshot',()=>{
@@ -89,7 +89,7 @@ it('keeps an older no-memory conversation contract dispatchable without inventin
 
 it('applies Off to an undispatched first request recovered after restart rather than blocking it as an exact sent retry',()=>{
  const f=fixture(),s=f.store.createSession();send(f.store,s.id);const queued=f.store.prepareChat(s.id,'prepared');
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));toggle(f.store,false);
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);toggle(f.store,false);
  const recovered=f.store.prepareChat(s.id,'recovered','retry');expect(recovered.parent_id).toBeNull();
  const start=f.store.startChat(recovered.id);expect(JSON.stringify(start.body)).not.toContain('MEMORY_SENTINEL');
  expect(f.store.request(queued.id).config).toBe(queued.config);expect(f.store.view(s.id).memoryPolicy?.firstEnabled).toBe(false);

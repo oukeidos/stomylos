@@ -13,7 +13,7 @@ const dirs:string[]=[]; afterEach(()=>{ for(const d of dirs.splice(0))rmSync(d,{
 const tables=['model_requests','search_router_attempts','pattern_report_attempts','memory_attempts','memory_cleanup_attempts','explanation_attempts'];
 function fixture(){
  const dir=mkdtempSync(join(tmpdir(),'stomylos-provider-upgrade-'));dirs.push(dir);
- const store=new Store(dir,resolve('native/advisory-lock.node'));
+ const store=new Store(dir,'isolated' as const);
  const s=store.createSession();store.setOpening(s.id,randomUUID(),s.opening_revision,'user');store.selectManual(s.id,'model_03');store.searchMode(s.id,'off');
  store.submit(s.id,'Keep this exact source.');store.commitRoute(s.id,null,'fixture',null);
  const request=store.prepareChat(s.id,randomUUID());store.dispatch(request.id);store.prepareReply(s.id,request.id);store.failRequest(request.id,'http_429','',{});
@@ -29,7 +29,7 @@ it('upgrades 26 to 27 additively, preserves old requests and creates truthful li
   expect(prior.config).toBe(request.config);expect(prior.config_hash).toBe(request.config_hash);expect(prior.provider_request).toBeNull();
   const backup=readFileSync(join(dir,'stomylos.pre-migration-v26.sqlite3'));migrateDatabase(db,dir);expect(readFileSync(join(dir,'stomylos.pre-migration-v26.sqlite3'))).toEqual(backup);
  }finally{db.close();}
- const store=new Store(dir,resolve('native/advisory-lock.node'));
+ const store=new Store(dir,'isolated' as const);
  try{
   const retry=store.prepareChat(session.id,randomUUID(),'retry');expect(retry.parent_id).toBe(request.id);
   const input=store.chatBody(retry.id),routed=store.prepareProvider('model',retry.id,input,null);

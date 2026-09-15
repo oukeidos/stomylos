@@ -29,7 +29,7 @@ it.each(['draft','active','ended'])('migrates 30 to 31 preserving a %s chat, rol
   for(const row of db.prepare('SELECT chat_config,draft,reply_context_revision,last_reply_context_operation FROM sessions').all() as any[]) expect(row).toEqual({chat_config:config,draft:'Original draft',reply_context_revision:0,last_reply_context_operation:null});
   expect(db.prepare('SELECT mode FROM reply_preferences').pluck().get()).toBe('one_point');
   migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
-  db.close(); const store=new Store(dir,resolve('native/advisory-lock.node'));
+  db.close(); const store=new Store(dir,'isolated' as const);
   try {
     expect(store.replyContextView(state)).toMatchObject({mode:'standard',canChange:state==='draft'});
   } finally {store.close();}

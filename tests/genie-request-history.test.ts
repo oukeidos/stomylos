@@ -11,7 +11,7 @@ const resources: {store:Store;directory:string; controller?:GenieController}[]=[
 afterEach(async()=>{for(const r of resources.splice(0)){await r.controller?.dispose();r.store.close();rmSync(r.directory,{recursive:true,force:true});}});
 function setup() {
   const directory=mkdtempSync(join(tmpdir(),'stomylos-genie-history-'));
-  const r={directory,store:new Store(directory,resolve('native/advisory-lock.node')),controller:undefined as GenieController|undefined};resources.push(r);
+  const r={directory,store:new Store(directory,'isolated' as const),controller:undefined as GenieController|undefined};resources.push(r);
   const s=r.store.createSession(), source:GenieSource={sessionId:s.id,text:'private unsent draft',revision:1,contextHash:'h',messages:[]};
   const pending:{resolve:(result:{content:string;metadata:Json})=>void;reject:(e:unknown)=>void}[]=[];
   const complete=vi.fn((_body:Json,_identity:Json,signal:AbortSignal)=>new Promise<{content:string;metadata:Json}>((resolve,reject)=>{
@@ -31,7 +31,7 @@ it('retains content-free successful/failed retries across episode disposal and p
   const episode=r.controller!.snapshot().episode!;await r.controller!.retry(episode.id,'retry');await vi.waitFor(()=>expect(pending).toHaveLength(2));
   pending[1].resolve({content:'{"reply":"A private suggestion","suggested_text":null}',metadata:{model:'openai/gpt-5.6-luna',usage:{cost:0.125},private:'must not persist'}});
   await vi.waitFor(()=>expect(r.store.requestHistory(id)[1].status).toBe('succeeded'));
-  await r.controller!.dispose();r.store.close();r.store=new Store(r.directory,resolve('native/advisory-lock.node'));
+  await r.controller!.dispose();r.store.close();r.store=new Store(r.directory,'isolated' as const);
   const rows=r.store.requestHistory(id);expect(rows).toHaveLength(2);expect(rows[1].parentId).toBe(rows[0].id);
   expect(rows[1].metadata.usage.cost).toBe(0.125);expect(rows[0].metadata.usage.cost).toBe(0.01);
   const text=JSON.stringify(rows);expect(text).not.toContain('private');expect(text).not.toContain('suggestion');expect(text).not.toContain('must not persist');
@@ -47,7 +47,7 @@ it('records cancellation during durable admission as known unsent and never disp
 });
 it('recovers dispatched attempts without replay and deletes their metadata with the chat',()=>{
   const {r,id,complete}=setup();r.store.genieRequestStart('pending',id,null,{model:'m',messages:[{content:'do not store'}]});
-  r.store.close();r.store=new Store(r.directory,resolve('native/advisory-lock.node'));
+  r.store.close();r.store=new Store(r.directory,'isolated' as const);
   expect(r.store.requestHistory(id)[0]).toMatchObject({status:'interrupted',failure:'interrupted_unknown_outcome',settings:{model:'m'}});
   expect(complete).not.toHaveBeenCalled();r.store.end(id);r.store.deleteSession(id);
   expect(()=>r.store.requestHistory(id)).toThrow('session_not_found');expect(r.store.integrity().foreignKeys).toEqual([]);

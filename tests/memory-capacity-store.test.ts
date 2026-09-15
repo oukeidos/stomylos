@@ -14,7 +14,7 @@ const dirs: string[] = [], stores: Store[] = [];
 afterEach(() => { for (const s of stores.splice(0)) s.close(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), 'stomylos-capacity-')); dirs.push(dir);
-  const store = new Store(dir, resolve('native/advisory-lock.node')); stores.push(store);
+  const store = new Store(dir, 'isolated' as const); stores.push(store);
   const db = new Database(join(dir, 'stomylos.sqlite3'));
   const memory = flattenMemory(emptyMemory('shared')); memory.database_records.push({ id: 'old', text: 'x'.repeat(29000) });
   const encoded = memoryJson(memory); db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(encoded, memoryHash(encoded)); db.close();
@@ -56,7 +56,7 @@ it('preserves received cleanup and retry allowance over restart without inferenc
   const a = store.prepareCleanup(id, randomUUID()); store.dispatchCleanup(a.id);
   store.receiveCleanup(a.id, 'Keeps useful detail.', {});
   store.close(); stores.splice(stores.indexOf(store), 1);
-  const reopened = new Store(dir, resolve('native/advisory-lock.node')); stores.push(reopened);
+  const reopened = new Store(dir, 'isolated' as const); stores.push(reopened);
   expect(reopened.takeAutomaticRetry(id, 'cleanup')).toBe(false);
   expect(() => reopened.createSession()).toThrow('end_processing_pending');
   reopened.retryMemory(id);
@@ -81,7 +81,7 @@ it('accepts a durably received factual response after restart without a new atte
   const content = JSON.stringify({ add: [{ text: 'y'.repeat(2500), source_message_ids: ['u1'] }], update: [], delete: [] });
   store.receiveEndResponse(id, 'update', a.id, content, {});
   store.close(); stores.splice(stores.indexOf(store), 1);
-  const reopened = new Store(dir, resolve('native/advisory-lock.node')); stores.push(reopened);
+  const reopened = new Store(dir, 'isolated' as const); stores.push(reopened);
   expect(reopened.resumeEndResponse(id, 'update')).toBe(true);
   expect(reopened.memoryCandidate(id)?.update_attempt_id).toBe(a.id);
   expect(reopened.resumeEndResponse(id, 'update')).toBe(false);
@@ -103,7 +103,7 @@ it('recovers durably received grammar while starter replay is retired after rest
   const starter = { id: 'historical-receipt' };
   store.receiveEndResponse(id, 'starter', starter.id, 'What would you like to explore?\nHow would you describe a favorite place?', {});
   store.close(); stores.splice(stores.indexOf(store), 1);
-  const reopened = new Store(dir, resolve('native/advisory-lock.node')); stores.push(reopened);
+  const reopened = new Store(dir, 'isolated' as const); stores.push(reopened);
   expect(reopened.resumeEndResponse(id, 'grammar')).toBe(true);
   expect(reopened.resumeEndResponse(id, 'starter')).toBe(false);
   expect(reopened.session(id).selected_analysis_id).toBe(grammar.id);
@@ -117,7 +117,7 @@ it('refuses over-cap authoritative memory on restart without truncation or mutat
   const db = new Database(join(dir, 'stomylos.sqlite3'));
   const doc = flattenMemory(emptyMemory('shared')); doc.database_records.push({id:'retained',text:'x'.repeat(31000)});
   const document = memoryJson(doc); db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(document,memoryHash(document)); db.close();
-  expect(()=>new Store(dir,resolve('native/advisory-lock.node'))).toThrow('memory_recovery_required');
+  expect(()=>new Store(dir,'isolated' as const)).toThrow('memory_recovery_required');
   const after = new Database(join(dir,'stomylos.sqlite3')); expect(after.prepare('SELECT document FROM shared_memory').pluck().get()).toBe(document); after.close();
 });
 
@@ -139,7 +139,7 @@ it.each(['stomylos_memory_updater_v4', 'stomylos_memory_updater_v5', 'stomylos_m
   const first = store.prepareMemory(id, randomUUID()); store.dispatchMemory(first.id);
   store.failMemory(first.id, 'request_timeout');
   store.close(); stores.splice(stores.indexOf(store), 1);
-  const reopened = new Store(dir, resolve('native/advisory-lock.node')); stores.push(reopened);
+  const reopened = new Store(dir, 'isolated' as const); stores.push(reopened);
   reopened.retryMemory(id); const retry = reopened.prepareMemory(id, randomUUID());
   expect(retry.input_json).toBe(first.input_json);
   expect(reopened.memoryJob(id)!.config).toBe(config);

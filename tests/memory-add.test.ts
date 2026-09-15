@@ -16,7 +16,7 @@ import type {Json} from '../src/shared/types';
 import {validateCommand} from '../src/main/ipc';
 const fixtures:{dir:string;store:Store;db:Database.Database}[]=[];
 afterEach(()=>{for(const f of fixtures.splice(0)){f.store.close();f.db.close();rmSync(f.dir,{recursive:true,force:true});}});
-function fixture(){const dir=mkdtempSync('/tmp/stomylos-add-'),store=new Store(dir,resolve('native/advisory-lock.node')),db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);return f;}
+function fixture(){const dir=mkdtempSync('/tmp/stomylos-add-'),store=new Store(dir,'isolated' as const),db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);return f;}
 // Exercise the pre-upgrade per-turn contract independently of the new-session default.
 function session(store:Store){
  const s=store.createSession(),db=fixtures.find(f=>f.store===store)!.db;
@@ -56,7 +56,7 @@ it('uses null for unknown or invalid ADD calendar dates without guessing from UT
 });
 it('freezes L wire dates while retaining full source times and effective provider policy',()=>{
  const f=fixture(),sent=recordedTime('2026-09-11T15:30:00.000Z','Asia/Seoul',540);
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'),undefined,()=>sent);
+ f.store.close();f.store=new Store(f.dir,'isolated' as const,undefined,()=>sent);
  const s=session(f.store);send(f.store,s.id,'Yesterday, I fixed it.');
  const job=f.store.memoryAddReady()!,savedInput=job.input_json,savedConfig=job.config;
  expect(JSON.parse(savedInput)).toMatchObject({timezone:'Asia/Seoul',current_user:{sent_at:sent.utc}});
@@ -90,7 +90,7 @@ it('persists response before atomic apply, recovers save-only after restart, pre
  f.store.receiveMemoryAdd(a.id,JSON.stringify({add:['x'.repeat(2100),'y'.repeat(1000)]}),{});
  f.db.exec("CREATE TRIGGER fixture_fail BEFORE UPDATE ON shared_memory BEGIN SELECT RAISE(ABORT,'disk failure'); END;");
  expect(()=>f.store.acceptMemoryAdd(a.id)).toThrow('disk failure');expect(f.db.prepare('SELECT count(*) FROM memory_item_metadata').pluck().get()).toBe(0);f.db.exec('DROP TRIGGER fixture_fail');
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'),undefined,()=>({utc:'2020-01-01T00:00:00.000Z',timezone:'UTC',utc_offset_minutes:0,local_date:'2020-01-01'}));expect(f.store.memoryAddReady()?.state).toBe('received');expect(f.store.prepareMemoryAdd(1,'unused').id).toBe(a.id);f.store.acceptMemoryAdd(a.id);
+ f.store.close();f.store=new Store(f.dir,'isolated' as const,undefined,()=>({utc:'2020-01-01T00:00:00.000Z',timezone:'UTC',utc_offset_minutes:0,local_date:'2020-01-01'}));expect(f.store.memoryAddReady()?.state).toBe('received');expect(f.store.prepareMemoryAdd(1,'unused').id).toBe(a.id);f.store.acceptMemoryAdd(a.id);
  // Interrupted chat still needs an explicit reply recovery; complete its stored bubble for this isolated source-order fixture.
  f.db.prepare("UPDATE messages SET delivery='complete',content='And then?' WHERE id=?").run(start.bubble.id);
  f.store.submit(s.id,'A later source.');finish(f.store,['z'.repeat(1900)]);
@@ -113,7 +113,7 @@ it('does not auto-retry unknown calls, blocks later sources, and rejects stale a
  expect(JSON.parse(f.store.memoryAddReady()!.config).version).toBe('stomylos_memory_add_v1');
  const a=prepare(f.store);expect(f.store.prepareMemoryAdd(a.job_id,a.id).id).toBe(a.id);
  f.store.finishReply(start.request.id,start.bubble.id,'Tell me more.',{});f.store.submit(s.id,'I also like mint tea.');
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));expect(f.store.memoryAddReady()).toBeNull();
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);expect(f.store.memoryAddReady()).toBeNull();
  expect(()=>f.store.retryMemoryAdd(s.id,999)).toThrow('memory_add_not_retryable');f.store.retryMemoryAdd(s.id,a.job_id);const b=prepare(f.store);
  expect(b.body).toBe(a.body);expect(JSON.parse(b.body).messages[0].content).toBe(oldPrompt);
  expect(JSON.parse(JSON.parse(b.body).messages[1].content)).toHaveProperty('timezone');
@@ -176,7 +176,7 @@ it('actual coordinator quit interrupts a dispatched ADD, preserves the queued so
  await c.command('sendMessage',{sessionId:s.id,text:'First detail',revision:0});
  await vi.waitFor(()=>{expect(calls).toBe(1);expect(f.store.messages(s.id).at(-1)).toMatchObject({role:'assistant',delivery:'complete'});},{timeout:3000});
  f.store.submit(s.id,'Second detail');await c.command('close',undefined);
- f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ f.store=new Store(f.dir,'isolated' as const);
  expect(f.store.view(s.id).memory.addJobs?.map(j=>j.state)).toEqual(['interrupted','pending']);expect(f.store.currentMemory().revision).toBe(0);
  const resumed=controller(f,{async complete(){calls++;return {content:'{"add":["Second detail"]}',metadata:{}};},async stream(){throw new Error('No reply expected');}});
  try{await resumed.initialize();expect(f.store.memoryAddReady()).toBeNull();expect(calls).toBe(1);
@@ -186,12 +186,12 @@ it('actual coordinator quit interrupts a dispatched ADD, preserves the queued so
 });
 it('restart distinguishes an attempt prepared but never dispatched',()=>{
  const f=fixture(),s=session(f.store);send(f.store,s.id);const job=f.store.memoryAddReady()!;f.store.prepareMemoryAdd(job.ordinal,'unsent');
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);
  expect(f.store.view(s.id).memory.addJobs![0].failure).toBe('queued_not_dispatched');expect(f.store.view(s.id).memory.addAttempts![0].failure).toBe('queued_not_dispatched');
 });
 it('startup applies a received response without an API key or another provider call',async()=>{
  const f=fixture(),s=session(f.store);send(f.store,s.id);const a=prepare(f.store);f.store.receiveMemoryAdd(a.id,'{"add":["Received before quit"]}',{usage:{cost:0.001}});
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);
  const complete=vi.fn(async()=>{throw new Error('Unexpected paid call');});
  const client={ready:Promise.resolve(),call:async(method:StoreMethod,...args:any[])=>(f.store[method] as Function).apply(f.store,args),close:async()=>f.store.close()} as unknown as DatabaseClient;
  const c=new Coordinator(client,{complete,async stream(){throw new Error('No reply expected');}},{keyPresent:false,keyPath:'',dataPath:f.dir,appVersion:'test',development:true},()=>{},()=>true);

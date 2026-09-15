@@ -1,5 +1,5 @@
-import { chmodSync, closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, statSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { appId } from './contracts';
 import { AppFailure } from './errors';
@@ -45,18 +45,26 @@ export function loadKey(file: string): string | null {
     return parseKey(new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(file)));
   } catch (e) { if (e instanceof AppFailure) throw e; throw new AppFailure('key_file_unreadable'); }
 }
+/** Direct stores are for disposable tests only; Electron owns production exclusion. */
+export type StoreAccess = 'electron' | 'isolated';
 const held = new Set<string>();
-export function lockDirectory(directory: string, nativePath: string): () => void {
+export function lockDirectory(directory: string, access: StoreAccess): () => void {
   if (!path.isAbsolute(directory)) throw new AppFailure('invalid_data_path');
-  if (held.has(directory)) throw new AppFailure('database_already_open');
-  mkdirSync(directory, { recursive: true, mode: 0o700 }); chmodSync(directory, 0o700);
-  const file = path.join(directory, 'stomylos.lock');
-  const fd = openSync(file, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
-  try {
-    chmodSync(file, 0o600);
-    createRequire(process.execPath)(nativePath).lock(fd);
-    held.add(directory);
-  } catch (e: any) { closeSync(fd); throw new AppFailure(e?.code === 'database_already_open' ? e.code : 'lock_failed'); }
+  if (access === 'electron') return () => undefined;
+  if (access !== 'isolated') throw new AppFailure('electron_lock_required');
+  // Check before creating anything outside the temporary tree, then resolve aliases.
+  const relative = path.relative(realpathSync(tmpdir()), directory);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new AppFailure('isolated_data_required');
+  let ancestor = directory;
+  const missing: string[] = [];
+  while (!existsSync(ancestor)) { missing.unshift(path.basename(ancestor)); ancestor = path.dirname(ancestor); }
+  const canonical = path.join(realpathSync(ancestor), ...missing);
+  const actual = path.relative(realpathSync(tmpdir()), canonical);
+  if (!actual || actual.startsWith('..') || path.isAbsolute(actual) || existsSync(path.join(canonical, 'chromium'))) throw new AppFailure('isolated_data_required');
+  mkdirSync(canonical, { recursive: true, mode: 0o700 });
+  if (held.has(canonical)) throw new AppFailure('database_already_open');
+  chmodSync(canonical, 0o700);
+  held.add(canonical);
   let closed = false;
-  return () => { if (!closed) { closed = true; closeSync(fd); held.delete(directory); } };
+  return () => { if (!closed) { closed = true; held.delete(canonical); } };
 }

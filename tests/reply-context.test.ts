@@ -9,7 +9,7 @@ import { replyContext, replyMode, replyPrefix, replySeedHash } from '../src/main
 import { validateCommand } from '../src/main/ipc';
 import type { ReplyMode } from '../src/shared/reply-context';
 let directory: string, store: Store, db: Database.Database;
-beforeEach(() => { directory = mkdtempSync('/tmp/stomylos-reply-context-'); store = new Store(directory, resolve('native/advisory-lock.node')); db = (store as any).db; });
+beforeEach(() => { directory = mkdtempSync('/tmp/stomylos-reply-context-'); store = new Store(directory, 'isolated' as const); db = (store as any).db; });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
 function choose(id: string, mode: ReplyMode) { return store.setReplyContext(id, randomUUID(), store.replyContextView(id).revision, mode); }
 function direct() { const s = store.createSession(); store.setOpening(s.id, randomUUID(), s.opening_revision, 'user'); return s.id; }
@@ -28,7 +28,7 @@ it('pins the exact approved four-message artifact and rejects unknown or malform
 });
 it('remembers saved choices immediately, including abandoned drafts, across restart', () => {
   const id = direct(); expect(store.replyContextView(id)).toMatchObject({ mode:'one_point', canChange:true, revision:0 });
-  choose(id,'standard'); store.saveDraft(id,'Unsent words'); store.close(); store = new Store(directory,resolve('native/advisory-lock.node')); db=(store as any).db;
+  choose(id,'standard'); store.saveDraft(id,'Unsent words'); store.close(); store = new Store(directory,'isolated' as const); db=(store as any).db;
   expect(store.session(id).draft).toBe('Unsent words'); expect(store.replyContextView(id).mode).toBe('standard');
   store.end(id); const next=store.createSession(); expect(store.replyContextView(next.id).mode).toBe('standard');
   choose(next.id,'standard'); send(next.id); expect(store.replyContextView(next.id).canChange).toBe(false);
@@ -44,7 +44,7 @@ it('enforces selection/send revisions, idempotent receipts, conflicts and perman
   choose(id,'one_point'); expect(() => store.setReplyContext(id,operation,0,'standard')).toThrow('reply_context_changed');
   const message=send(id); expect(store.submit(id,message.content,message.id,0)).toEqual(message);
   expect(() => choose(id,'standard')).toThrow('reply_context_frozen');
-  store.close(); store=new Store(directory,resolve('native/advisory-lock.node')); db=(store as any).db;
+  store.close(); store=new Store(directory,'isolated' as const); db=(store as any).db;
   expect(store.replyContextView(id)).toMatchObject({ mode:'one_point',canChange:false,lockReason:'started' });
 });
 it('rolls back selection and first-submit failures without changing draft, preference or lock', () => {

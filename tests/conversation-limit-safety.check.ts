@@ -32,7 +32,7 @@ it('candidate 600-second deadline and cancellation terminate the gateway without
  const abort=new AbortController();const cancelled=gateway.complete(body,identity,abort.signal,600000);const checkCancel=expect(cancelled).rejects.toThrow('request_cancelled');abort.abort();await checkCancel;
 });
 it('synthetically seeded 512-turn database retains drafts and freezes End memory after terminal overflow',()=>{
- const dir=mkdtempSync('/tmp/stomylos-limit-storage-');const store=new Store(dir,resolve('native/advisory-lock.node'));const db=new Database(join(dir,'stomylos.sqlite3'));
+ const dir=mkdtempSync('/tmp/stomylos-limit-storage-');const store=new Store(dir,'isolated' as const);const db=new Database(join(dir,'stomylos.sqlite3'));
  try {
   const s=store.createSession();store.searchMode(s.id,'off');store.selectManual(s.id,'model_01');store.submit(s.id,'I keep a notebook.');store.commitRoute(s.id,null,'fixture',null);
   const first=store.startChat(store.prepareChat(s.id,'fixture-first').id);store.finishReply(first.request.id,first.bubble.id,'What color?',{});

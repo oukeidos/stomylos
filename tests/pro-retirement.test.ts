@@ -39,7 +39,7 @@ it('removes DeepSeek Pro from new manual and every Auto entry while preserving a
 });
 it('preserves v9 DeepSeek Pro history and exact failed request through admission, reopen and retry; new sessions reject DeepSeek Pro', () => {
   const dir=mkdtempSync(join(tmpdir(),'stomylos-pro-'));dirs.push(dir);
-  let store=new Store(dir,resolve('native/advisory-lock.node'));stores.push(store);
+  let store=new Store(dir,'isolated' as const);stores.push(store);
   const session=store.createSession();
   const raw=new Database(join(dir,'stomylos.sqlite3'));
   const saved={...JSON.parse(store.session(session.id).chat_config),...old.conversation,router_prompt_version:'stomylos_compact_router_v3'};
@@ -50,7 +50,7 @@ it('preserves v9 DeepSeek Pro history and exact failed request through admission
   expect(body.model).toBe('deepseek/deepseek-v4-pro-0813');store.prepareReply(session.id,request.id);store.dispatch(request.id);store.failRequest(request.id,'request_timeout','Saved partial',{});
   const before=raw.prepare('SELECT * FROM model_requests').all(),history=store.messages(session.id);
   raw.pragma('user_version=40');raw.close();store.close();stores.pop();
-  store=new Store(dir,resolve('native/advisory-lock.node'));stores.push(store);
+  store=new Store(dir,'isolated' as const);stores.push(store);
   expect(store.session(session.id).chat_config).toBe(JSON.stringify(saved));expect(store.messages(session.id)).toEqual(history);
   const inspect=new Database(join(dir,'stomylos.sqlite3'),{readonly:true});expect(inspect.prepare('SELECT * FROM model_requests').all()).toEqual(before);expect(inspect.pragma('user_version',{simple:true})).toBe(currentSchema);inspect.close();
   const retry=store.prepareChat(session.id,randomUUID(),'retry');expect(retry.config).toBe(request.config);expect(store.chatBody(retry.id)).toEqual(body);

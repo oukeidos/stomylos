@@ -11,7 +11,7 @@ import type { SessionView } from '../src/shared/types';
 let directory: string | undefined, store: Store | undefined;
 afterEach(() => { store?.close(); store = undefined; if (directory) rmSync(directory, { recursive: true, force: true }); directory = undefined; });
 function open() {
-  directory = mkdtempSync('/tmp/stomylos-ux-unit-'); store = new Store(directory, resolve('native/advisory-lock.node'));
+  directory = mkdtempSync('/tmp/stomylos-ux-unit-'); store = new Store(directory, 'isolated' as const);
   return new Database(join(directory, 'stomylos.sqlite3'));
 }
 function rows(db: Database.Database) {

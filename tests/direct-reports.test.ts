@@ -12,7 +12,7 @@ import {OpenRouter} from '../src/main/transport';
 import {makePatternHistorical} from './pattern-report-history';
 let dir:string,store:Store;
 const html='<!DOCTYPE html><html><head><title>Report</title></head><body>Practice</body></html>';
-beforeEach(()=>{dir=mkdtempSync(join(tmpdir(),'direct-report-'));store=new Store(dir,resolve('native/advisory-lock.node'));});
+beforeEach(()=>{dir=mkdtempSync(join(tmpdir(),'direct-report-'));store=new Store(dir,'isolated' as const);});
 afterEach(()=>{store.close();rmSync(dir,{recursive:true,force:true});vi.useRealTimers();vi.unstubAllGlobals();});
 function seed(n=5,text='I enjoyed this conversation.',grammar=false) {
   const ids:string[]=[];

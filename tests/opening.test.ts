@@ -15,7 +15,7 @@ import type { OpeningKind, Message } from '../src/shared/types';
 let directory: string, store: Store, raw: Database.Database;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'stomylos-opening-'));
-  store = new Store(directory, resolve('native/advisory-lock.node'));
+  store = new Store(directory, 'isolated' as const);
   raw = (store as unknown as { db: Database.Database }).db;
 });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
@@ -51,7 +51,7 @@ it('parks/restores the exact question and keeps drafts, manual choice, preferenc
   expect(store.messages(initial.id)).toEqual([]);
   expect(store.session(initial.id)).toMatchObject({ starter_id: null, starter_text: null, opening_kind: 'user', manual_character: 'model_04' });
   expect(store.starterInventory()).toEqual(before);
-  store.close(); store = new Store(directory, resolve('native/advisory-lock.node'));
+  store.close(); store = new Store(directory, 'isolated' as const);
   expect(newSession().id).toBe(initial.id);
   expect(store.session(initial.id).draft).toBe('  한글\r\nA thought.  ');
   change(initial.id, 'starter'); expect(store.messages(initial.id)).toEqual([message]);

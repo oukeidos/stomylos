@@ -8,7 +8,7 @@ import {sourceLinkIdentity} from '../src/main/memory-source-link';
 const fixtures:{dir:string;store:Store;db:Database.Database}[]=[];
 afterEach(()=>{for(const f of fixtures.splice(0)){f.store.close();f.db.close();rmSync(f.dir,{recursive:true,force:true});}});
 function fixture(){
- const dir=mkdtempSync('/tmp/stomylos-source-workflow-'),store=new Store(dir,resolve('native/advisory-lock.node')),db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);
+ const dir=mkdtempSync('/tmp/stomylos-source-workflow-'),store=new Store(dir,'isolated' as const),db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);
  const s=store.createSession();store.searchMode(s.id,'off');store.selectManual(s.id,'model_01');
  for(const text of ['Earlier hobby.','Later activity.']){store.submit(s.id,text);store.commitRoute(s.id,null,'fixture',null);const r=store.startChat(store.prepareChat(s.id,crypto.randomUUID()).id);store.finishReply(r.request.id,r.bubble.id,'Tell me more.',{});}
  store.end(s.id);return {...f,f,sid:s.id};
@@ -19,7 +19,7 @@ const links='{"sources":[{"id":1,"ids":[1,3]},{"id":2,"ids":[1,2]}]}';
 it('checkpoints extraction, retries only identical Luna input, and orders FIFO with stable record IDs',()=>{
  const {f,sid}=fixture();extract(f.store);expect(f.store.currentMemory().revision).toBe(0);const a=attempt(f.store);expect(a.phase).toBe('link');
  f.store.receiveMemoryAdd(a.id,'{"sources":[{"id":1,"ids":[1]},{"id":1,"ids":[3]}]}',{usage:{cost:.002}});expect(()=>f.store.acceptMemoryAdd(a.id)).toThrow('memory_source_format');f.store.failMemoryAdd(a.id,'memory_source_format');
- expect(f.store.endBlocker()).toBe(sid);expect(f.store.memoryAddReady()).toBeNull();f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ expect(f.store.endBlocker()).toBe(sid);expect(f.store.memoryAddReady()).toBeNull();f.store.close();f.store=new Store(f.dir,'isolated' as const);
  f.store.retryMemoryAdd(sid,f.store.view(sid).memory.addJobs![0].ordinal);const b=attempt(f.store);expect(b.body).toBe(a.body);expect(b.phase).toBe('link');f.store.receiveMemoryAdd(b.id,links,{usage:{cost:.002}});f.store.acceptMemoryAdd(b.id);f.store.acceptMemoryAdd(b.id);
  expect(f.store.currentMemory().revision).toBe(1);expect(f.store.endBlocker()).toBeNull();
  const records=f.store.memoryManagement().document.database_records;expect(records.map(r=>r.text)).toEqual(['Earlier note.','Later note.']);
@@ -40,9 +40,9 @@ it.each(['skip','off'])('keeps shared memory untouched and ignores late link res
  expect(store.currentMemory().revision).toBe(0);expect(store.endBlocker()).toBeNull();
 });
 it('does not redispatch a received link on restart, and marks in-flight linking as explicit recovery',()=>{
- const {f,sid}=fixture();extract(f.store);const a=attempt(f.store);f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ const {f,sid}=fixture();extract(f.store);const a=attempt(f.store);f.store.close();f.store=new Store(f.dir,'isolated' as const);
  expect(f.store.memoryAddReady()).toBeNull();expect(f.store.view(sid).memory.addJobs![0]).toMatchObject({phase:'link',state:'interrupted'});
- f.store.retryMemoryAdd(sid,f.store.view(sid).memory.addJobs![0].ordinal);const b=attempt(f.store);f.store.receiveMemoryAdd(b.id,links,{});f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ f.store.retryMemoryAdd(sid,f.store.view(sid).memory.addJobs![0].ordinal);const b=attempt(f.store);f.store.receiveMemoryAdd(b.id,links,{});f.store.close();f.store=new Store(f.dir,'isolated' as const);
  const replay=f.store.prepareMemoryAdd(f.store.memoryAddReady()!.ordinal,'unused');expect(replay.id).toBe(b.id);expect(replay.phase).toBe('link');f.store.acceptMemoryAdd(replay.id);
  expect(f.store.view(sid).memory.addAttempts).toHaveLength(3);expect(f.store.endBlocker()).toBeNull();
 });

@@ -10,7 +10,7 @@ const cleanup:(()=>Promise<void>)[]=[];
 afterEach(async()=>{for(const f of cleanup.splice(0))await f();});
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(r=>resolve=r);return {promise,resolve};}
 it('honors Off after preparation but before gateway handoff, then On does not enable the same chat',async()=>{
- const dir=mkdtempSync('/tmp/stomylos-memory-handoff-'),store=new Store(dir,resolve('native/advisory-lock.node'));
+ const dir=mkdtempSync('/tmp/stomylos-memory-handoff-'),store=new Store(dir,'isolated' as const);
  const prepared=deferred(),release=deferred(),reply=deferred();let hold=true;
  const client={ready:Promise.resolve(),call:async(method:StoreMethod,...args:any[])=>{
    const result=(store[method] as Function).apply(store,args);

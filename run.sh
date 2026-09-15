@@ -14,7 +14,7 @@ stomylos_fail() {
 if [[ -f "$stomylos_dir/src/main/index.ts" ]]; then
   stomylos_electron="$stomylos_dir/node_modules/electron/dist/electron"
   [[ -x "$stomylos_electron" ]] || stomylos_fail 'Install source dependencies with npm ci, then run npm run build.'
-  for stomylos_file in out/main/index.js out/main/db-worker.js out/main/asr-worker.js out/preload/index.js out/renderer/index.html native/advisory-lock.node; do
+  for stomylos_file in out/main/index.js out/main/db-worker.js out/main/asr-worker.js out/preload/index.js out/renderer/index.html; do
     [[ -f "$stomylos_dir/$stomylos_file" ]] || stomylos_fail 'The source build is incomplete. Run npm run build successfully before opening Stomylos.'
   done
   unset ELECTRON_RUN_AS_NODE

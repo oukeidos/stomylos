@@ -15,7 +15,7 @@ import { v5Snapshot } from './time-fixtures';
 const ids = ['model_01', 'model_02', 'model_03', 'model_04', 'model_05', 'model_07', 'model_08'];
 const models = ['anthropic/claude-fable-5.1', 'xiaomi/mimo-v2.5-pro', 'anthropic/claude-sonnet-5', 'openai/gpt-6-astra', 'google/gemini-3.8-flash', 'bytedance-seed/seed-2-1-turbo', 'deepseek/deepseek-v4-pro-0813'];
 let directory: string, store: Store, raw: Database.Database;
-function open() { store = new Store(directory, resolve('native/advisory-lock.node')); raw = (store as unknown as { db: Database.Database }).db; }
+function open() { store = new Store(directory, 'isolated' as const); raw = (store as unknown as { db: Database.Database }).db; }
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-six-')); open(); });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
 

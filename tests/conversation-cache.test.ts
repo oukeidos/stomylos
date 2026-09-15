@@ -11,7 +11,7 @@ import { recordedTime } from '../src/main/time-context';
 import { withSearch } from '../src/main/search-contract';
 
 let directory: string, store: Store, clock = publicTime;
-function open() { store = new Store(directory, resolve('native/advisory-lock.node'), () => 0, () => clock); }
+function open() { store = new Store(directory, 'isolated' as const, () => 0, () => clock); }
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-cache-')); clock = publicTime; open(); });
 afterEach(() => { vi.restoreAllMocks(); store.close(); rmSync(directory, { recursive: true, force: true }); });
 function start(partner = 'model_01') {

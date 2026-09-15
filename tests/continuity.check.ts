@@ -26,11 +26,11 @@ it('opens externally converted legacy data, matches recovery and saves v2 renewa
     return result;
   };
   const original = join(root, 'original'); const originalBytes = readFileSync(join(original, 'stomylos.sqlite3'));
-  expect(() => new Store(original, resolve('native/advisory-lock.node'))).toThrow('external_migration_required');
+  expect(() => new Store(original, 'isolated' as const)).toThrow('external_migration_required');
   expect(readFileSync(join(original, 'stomylos.sqlite3'))).toEqual(originalBytes);
   const directory = join(root, 'electron-copy');
   expect(dump(directory)).toEqual(before);
-  let store = new Store(directory, resolve('native/advisory-lock.node'));
+  let store = new Store(directory, 'isolated' as const);
   try {
     expect(normalizeRecoveryTime(dump(directory))).toEqual(normalizeRecoveryTime(reference));
     const counts = before.tables.sessions.reduce((result: Json, session: Json) => { result[session.analysis_state] = (result[session.analysis_state] ?? 0) + 1; return result; }, {});
@@ -67,7 +67,7 @@ it('opens externally converted legacy data, matches recovery and saves v2 renewa
     const inventory = store.starterInventory();
     const newSession = store.createSession(); store.saveDraft(newSession.id, 'New Electron draft.\n한글');
     expect(store.integrity()).toEqual({ integrity: [{ integrity_check: 'ok' }], foreignKeys: [] });
-    store.close(); store = new Store(directory, resolve('native/advisory-lock.node'));
+    store.close(); store = new Store(directory, 'isolated' as const);
     expect(store.session(newSession.id).draft).toBe('New Electron draft.\n한글');
     expect(store.session(active.id).source_hash).toBe(hash(transcriptJson(store.messages(active.id))));
     expect(store.starterInventory().slots).toEqual(inventory.slots); expect(store.starterInventory().queued).toEqual(inventory.queued);

@@ -38,7 +38,7 @@ it('verifies exactly one request for each pinned generator through end, admissio
       const data = join(directory, `model-${index}`);
       if (existsSync(data)) {
         // Inspect existing successful attempts locally. Failed/unknown attempts cannot dispatch again.
-        store = new Store(data, resolve('native/advisory-lock.node'));
+        store = new Store(data, 'isolated' as const);
         const sessions = store.sessions(); expect(sessions).toHaveLength(1); const id = sessions[0].id;
         const job = store.starterJob(id)!; const attempts = store.starterAttempts(job.id); expect(attempts).toHaveLength(1);
         const attempt = attempts[0]; const metadata = JSON.parse(attempt.metadata);
@@ -49,12 +49,12 @@ it('verifies exactly one request for each pinned generator through end, admissio
         expect(metadata.provider).toBe(model.provider); expect(metadata.usage?.cost).toBeTypeOf('number');
         expect(JSON.parse(readFileSync(ledger, 'utf8')).filter((r: Json) => r.model === model.model)).toHaveLength(1);
         const saved = store.view(id); const inventory = store.starterInventory(); store.close();
-        store = new Store(data, resolve('native/advisory-lock.node')); expect(store.view(id)).toEqual(saved); expect(store.starterInventory()).toEqual(inventory);
+        store = new Store(data, 'isolated' as const); expect(store.view(id)).toEqual(saved); expect(store.starterInventory()).toEqual(inventory);
         report.results.push({ model: model.model, state: job.state, accepted: attempt.accepted_count, status: attempt.status, failure: attempt.failure, metadata, recheckedWithoutRequest: true });
         report.knownCostUsd += metadata.usage.cost; store.close(); store = null; continue;
       }
       mkdirSync(data, { mode: 0o700 });
-      store = new Store(data, resolve('native/advisory-lock.node'), () => index);
+      store = new Store(data, 'isolated' as const, () => index);
       let snapshot: AppSnapshot | null = null;
       const db = { ready: Promise.resolve(), async call(method: StoreMethod, ...args: any[]) { return (store![method] as Function).apply(store, args); },
         async close() { store!.close(); } } as unknown as DatabaseClient;
@@ -96,7 +96,7 @@ it('verifies exactly one request for each pinned generator through end, admissio
       expect(attempt.accepted_count).toBeGreaterThanOrEqual(0); expect(attempt.accepted_count).toBeLessThanOrEqual(2);
       expect(metadata.provider).toBe(model.provider); expect(metadata.usage?.cost).toBeTypeOf('number');
       const saved = store.view(id); const inventory = store.starterInventory();
-      await controller.command('close', undefined); controller = null; store = new Store(data, resolve('native/advisory-lock.node'));
+      await controller.command('close', undefined); controller = null; store = new Store(data, 'isolated' as const);
       expect(store.view(id)).toEqual(saved); expect(store.starterInventory()).toEqual(inventory); store.close(); store = null;
       console.log(`Verified generator ${index + 1}/3: ${model.model}`);
     }

@@ -26,7 +26,7 @@ afterAll(() => { if (bundle) rmSync(bundle, { recursive: true, force: true }); }
 
 it.each([false, true])('persists Auto routing through the real worker (fallback: %s)', async fallback => {
   const directory = mkdtempSync(join(tmpdir(), 'stomylos-router-worker-'));
-  const db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, resolve('native/advisory-lock.node'), () => {});
+  const db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, 'isolated' as const, () => {});
   try {
     await db.ready;
     const session = await db.call('createSession');
@@ -68,14 +68,14 @@ it.each([false, true])('persists Auto routing through the real worker (fallback:
 
 it('serves durable content-free Genie history through the shipped worker operations', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'stomylos-request-history-worker-'));
-  let db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, resolve('native/advisory-lock.node'), () => undefined);
+  let db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, 'isolated' as const, () => undefined);
   try {
     await db.ready;
     const session = await db.call('createSession');
     await db.call('genieRequestStart', 'genie-record', session.id, null, {model:'test-model',messages:[{content:'unsent private text'}]});
     await db.call('genieRequestFinish', 'genie-record', {usage:{cost:0.125}}, null);
     await db.close();
-    db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, resolve('native/advisory-lock.node'), () => undefined);
+    db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, 'isolated' as const, () => undefined);
     await db.ready;
     const rows = await db.call('requestHistory', session.id);
     expect(rows).toHaveLength(1);
@@ -91,7 +91,7 @@ it('serves durable content-free Genie history through the shipped worker operati
 it.each([['send', true], ['send', false], ['retry', true], ['retry', false]] as const)(
   'completes %s through worker recall with Memory enabled=%s', async (kind, enabled) => {
   const directory = mkdtempSync(join(tmpdir(), 'stomylos-recall-worker-'));
-  const db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, resolve('native/advisory-lock.node'), () => {});
+  const db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, 'isolated' as const, () => {});
   let controller: Coordinator | undefined;
   try {
     await db.ready;
@@ -143,7 +143,7 @@ it.each([['send', true], ['send', false], ['retry', true], ['retry', false]] as 
 it.each([['associativeInput', 'reject'], ['associativeFromInput', 'reject'], ['associativeInput', 'stall'], ['associativeFromInput', 'stall']] as const)(
   'continues reply when %s experiences %s', async (failing, failure) => {
   const directory = mkdtempSync(join(tmpdir(), 'stomylos-recall-failure-'));
-  const db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, resolve('native/advisory-lock.node'), () => {});
+  const db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, 'isolated' as const, () => {});
   let controller: Coordinator | undefined;
   const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
   try {

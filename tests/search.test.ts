@@ -13,7 +13,7 @@ import { validateCommand } from '../src/main/ipc';
 import * as searchContracts from '../src/main/search-contract';
 
 let store: Store, directory: string;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-search-')); store = new Store(directory, native); });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
 function submitted(mode: 'auto' | 'off' = 'auto', direct = false) {

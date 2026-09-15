@@ -46,7 +46,7 @@ beforeEach(async () => {
   holdRouter = false;
   intentionCalls = []; intentionFailures = []; holdIntention = false; intentionRelease = null;
   searchCalls = []; searchPhases = [];
-  directory = mkdtempSync(join(tmpdir(), 'stomylos-controller-')); store = new Store(directory, resolve('native/advisory-lock.node'));
+  directory = mkdtempSync(join(tmpdir(), 'stomylos-controller-')); store = new Store(directory, 'isolated' as const);
   patternCalls=[];patternPolicies=[];holdPattern=false;latePattern=false; lateGrammar = false; calls = []; snapshots = []; failMethod = null; loseAck = null; routerFails = false; grammarFails = false; holdStream = false; holdGrammar = false; streamReady = null;
   streamFails = false;
   holdPrepare = false; releasePrepare = null;
@@ -398,7 +398,7 @@ it('blocks an ordinary close while interrupted text is unsaved, then closes afte
   await expect(controller.command('retrySaving', undefined)).rejects.toThrow('save_still_unavailable');
   failMethod = null; await controller.command('retrySaving', undefined); await closing;
   expect(closed).toBe(true); expect(calls).toHaveLength(2);
-  store = new Store(directory, resolve('native/advisory-lock.node'));
+  store = new Store(directory, 'isolated' as const);
   expect(store.messages(id).at(-1)).toMatchObject({ content: 'Partial response', delivery: 'interrupted' });
 });
 it('retries only the result transaction after a received reply could not be saved', async () => {
@@ -433,7 +433,7 @@ it.each(['queued', 'dispatched'])('blocks new chats during %s grammar and preser
   await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
   expect(store.endBlocker()).toBe(id);
   const requestCount = calls.length; await controller.command('close', undefined);
-  store = new Store(directory, resolve('native/advisory-lock.node'));
+  store = new Store(directory, 'isolated' as const);
   expect(store.session(id).analysis_state).toBe(status === 'queued' ? 'pending' : 'failed');
   expect(store.endBlocker()).toBe(id);
   expect(calls).toHaveLength(requestCount);
@@ -447,7 +447,7 @@ it('gates a new chat while independent background roles run and interrupts them 
   await controller.command('endSession', { sessionId: first }); await waitFor(() => store.session(first).analysis_state === 'running');
   await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
   expect(store.session(first).analysis_state).toBe('running'); expect(store.starterJob(first)).toBeNull();
-  await controller.command('close', undefined); store = new Store(directory, resolve('native/advisory-lock.node'));
+  await controller.command('close', undefined); store = new Store(directory, 'isolated' as const);
   expect(store.starterJob(first)).toBeNull(); expect(renewalCalls).toHaveLength(0);
   expect(store.endBlocker()).toBe(first);
 });
@@ -457,7 +457,7 @@ it('keeps no-key and restarted jobs pending, and key reload or history inspectio
   expect(store.starterJob(id)).toBeNull(); expect(store.view(id).intentions).toBeUndefined(); expect(renewalCalls).toHaveLength(0);
   keyAvailable = true; await controller.command('refreshKey', undefined); await controller.command('loadSession', { sessionId: id });
   expect(renewalCalls).toHaveLength(0); await controller.command('close', undefined);
-  store = new Store(directory, resolve('native/advisory-lock.node')); await controller.initialize();
+  store = new Store(directory, 'isolated' as const); await controller.initialize();
   await controller.command('loadSession', { sessionId: id }); expect(renewalCalls).toHaveLength(0);
   expect(store.starterJob(id)).toBeNull(); expect(store.view(id).intentions).toBeUndefined();
 });
@@ -545,7 +545,7 @@ it('cancels active memory on close and requires explicit recovery after restart'
   const id = activeId(); await send(id); await idle(); holdMemory = true;
   await controller.command('endSession', { sessionId: id }); await waitFor(() => memoryRelease !== null);
   await controller.command('close', undefined);
-  store = new Store(directory, resolve('native/advisory-lock.node'));
+  store = new Store(directory, 'isolated' as const);
   expect(store.memoryJob(id)?.state).toBe('interrupted');
   const complete = vi.fn(async (body: Json) => ({ content: body.model === 'google/gemini-3.8-flash' ? '{"add":[],"update":[],"delete":[]}' : 'What is next?\nWhat feels different?', metadata: {} }));
   const db = { ready: Promise.resolve(), call: async (method: StoreMethod, ...args: any[]) => (store[method] as Function).apply(store, args), close: async () => store.close() } as unknown as DatabaseClient;

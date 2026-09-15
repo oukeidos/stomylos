@@ -14,7 +14,7 @@ import { validateCommand } from '../src/main/ipc';
 const patternBody = (sources: PatternSource[], contract = patternContract) => assemblePatternBody(sources, contract);
 const validatePatternHtml = (html: string) => validateHtml(html, patternContract);
 let directory: string, store: Store;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 const html = '<!DOCTYPE html><html><head><title>Practice</title></head><body><p>No recurring pattern established.</p></body></html>';
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-pattern-')); store = new Store(directory, native); });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });

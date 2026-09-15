@@ -16,7 +16,7 @@ it('opens, retries, saves and reloads explanations through the real worker', asy
   mkdirSync('test-results', { recursive: true });
   const bundle = mkdtempSync(resolve('test-results/explain-worker-'));
   const directory = mkdtempSync(join(tmpdir(), 'stomylos-explain-worker-'));
-  const native = resolve('native/advisory-lock.node');
+  const native = 'isolated' as const;
   let db: DatabaseClient | undefined;
   let controller: ExplainController | undefined;
   try {

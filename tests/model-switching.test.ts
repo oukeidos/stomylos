@@ -14,7 +14,7 @@ import type { Json, Message } from '../src/shared/types';
 import { universalSnapshot, v5Snapshot } from './time-fixtures';
 
 let directory: string, store: Store, raw: Database.Database;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-switch-')); store = new Store(directory, native); raw = (store as unknown as { db: Database.Database }).db; });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
 function seedLegacy(id: string) {

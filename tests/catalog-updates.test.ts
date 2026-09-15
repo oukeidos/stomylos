@@ -24,7 +24,7 @@ const dirs:string[]=[],dbs:Database.Database[]=[],stores:Store[]=[];
 afterEach(()=>{for(const s of stores.splice(0))s.close();for(const db of dbs.splice(0))if(db.open)db.close();for(const d of dirs.splice(0))rmSync(d,{recursive:true,force:true});});
 function dir(){const d=mkdtempSync(join(tmpdir(),'catalog-update-'));dirs.push(d);return d;}
 function legacy(version=23){const directory=dir(),db=new Database(join(directory,'stomylos.sqlite3'));dbs.push(db);db.exec(({13:s13,18:s18,19:s19,23:s23} as Record<number,string>)[version]);db.pragma(`user_version=${version}`);db.transaction(()=>new StarterStore(db).initialize())();const doc=memoryJson(version>=22?flattenMemory(emptyMemory('shared')):emptyMemory('shared'));db.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run(doc,memoryHash(doc));return {db,directory};}
-function fresh(){const directory=dir(),store=new Store(directory,resolve('native/advisory-lock.node'));stores.push(store);return {directory,store,db:(store as any).db as Database.Database};}
+function fresh(){const directory=dir(),store=new Store(directory,'isolated' as const);stores.push(store);return {directory,store,db:(store as any).db as Database.Database};}
 const id='catalog:joint-v1:Q00004';
 const counts=(db:Database.Database)=>db.prepare('SELECT answer_count,skip_count,eligible FROM starter_catalog_entries WHERE question_id=?').get(id);
 it('reconstructs frozen v1 byte-for-byte and bundles exact approved revision 2',()=>{
@@ -65,7 +65,7 @@ it.each(['draft','parked','legacy'])('preserves a changed %s opening, counts by 
  db.prepare("INSERT INTO starter_events VALUES('shown',?,'presented',?,'stomylos_catalog_v1',?,'today')").run(session.id,originalId,old.en);
  const snap=JSON.stringify(db.prepare('SELECT * FROM sessions').all());const msg=JSON.stringify(db.prepare('SELECT * FROM messages').all());migrateDatabase(db,directory);expect(JSON.stringify(db.prepare('SELECT * FROM sessions').all())).toBe(snap);expect(JSON.stringify(db.prepare('SELECT * FROM messages').all())).toBe(msg);
  for(let i=0;i<4;i++)expect(selectCatalog(db,undefined,session.id,()=>0).question.id).not.toBe(id);
- db.close();const reopened=new Store(directory,resolve('native/advisory-lock.node'));stores.push(reopened);
+ db.close();const reopened=new Store(directory,'isolated' as const);stores.push(reopened);
  if(mode==='parked')reopened.setOpening(session.id,'restore',saved.opening_revision,'starter');
  expect(reopened.session(session.id).starter_text).toBe(old.en);expect(reopened.session(session.id).draft).toBe('My unfinished answer.');
  reopened.submit(session.id,'My answer.','submit');reopened.submit(session.id,'My answer.','submit');expect(counts((reopened as any).db)).toEqual({answer_count:1,skip_count:0,eligible:1});expect(reopened.messages(session.id)[0].content).toBe(old.en);
@@ -93,6 +93,6 @@ it('skips preserved v1 text exactly once and uses stable IDs for recent and same
  db.prepare("INSERT INTO starter_events VALUES('old-shown',?,'presented',?,'stomylos_catalog_v1',?,'then')").run(s.id,id,old.en);migrateDatabase(db,directory);
  db.transaction(()=>{db.prepare("UPDATE starter_catalog_entries SET eligible=0 WHERE question_id NOT IN (?, 'catalog:joint-v1:Q05912')").run(id);db.prepare("UPDATE starter_questions SET state='retired' WHERE id IN (SELECT question_id FROM starter_catalog_entries WHERE eligible=0)").run();})();
  expect(selectCatalog(db,undefined,undefined,()=>0).question.id).toBe('catalog:joint-v1:Q05912');expect(selectCatalog(db,undefined,s.id,()=>0).question.id).toBe('catalog:joint-v1:Q05912');
- db.close();const store=new Store(directory,resolve('native/advisory-lock.node'));stores.push(store);store.replaceQuestion(s.id,'skip-old',id,s.opening_revision);store.replaceQuestion(s.id,'skip-old',id,s.opening_revision);
+ db.close();const store=new Store(directory,'isolated' as const);stores.push(store);store.replaceQuestion(s.id,'skip-old',id,s.opening_revision);store.replaceQuestion(s.id,'skip-old',id,s.opening_revision);
  const current=(store as any).db as Database.Database;expect(counts(current)).toEqual({answer_count:0,skip_count:1,eligible:1});expect(current.prepare('SELECT outgoing_text,outgoing_version FROM starter_skips').get()).toEqual({outgoing_text:old.en,outgoing_version:'stomylos_catalog_v1'});
 });

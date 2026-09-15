@@ -12,7 +12,7 @@ import { universalSnapshot } from './time-fixtures';
 // @ts-expect-error The standalone converter deliberately has no TypeScript runtime dependency.
 import { convertPatterns } from '../scripts/convert-patterns.mjs';
 let directory:string, file:string;
-const native=resolve('native/advisory-lock.node');
+const native='isolated' as const;
 beforeEach(()=>{
   directory=mkdtempSync(join(tmpdir(),'stomylos-pattern-conversion-')); file=join(directory,'stomylos.sqlite3');
   const db=new Database(file); db.exec(readFileSync('tests/fixtures/schema-v6-before-pattern.sql','utf8')); db.pragma('user_version=6');

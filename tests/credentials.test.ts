@@ -161,7 +161,7 @@ it('uses native local paths and preserves the existing legacy home path on all t
   expect(keyFilePath('darwin', { HOME: '/Users/test' })).toBe('/Users/test/.stomylos/.env');
 });
 it('publishes source and availability through the coordinator without leaking keys or invoking providers', async () => {
-  const store = new Store(directory, resolve('native/advisory-lock.node'));
+  const store = new Store(directory, 'isolated' as const);
   const db = { ready: Promise.resolve(), call: async (name: string, ...args: any[]) => (store as any)[name](...args) } as DatabaseClient;
   const gateway = { complete: vi.fn(), stream: vi.fn() } as unknown as Gateway;
   const settings: Settings = { keyPresent: false, keyPath: envFile, dataPath: directory, appVersion: 'test', development: false };

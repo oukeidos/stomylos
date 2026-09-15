@@ -104,7 +104,7 @@ it('migrates a schema-32 database to the additive associative index without chan
     const before = fixture.db.prepare('SELECT document,document_hash FROM shared_memory').get();
     fixture.store.close();
     fixture.db.exec('DROP TABLE genie_request_attempts; DROP INDEX associative_embedding_queue; DROP TABLE associative_embeddings; PRAGMA user_version=32;'); fixture.db.close();
-    upgraded = new Store(fixture.directory, resolve('native/advisory-lock.node'));
+    upgraded = new Store(fixture.directory, 'isolated' as const);
     expect(upgraded.integrity()).toEqual({ integrity: [{ integrity_check: 'ok' }], foreignKeys: [] });
     const verify = new Database(resolve(fixture.directory, 'stomylos.sqlite3'));
     try {

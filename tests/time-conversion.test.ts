@@ -16,7 +16,7 @@ import { hash } from '../src/main/contracts';
 import { convertTime } from '../scripts/convert-time.mjs';
 
 let directory: string, file: string;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'stomylos-time-conversion-')); file = join(directory, 'stomylos.sqlite3');
   const db = new Database(file); db.exec(readFileSync('tests/fixtures/schema-v5.sql', 'utf8')); db.pragma('user_version=5');

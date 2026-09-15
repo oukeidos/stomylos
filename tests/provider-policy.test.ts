@@ -66,7 +66,7 @@ it('rejects raw provider policy bypasses before fetch and retains model validati
   await expect(gateway.complete(body, { allowed_models: ['selected'], provider: null }, new AbortController().signal, 1000)).rejects.toThrow('response_identity');
 });
 it('checks the actual wire for every active text request shape and keeps search limits unchanged', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'stomylos-policy-matrix-')), store = new Store(dir, resolve('native/advisory-lock.node'));
+  const dir = mkdtempSync(join(tmpdir(), 'stomylos-policy-matrix-')), store = new Store(dir, 'isolated' as const);
   const cases: { name: string; body: Json; identity?: Json }[] = [];
   const add = (name: string, body: Json, identity?: Json) => cases.push({ name, body, identity });
   try {
@@ -131,7 +131,7 @@ it('keeps network entry points explicit so a new raw transport cannot bypass the
   for (const file of direct) expect(readFileSync(join('src/main',file),'utf8')).toContain('assertProviderBody(');
 });
 it('sends Lighter and Standard conversation prefixes unchanged through search and central provider admission', async () => {
-  const dir=mkdtempSync(join(tmpdir(),'stomylos-reply-wire-')), store=new Store(dir,resolve('native/advisory-lock.node'));
+  const dir=mkdtempSync(join(tmpdir(),'stomylos-reply-wire-')), store=new Store(dir,'isolated' as const);
   const wire=vi.fn(async(_url:unknown,init:RequestInit)=>{
     const body=JSON.parse(init.body as string);assertProviderBody(body);
     return new Response(`data: ${JSON.stringify({model:body.model,provider:'Alternate provider',choices:[{delta:{content:'Accepted'},finish_reason:'stop'}]})}\n\ndata: [DONE]\n\n`);

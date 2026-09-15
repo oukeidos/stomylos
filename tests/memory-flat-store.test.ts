@@ -9,7 +9,7 @@ const dirs:string[]=[], stores:Store[]=[];
 afterEach(()=>{for(const s of stores)s.close();for(const d of dirs)rmSync(d,{recursive:true,force:true});stores.length=dirs.length=0;});
 it('creates flat memory, freezes new context and commits a split-array result through the product store',()=>{
  const dir=mkdtempSync(join(tmpdir(),'stomylos-flat-'));dirs.push(dir);
- const store=new Store(dir,resolve('native/advisory-lock.node'));stores.push(store);
+ const store=new Store(dir,'isolated' as const);stores.push(store);
  expect(store.currentMemory()).toEqual({character_id:'shared',revision:0,database_records:[]});
  const session=store.createSession();expect(JSON.parse(session.chat_config).memory_version).toBe(flatMemoryVersion);
  store.searchMode(session.id,'off');store.selectManual(session.id,'model_04');store.submit(session.id,'I like quiet museums.');store.commitRoute(session.id,null,'public_fixture',null);

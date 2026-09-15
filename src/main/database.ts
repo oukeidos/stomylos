@@ -40,7 +40,7 @@ import schema from './schema.sql?raw';
 import type { OpeningKind, Json, Message, RequestRecord, Role, Session, SessionView, Starter, GrammarUnit, SessionPage, SessionSummary, HistoryFilter } from '../shared/types';
 import { AppFailure } from './errors';
 import { budget, character, chooseStarter, config, conversationSnapshot, sessionRuntime, routerSnapshot, eligible, grammarSnapshot, hash, isLearner, leastUsed, transcriptJson, validateGrammar, routerScores } from './contracts';
-import { lockDirectory } from './storage';
+import { lockDirectory, type StoreAccess } from './storage';
 import { StarterStore } from './starter-store';
 import { IntentionQuestionStore } from './intention-question-store';
 import { MemoryStore } from './memory-store';
@@ -81,8 +81,8 @@ export class Store {
   private search!: SearchStore;
   private partners!: PartnerStore;
   private explanations!: ExplainStore;
-  constructor(directory: string, nativePath: string, pickGenerator: (n: number) => number = randomInt, private clock: () => RecordedTime = captureTime, externallyLocked = false) {
-    this.unlock = externallyLocked ? () => undefined : lockDirectory(directory, nativePath);
+  constructor(directory: string, access: StoreAccess, pickGenerator: (n: number) => number = randomInt, private clock: () => RecordedTime = captureTime) {
+    this.unlock = lockDirectory(directory, access);
     try {
       const file = join(directory, 'stomylos.sqlite3');
       let existing = existsSync(file) && statSync(file).size > 0;

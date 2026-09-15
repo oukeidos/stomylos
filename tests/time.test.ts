@@ -15,7 +15,7 @@ import { timed, universalSnapshot, publicTime, v5Snapshot } from './time-fixture
 import type { RecordedTime } from '../src/shared/time';
 
 let directory: string, store: Store, raw: Database.Database, clock: RecordedTime;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 function open() { store = new Store(directory, native, () => 0, () => clock); raw = (store as unknown as { db: Database.Database }).db; }
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-time-')); clock = publicTime; open(); });
 afterEach(() => { vi.restoreAllMocks(); store.close(); rmSync(directory, { recursive: true, force: true }); });

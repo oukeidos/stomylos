@@ -7,12 +7,12 @@ const stores=new WeakMap<Store,Database.Database>();
 
 export function coldFixture() {
   const directory = mkdtempSync('/tmp/stomylos-cold-');
-  let store = new Store(directory, resolve('native/advisory-lock.node'));
+  let store = new Store(directory, 'isolated' as const);
   const db = new Database(join(directory, 'stomylos.sqlite3'));
   db.pragma('foreign_keys=ON');stores.set(store,db);
   return {
     directory, db, get store() { return store; },
-    reopen() { store.close(); store = new Store(directory, resolve('native/advisory-lock.node'));stores.set(store,db); },
+    reopen() { store.close(); store = new Store(directory, 'isolated' as const);stores.set(store,db); },
     close() { store.close(); db.close(); rmSync(directory, { recursive: true, force: true }); }
   };
 }

@@ -9,7 +9,7 @@ import { Store } from '../src/main/database';
 import { config, conversationSnapshot, grammarSnapshot, hash, routerSnapshot, transcriptJson } from '../src/main/contracts';
 
 let directory: string; let store: Store;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-store-')); store = new Store(directory, native); });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
 function answer(text = '  I enjoy quiet mornings.\n') {

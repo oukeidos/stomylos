@@ -13,7 +13,7 @@ import { v5Snapshot } from './time-fixtures';
 import { convertBookmarks } from '../scripts/convert-bookmarks.mjs';
 
 let directory: string, file: string;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'stomylos-bookmark-conversion-')); file = join(directory, 'stomylos.sqlite3');
   const db = new Database(file); db.exec(readFileSync('tests/fixtures/schema-v10-before-bookmarks.sql', 'utf8'));

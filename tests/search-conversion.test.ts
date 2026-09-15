@@ -13,7 +13,7 @@ import type { Message } from '../src/shared/types';
 // @ts-expect-error The external converter uses the Electron dependency runtime.
 import { convertSearch } from '../scripts/convert-search.mjs';
 let directory: string, file: string;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'stomylos-search-conversion-')); file = join(directory, 'stomylos.sqlite3');
   const db = new Database(file); db.exec(readFileSync('tests/fixtures/schema-v7-before-search.sql', 'utf8')); db.pragma('user_version=7');

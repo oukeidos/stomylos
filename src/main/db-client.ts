@@ -1,3 +1,4 @@
+import type { StoreAccess } from './storage';
 import { Worker } from 'node:worker_threads';
 import type { Store, StoreMethod } from './database';
 import { AppFailure } from './errors';
@@ -7,8 +8,8 @@ export class DatabaseClient {
   private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
   private terminal = false;
   readonly ready: Promise<void>;
-  constructor(entry: string, directory: string, nativePath: string, onFailure: () => void, externallyLocked = false) {
-    this.worker = new Worker(entry, { workerData: { directory, nativePath, externallyLocked } });
+  constructor(entry: string, directory: string, access: StoreAccess, onFailure: () => void) {
+    this.worker = new Worker(entry, { workerData: { directory, access } });
     let readyResolve!: () => void; let readyReject!: (error: Error) => void;
     this.ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
     const fail = (code: string) => {

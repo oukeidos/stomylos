@@ -4,9 +4,9 @@ A Linux desktop app for English practice through AI chat and grammar pattern rep
 
 ## Installation
 
-Tested on Linux Mint. Requires Node.js 24, npm, a C compiler and Node-API headers
-(`node_api.h`, normally in `/usr/include/node`). For headers elsewhere, set
-`STOMYLOS_NODE_HEADERS` to their directory.
+Tested on Linux Mint. Requires Node.js 24 and npm. The normal source build does
+not require Python, a C compiler or Node-API development headers; native npm
+dependencies use their supplied binaries on supported platforms.
 
 Download or clone this repository, open a terminal in its folder, and run:
 
@@ -53,6 +53,17 @@ npm run model:fetch
 npm run build
 npm start
 ```
+
+### Updating from the older file-lock version
+
+Close all older Stomylos instances and maintenance tools before the first launch
+of this version. If startup reports an old lock file, rename only the
+`stomylos.lock` file at the exact path shown in the message, then reopen the app.
+Do not rename or remove the database or its backup files. The app intentionally
+cannot remove an old lock file while an older process might still own it.
+After this one-time transition, opening Stomylos again focuses the existing window.
+Older versions and legacy maintenance tools cannot access the transitioned data
+using their previous lock protocol.
 
 ## Provider data policy
 

@@ -7,7 +7,7 @@ import { Store } from '../src/main/database';
 import { conversationSnapshot, grammarSnapshot } from '../src/main/contracts';
 import { validateCommand } from '../src/main/ipc';
 let directory: string, store: Store, raw: Database.Database;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'stomylos-delete-')); store = new Store(directory, native);
   raw = (store as unknown as { db: Database.Database }).db;

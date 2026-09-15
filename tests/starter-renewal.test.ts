@@ -10,7 +10,7 @@ import { parseStarterQuestions, questionKey, selectStarter, starterBody, starter
 import goldens from './fixtures/contract-goldens.json';
 
 let directory: string; let store: Store; let raw: Database.Database; let choices: number[];
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'stomylos-starters-')); choices = [];
   store = new Store(directory, native, n => { choices.push(n); return (choices.length - 1) % n; });

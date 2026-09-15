@@ -15,7 +15,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 const fixtures:{dir:string;store:Store;db:Database.Database}[]=[];
 afterEach(()=>{for(const f of fixtures.splice(0)){f.store.close();f.db.close();rmSync(f.dir,{recursive:true,force:true});}});
-function fixture(){const dir=mkdtempSync('/tmp/stomylos-session-add-'),store=new Store(dir,resolve('native/advisory-lock.node')),db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);return f;}
+function fixture(){const dir=mkdtempSync('/tmp/stomylos-session-add-'),store=new Store(dir,'isolated' as const),db=new Database(join(dir,'stomylos.sqlite3'));const f={dir,store,db};fixtures.push(f);return f;}
 function session(store:Store){const s=store.createSession();store.searchMode(s.id,'off');store.selectManual(s.id,'model_01');return s;}
 function send(store:Store,id:string,text='I like green tea.'){store.submit(id,text);store.commitRoute(id,null,'fixture',null);return store.startChat(store.prepareChat(id,crypto.randomUUID()).id);}
 function prepare(store:Store){const j=store.memoryAddReady()!;const a=store.prepareMemoryAdd(j.ordinal,crypto.randomUUID());const effective=store.prepareProvider('memory_add',a.id,JSON.parse(a.body),(a.phase==='link'?JSON.parse(j.config).linker:JSON.parse(j.config)).identity);expect(effective.body.max_tokens).toBe(a.phase==='link'?4096:128000);store.dispatchMemoryAdd(a.id);return a;}
@@ -64,7 +64,7 @@ it('resumes received results without redispatch and archives every overflowing r
  const f=fixture(),s=session(f.store),r=send(f.store,s.id);f.store.finishReply(r.request.id,r.bubble.id,'Thanks',{});f.store.end(s.id);
  const a=prepare(f.store);f.store.receiveMemoryAdd(a.id,JSON.stringify({add:['a'.repeat(2998),'b'.repeat(2998),'Newest']}),{});f.store.acceptMemoryAdd(a.id);
  const link=prepare(f.store);f.store.receiveMemoryAdd(link.id,'{"sources":[{"id":1,"ids":[1]},{"id":2,"ids":[1]},{"id":3,"ids":[1]}]}',{});
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);
  const complete=vi.fn(async()=>{throw Error('No inference');});const c=controller(f,{complete,async stream(){throw Error('No chat');}},false);
  try{await c.initialize();await vi.waitFor(()=>expect(f.store.endBlocker()).toBeNull());expect(complete).not.toHaveBeenCalled();
  expect(f.store.memoryManagement().document.database_records.map(r=>r.text)).toEqual(['Newest']);
@@ -81,8 +81,8 @@ it('does not infer during Send; End blocks until Terra extraction and Luna linki
 });
 it('keeps active chats active on restart, makes unknown outcomes explicit, and retries the exact session',()=>{
  const f=fixture(),s=session(f.store),r=send(f.store,s.id);f.store.finishReply(r.request.id,r.bubble.id,'Thanks',{});
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));expect(f.store.session(s.id).state).toBe('active');expect(f.store.memoryAddReady()).toBeNull();
- f.store.end(s.id);const a=prepare(f.store);f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);expect(f.store.session(s.id).state).toBe('active');expect(f.store.memoryAddReady()).toBeNull();
+ f.store.end(s.id);const a=prepare(f.store);f.store.close();f.store=new Store(f.dir,'isolated' as const);
  expect(f.store.memoryAddReady()).toBeNull();const j=f.store.view(s.id).memory.addJobs![0];expect(j.failure).toBe('interrupted_unknown_outcome');
  f.store.retryMemoryAdd(s.id,j.ordinal);const b=prepare(f.store);expect(b.body).toBe(a.body);f.store.receiveMemoryAdd(b.id,'{"add":[]}',{});f.store.acceptMemoryAdd(b.id);expect(f.store.endBlocker()).toBeNull();
 });

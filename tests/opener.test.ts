@@ -14,7 +14,7 @@ import { AppFailure } from '../src/main/errors';
 import type { DatabaseClient } from '../src/main/db-client';
 import type { Json } from '../src/shared/types';
 let dir: string, store: Store;
-beforeEach(() => { dir=mkdtempSync(join(tmpdir(),'opener-')); store=new Store(dir,resolve('native/advisory-lock.node')); });
+beforeEach(() => { dir=mkdtempSync(join(tmpdir(),'opener-')); store=new Store(dir,'isolated' as const); });
 afterEach(() => { store.close(); rmSync(dir,{recursive:true,force:true}); });
 const raw=()=> (store as any).db;
 function prepare(id:string, op=randomUUID()) { return store.prepareOpener(id,op,store.session(id).opening_revision)!; }
@@ -27,7 +27,7 @@ it('starts Off with no corpus draw and freezes a single successful source across
   const a=success(s.id), message=store.messages(s.id)[0];
   expect(()=>prepare(s.id)).toThrow('opener_already_generated');
   store.setOpening(s.id,'hide',store.session(s.id).opening_revision,'user'); expect(store.messages(s.id)).toEqual([]);
-  store.close(); store=new Store(dir,resolve('native/advisory-lock.node'));
+  store.close(); store=new Store(dir,'isolated' as const);
   store.setOpening(s.id,'show',store.session(s.id).opening_revision,'starter'); expect(store.messages(s.id)).toEqual([message]);
   expect(raw().prepare('SELECT COUNT(*) n FROM starter_events').get().n).toBe(1);
   expect(store.requestHistory(s.id).find(x=>x.id===a.id)).toMatchObject({kind:'Conversation opener',status:'succeeded'});
@@ -43,11 +43,11 @@ it('rejects duplicate/stale generation and retries failures with the same frozen
 });
 it('recovers received results locally and interrupts dispatched attempts without replay', () => {
   const s=store.createSession(), a=prepare(s.id);store.dispatchOpener(a.id);
-  store.close();store=new Store(dir,resolve('native/advisory-lock.node'));
+  store.close();store=new Store(dir,'isolated' as const);
   expect(store.openerView(s.id)?.status).toBe('interrupted');
   const b=prepare(s.id);store.dispatchOpener(b.id);store.receiveOpener(b.id,'A quiet morning feels nice.',{});
   expect(()=>prepare(s.id)).toThrow('reply_in_progress');
-  store.close();store=new Store(dir,resolve('native/advisory-lock.node'));
+  store.close();store=new Store(dir,'isolated' as const);
   expect(store.openerView(s.id)).toMatchObject({generated:true,status:'succeeded'});
   expect(store.messages(s.id)[0].content).toBe('A quiet morning feels nice.');
 });

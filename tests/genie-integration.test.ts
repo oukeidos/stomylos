@@ -12,7 +12,7 @@ const range: GenieRange = { start: 0, end: 0, direction: 'none', scope: 'draft' 
 let dir: string, store: Store, c: Coordinator, gateway: Gateway, id: string, fail: string | null, lost: boolean;
 let events: any[], complete: ReturnType<typeof vi.fn>;
 beforeEach(async () => {
-  dir = mkdtempSync('/tmp/stomylos-genie-test-'); store = new Store(dir, resolve('native/advisory-lock.node')); fail = null; lost = false; events = [];
+  dir = mkdtempSync('/tmp/stomylos-genie-test-'); store = new Store(dir, 'isolated' as const); fail = null; lost = false; events = [];
   const db = { ready: Promise.resolve(), call: async (method: StoreMethod, ...args: any[]) => {
     if (fail === method) throw new AppFailure('operation_failed');
     const result = (store[method] as Function).apply(store, args);
@@ -78,7 +78,7 @@ it('makes no request during source-save failure and rejects unsaved/stale source
 });
 it('retains the applied draft across process restart without persisting or dispatching help', async () => {
   const e = await open(); await c.command('genieApply', { episodeId: e.id, candidateId: e.candidateId!, revision: 2, operationId: 'apply' });
-  await c.command('close', undefined); store = new Store(dir, resolve('native/advisory-lock.node'));
+  await c.command('close', undefined); store = new Store(dir, 'isolated' as const);
   expect(store.session(id).draft).toBe('I enjoy walking.'); expect(store.requests(id)).toEqual([]);
   expect(c.genie.snapshot().episode).toBeNull(); expect(complete).toHaveBeenCalledTimes(1);
 });

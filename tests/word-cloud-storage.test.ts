@@ -29,7 +29,7 @@ it('migrates 39 with rollback, preserved sessions, backup, restart and no-op',()
  } finally {db.close();rmSync(dir,{recursive:true,force:true});}
 });
 it('validates content-free IPC and persists the global setting through coordinator and fresh-store restart',async()=>{
- const dir=mkdtempSync('/tmp/stomylos-cloud-store-');let store=new Store(dir,resolve('native/advisory-lock.node'));
+ const dir=mkdtempSync('/tmp/stomylos-cloud-store-');let store=new Store(dir,'isolated' as const);
  try {
   const session=store.createSession(), before=store.session(session.id);
   const complete=vi.fn(), stream=vi.fn();
@@ -42,7 +42,7 @@ it('validates content-free IPC and persists the global setting through coordinat
   expect((await app.snapshot()).settings.wordCloud).toBe(false);
   expect(complete).not.toHaveBeenCalled();expect(stream).not.toHaveBeenCalled();
   expect(store.session(session.id)).toEqual(before);expect(store.messages(session.id)).toEqual([]);
-  store.close();store=new Store(dir,resolve('native/advisory-lock.node'));
+  store.close();store=new Store(dir,'isolated' as const);
   expect(store.wordCloudPreference()).toBe(false);
   store.setWordCloudPreference(true);expect(store.wordCloudPreference()).toBe(true);
  } finally {store.close();rmSync(dir,{recursive:true,force:true});}

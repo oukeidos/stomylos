@@ -16,7 +16,7 @@ const dirs: string[] = [], stores: Store[] = [];
 afterEach(() => { for (const s of stores.splice(0)) s.close(); for (const d of dirs.splice(0)) rmSync(d,{recursive:true,force:true}); vi.restoreAllMocks(); });
 function setup(reselection = false) {
   const dir=mkdtempSync(join(tmpdir(),'stomylos-router-chain-'));dirs.push(dir);
-  const store=new Store(dir,resolve('native/advisory-lock.node'));stores.push(store);
+  const store=new Store(dir,'isolated' as const);stores.push(store);
   const session=store.createSession();store.searchMode(session.id,'off');store.submit(session.id,'Explain this idea.');
   if(reselection) { store.commitRoute(session.id,{model_03:2},null,null);store.changePartner(session.id,null,randomUUID(),0); }
   const saved=JSON.parse(store.session(session.id).chat_config);
@@ -57,7 +57,7 @@ it('does not dispatch a secondary on save failure, and restart requires explicit
   await expect(recoverRouter(f.first,f.saved,f.body,f.io,gateway,new AbortController().signal)).rejects.toThrow('operation_failed');
   expect(gateway.complete).toHaveBeenCalledTimes(1);expect(f.store.requests(f.session.id)).toHaveLength(1);save.mockRestore();
   f.store.close();stores.splice(stores.indexOf(f.store),1);
-  const reopened=new Store(f.dir,resolve('native/advisory-lock.node'));stores.push(reopened);
+  const reopened=new Store(f.dir,'isolated' as const);stores.push(reopened);
   expect(reopened.view(f.session.id).partner.pending?.state).toBe('failed');
   expect(reopened.requests(f.session.id)).toHaveLength(1);
 });

@@ -12,7 +12,7 @@ import { emptyMemory, memoryHash, memoryJson } from '../src/main/memory-updater'
 import { intentionBody, intentionConfig, intentionDiff, intentionFallback, parseIntentionQuestion } from '../src/main/intention-questions';
 import { validateCommand } from '../src/main/ipc';
 let directory: string, store: Store, raw: Database.Database;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-intentions-')); store = new Store(directory, native); raw = (store as unknown as { db: Database.Database }).db; });
 afterEach(() => { vi.useRealTimers(); store.close(); rmSync(directory, { recursive: true, force: true }); });
 function ended() {

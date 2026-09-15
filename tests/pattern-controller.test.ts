@@ -14,7 +14,7 @@ const html = '<!DOCTYPE html><html><head><title>Practice</title></head><body>No 
 let dir: string, store: Store, controller: PatternReportController;
 const deferred = <T,>() => { let resolve!: (v: T) => void, reject!: (e: unknown) => void; const promise = new Promise<T>((r,j)=>{resolve=r;reject=j;}); return {promise,resolve,reject}; };
 beforeEach(() => {
-  dir=mkdtempSync(join(tmpdir(),'stomylos-pattern-controller-')); store=new Store(dir,resolve('native/advisory-lock.node'));
+  dir=mkdtempSync(join(tmpdir(),'stomylos-pattern-controller-')); store=new Store(dir,'isolated' as const);
   for(let i=0;i<5;i++) { const s=store.createSession(); store.submit(s.id,'I enjoyed walking.'); store.end(s.id);
     const a=store.createRequest(s.id,'grammar',grammarSnapshot()); store.dispatch(a.id);
     store.saveAnalysis(a.id,JSON.stringify({units:[{index: 0,corrected_text:'I enjoyed walking.',explanation:''}]}),{}); }
@@ -125,6 +125,6 @@ it('aborts on database failure and never commits a late successful response',asy
   r.remote.resolve({content:html,metadata:{}});await r.done();
   expect(r.hooks.write.mock.calls.some(call=>call[0]==='patternSave')).toBe(false);
   expect(()=>store.patternHtml(report.id)).toThrow('pattern_not_ready');
-  store.close();store=new Store(dir,resolve('native/advisory-lock.node'));
+  store.close();store=new Store(dir,'isolated' as const);
   expect(store.patternDetail(report.id).status).toBe('interrupted');expect(r.complete).toHaveBeenCalledTimes(1);
 });

@@ -6,7 +6,7 @@ const methods: StoreMethod[] = ['wordCloudPreference', 'setWordCloudPreference',
   'dispatch', 'prepareReply', 'checkpoint', 'finishRequest', 'finishReply', 'failRequest', 'end', 'saveAnalysis', 'integrity', 'starterInventory', 'starterJob', 'starterAttempt', 'starterAttempts', 'retryStarter', 'dispatchStarter', 'saveStarter', 'failStarter','admitAssociativeMemory',
   'startChat', 'memoryPreference', 'setMemoryPreference', 'memoryManagement', 'prepareMemoryEdit', 'commitMemoryEdit', 'currentMemory', 'freezeMemory', 'memoryJob', 'memoryReady', 'retryMemory', 'skipMemory', 'prepareMemory', 'dispatchMemory', 'saveMemory', 'failMemory', 'close'];
 try {
-  const store = new Store(workerData.directory, workerData.nativePath, undefined, undefined, workerData.externallyLocked);
+  const store = new Store(workerData.directory, workerData.access);
   parentPort!.postMessage({ type: 'ready' });
   parentPort!.on('message', ({ id, method, args }: { id: number; method: StoreMethod; args: any[] }) => {
     try {

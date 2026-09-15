@@ -13,7 +13,7 @@ import { v5Snapshot } from './time-fixtures';
 import { convertModelSwitching } from '../scripts/convert-model-switching.mjs';
 
 let directory: string, file: string;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'stomylos-partner-conversion-')); file = join(directory, 'stomylos.sqlite3');
   const db = new Database(file); db.exec(readFileSync('tests/fixtures/schema-v11-before-model-switching.sql', 'utf8'));

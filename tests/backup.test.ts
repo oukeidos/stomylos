@@ -13,7 +13,7 @@ import { lockDirectory } from '../src/main/storage';
 import { validateCommand } from '../src/main/ipc';
 
 let root: string, source: string, target: string;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'stomylos-backup-test-')); source = join(root, 'source'); target = join(root, 'target'); });
 afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 function seed(directory: string, text: string) {
@@ -127,7 +127,7 @@ it.each(['installed:stomylos.sqlite3', 'committed'])('recovers an actual termina
 it('keeps the shared directory lock when an externally locked Store closes for restore', () => {
   mkdirSync(source); const unlock = lockDirectory(source, native);
   try {
-    const store = new Store(source, native, undefined, undefined, true); store.close();
+    const store = new Store(source, 'electron'); store.close();
     expect(() => new Store(source, native)).toThrow('database_already_open');
   } finally { unlock(); }
   const store = new Store(source, native); store.close();

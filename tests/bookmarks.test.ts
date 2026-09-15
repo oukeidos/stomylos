@@ -9,7 +9,7 @@ import { validateCommand } from '../src/main/ipc';
 import { v5Snapshot } from './time-fixtures';
 
 let directory: string, store: Store, raw: Database.Database;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'stomylos-bookmarks-'));
   store = new Store(directory, native); raw = (store as unknown as { db: Database.Database }).db;

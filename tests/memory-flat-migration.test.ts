@@ -124,7 +124,7 @@ it('resumes an already received v6 updater response through actual startup migra
  const response=JSON.stringify({operations:[{op:'update',id:'m2',category:'experiences',text:'Completed before upgrade.',source_message_ids:['u1']}]});
  db.prepare("INSERT INTO end_processing(session_id,created_at) VALUES('old','2026-09-09')").run();
  db.prepare("INSERT INTO end_stage_state(session_id,stage,response_id,response_content,response_metadata) VALUES('old','update',?,?,'{}')").run(attempt.id,response);
- db.close();const store=new Store(dir,resolve('native/advisory-lock.node'));
+ db.close();const store=new Store(dir,'isolated' as const);
  try {
   expect(store.memoryJob('old')!.state).toBe('interrupted');
   expect(store.resumeEndResponse('old','update')).toBe(true);
@@ -139,7 +139,7 @@ it('resumes an already received v6 updater response through actual startup migra
 it('retires compatibility state when the last unfinished legacy job is cancelled',()=>{
  const {db,dir}=fixture();job(db);
  db.prepare("INSERT INTO end_processing(session_id,created_at) VALUES('old','2026-09-09')").run();db.close();
- const store=new Store(dir,resolve('native/advisory-lock.node'));
+ const store=new Store(dir,'isolated' as const);
  try {
   const inspect=new Database(join(dir,'stomylos.sqlite3'));
   try {

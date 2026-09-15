@@ -7,7 +7,7 @@ import { Store } from '../src/main/database';
 import { conversationSnapshot, grammarSnapshot } from '../src/main/contracts';
 let directory: string; let store: Store; let raw: Database.Database;
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'stomylos-fault-')); store = new Store(directory, resolve('native/advisory-lock.node'));
+  directory = mkdtempSync(join(tmpdir(), 'stomylos-fault-')); store = new Store(directory, 'isolated' as const);
   // Deliberate native-driver fault injection, never part of renderer IPC.
   raw = (store as unknown as { db: Database.Database }).db;
 });

@@ -19,9 +19,10 @@ import { Coordinator } from './coordinator';
 import { OpenRouter } from './transport';
 import { appVersion, verifyRuntime } from './contracts';
 import { appIconPath } from './app-icon';
-import { dataDirectory, keyFilePath, lockDirectory } from './storage';
+import { dataDirectory, keyFilePath } from './storage';
 import { BackupController, backupJob } from './backup-controller';
 import { Credentials } from './credentials';
+import { acquireInstance } from './instance-lock';
 import { launchData } from './launch-policy';
 import { failureCode, AppFailure } from './errors';
 import { validateCommand } from './ipc';
@@ -37,15 +38,32 @@ let launch: ReturnType<typeof launchData> | undefined;
 try { launch = launchData(app.isPackaged, process.argv, process.env, normalDirectory); }
 catch (error) { console.error(error instanceof Error ? error.message : String(error)); app.exit(1); }
 if (launch) {
+  const requestedDirectory = launch.directory;
+  try {
+    const directory = acquireInstance(app, launch.directory, () => {
+      if (window && !window.isDestroyed()) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); }
+    });
+    if (directory) launch = { ...launch, directory };
+    else { launch = undefined; app.exit(0); }
+  } catch (error) {
+    const directory = requestedDirectory;
+    launch = undefined;
+    void app.whenReady().then(() => {
+      const message = error instanceof Error && error.message === 'legacy_lock_transition_required'
+        ? `Close all older Stomylos versions and maintenance tools. Then rename the old lock file at ${join(directory, 'stomylos.lock')} and reopen Stomylos. Your history has not been opened or changed.`
+        : `The application could not protect its data directory (${error instanceof Error ? error.message : String(error)}).`;
+      dialog.showErrorBox('Stomylos could not start', message);
+      app.exit(1);
+    });
+  }
+}
+if (launch) {
   const { directory, normalData } = launch;
-  let unlockData: (() => void) | undefined;
   let startupDatabase: DatabaseClient | undefined;
   let exitingAdmission = false;
   const restart = () => { if (exitingAdmission) return; allowExit = true; app.relaunch(); setTimeout(() => app.quit(), 100); };
   const backups = new BackupController(directory, appVersion, restart);
-  app.on('will-quit', () => unlockData?.());
-  app.setPath('userData', join(directory, 'chromium'));
-  app.setPath('sessionData', join(directory, 'chromium'));
+
   void app.whenReady().then(async () => {
     if (process.env.STOMYLOS_LIVE_VERIFY === '1') throw new AppFailure('legacy_verification_disabled');
     verifyRuntime(); verifyStarterRuntime(); verifyPatternRuntime();
@@ -100,7 +118,6 @@ if (launch) {
         permission === 'media' && !!coordinator?.dictation?.permissionAllowed &&
         (details.mediaType === 'audio' || details.mediaType === 'unknown')));
 
-    unlockData = lockDirectory(directory, join(app.getAppPath(), 'native/advisory-lock.node'));
     await backupJob('recover', directory);
     const endpoint = process.env.STOMYLOS_TEST_ENDPOINT;
     if (endpoint) { const url = new URL(endpoint); if ((app.isPackaged && !(process.env.STOMYLOS_PACKAGED_TEST === '1' && override && !normalData)) || url.protocol !== 'http:' || !['127.0.0.1', '[::1]'].includes(url.hostname)) throw new AppFailure('invalid_test_endpoint'); }
@@ -108,11 +125,11 @@ if (launch) {
     const credentials = new Credentials(join(directory, 'api-credentials.json'), keyPath, process.platform, safeStorage,
       endpoint ? 'simulation' : normalData ? 'personal' : 'development');
     const emit = (event: AppEvent) => { if (window && !window.isDestroyed()) window.webContents.send('stomylos:event', event); };
-    const db = new DatabaseClient(join(__dirname, 'db-worker.js'), directory, join(app.getAppPath(), 'native/advisory-lock.node'), () => {
+    const db = new DatabaseClient(join(__dirname, 'db-worker.js'), directory, 'electron', () => {
       coordinator?.databaseFailed();
-    }, true);
+    });
     startupDatabase = db;
-    await db.ready; // Acquire the application's data lock before accessing credentials.
+    await db.ready; // The main process already owns data access before worker startup.
     const usage = new UsageStore(directory, () => emit({ type: 'usage-changed' }));
     app.on('will-quit', () => usage.close());
     const keyPresent = credentials.refresh();
@@ -227,7 +244,7 @@ if (launch) {
       unsupported_schema_structure: 'This history has an unsupported database structure. It has not been reset.',
     };
     const explanation = explanations[code] ?? `The application could not open its local history (${code}). Check available disk space and folder permissions, then try again.`;
-    if (unlockData && code !== 'backup_recovery_required') {
+    if (app.hasSingleInstanceLock() && code !== 'backup_recovery_required') {
       await startupDatabase?.close().catch(() => undefined);
       coordinator = null;
       const answer = await dialog.showMessageBox({ type: 'error', title: 'Stomylos could not start', message: explanation,

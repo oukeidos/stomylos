@@ -98,7 +98,7 @@ it('retires dedicated intention work, refills its slot, and preserves historical
 it('initializes a genuinely empty SQLite file directly without a migration backup', () => {
   const dir = mkdtempSync(join(tmpdir(), 'stomylos-empty-')); dirs.push(dir);
   const empty = new Database(join(dir, 'stomylos.sqlite3')); empty.exec('VACUUM'); empty.close();
-  const store = new Store(dir, resolve('native/advisory-lock.node'));
+  const store = new Store(dir, 'isolated' as const);
   try { expect(store.currentMemory().revision).toBe(0); }
   finally { store.close(); }
   const db = new Database(join(dir, 'stomylos.sqlite3')); databases.push(db);
@@ -121,7 +121,7 @@ it('upgrades through real Store startup and retires unrequested grammar blockers
   const {db,dir} = fixture(); db.transaction(()=>new StarterStore(db).initialize())();
   for (const id of ['first-old','second-old']) db.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind,analysis_state) VALUES(?,'ended','2026-09-01','{}','user','pending')").run(id);
   db.close();
-  const store = new Store(dir,resolve('native/advisory-lock.node'));
+  const store = new Store(dir,'isolated' as const);
   try {
     expect(store.endBlockers()).toEqual([]);
     expect(store.session('first-old').analysis_state).toBe('none');

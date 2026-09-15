@@ -34,7 +34,7 @@ it('preserves prompt/wrapper and latest 1/2/3 exchanges without draft, memory or
  validateCommand('dadouchosClose',{sessionId:'s'});
 });
 function setup(){
- const dir=mkdtempSync('/tmp/stomylos-dadouchos-'),store=new Store(dir,resolve('native/advisory-lock.node'));
+ const dir=mkdtempSync('/tmp/stomylos-dadouchos-'),store=new Store(dir,'isolated' as const);
  cleanups.push(()=>{store.close();rmSync(dir,{recursive:true,force:true});});
  const id=store.createSession().id;let src={...dadouchosSource(view()),sessionId:id};
  const pending:{resolve:(x:{content:string;metadata:Json})=>void;reject:(e:unknown)=>void}[]=[];
@@ -62,7 +62,7 @@ it('retries only explicitly and waits for metadata saves; restart does not retai
  r.pending[1].resolve({content:'Ready',metadata:{usage:{cost:.02}}});await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
  await r.controller.open(r.id,'not-another-retry',true);expect(r.pending).toHaveLength(2);release();await r.controller.settle();
  const rows=r.store.requestHistory(r.id);expect(rows[1].parentId).toBe(rows[0].id);expect(rows[1].settings.reasoning).toEqual({enabled:false,exclude:true});
- r.store.dadouchosRequestStart('unfinished',r.id,null,{model:'selected'});r.store.close();const restarted=new Store(r.dir,resolve('native/advisory-lock.node'));
+ r.store.dadouchosRequestStart('unfinished',r.id,null,{model:'selected'});r.store.close();const restarted=new Store(r.dir,'isolated' as const);
  expect(restarted.requestHistory(r.id).find(x=>x.id==='unfinished')?.status).toBe('interrupted');restarted.close();expect(r.pending).toHaveLength(2);
 });
 it('rejects a changed source before accepting the result',async()=>{const r=setup();await r.controller.open(r.id,'one');await vi.waitFor(()=>expect(r.pending).toHaveLength(1));r.change();r.pending[0].resolve({content:'Late',metadata:{}});await r.controller.settle();expect(r.controller.snapshot()).toMatchObject({phase:'failed',error:'dadouchos_stale',text:null});});

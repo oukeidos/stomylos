@@ -8,7 +8,7 @@ const bundle = resolve(process.env.STOMYLOS_ARCHIVE_BUNDLE ?? 'release/linux-unp
 const entries = listPackage(join(bundle, 'resources/app.asar'));
 const forbidden = /\/(?:product-legacy|_reference|experiments|tests|test-results|scripts|\.git|\.env)(?:\/|$)|\.sqlite3?(?:$|-)|\.map$|\/(?:src|deps)\//;
 assert.ok(entries.every(name => !forbidden.test(name)), 'Unexpected source/private artifact in application archive');
-for (const file of ['/out/main/db-worker.js', '/native/advisory-lock.node', '/node_modules/better-sqlite3/prebuilds/linux-x64.node']) assert.ok(entries.includes(file), `Missing runtime file ${file}`);
+for (const file of ['/out/main/db-worker.js', '/node_modules/better-sqlite3/prebuilds/linux-x64.node']) assert.ok(entries.includes(file), `Missing runtime file ${file}`);
 assert.ok(!entries.some(name => /node_modules\/(?:react|@radix-ui)\//.test(name)), 'Renderer dependencies should already be bundled');
 const files = [];
 function walk(folder) {

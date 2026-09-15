@@ -10,7 +10,7 @@ const dirs:string[]=[],dbs:Database.Database[]=[];
 afterEach(()=>{for(const db of dbs.splice(0))if(db.open)db.close();for(const dir of dirs.splice(0))rmSync(dir,{recursive:true,force:true});});
 function fixture(){
  const dir=mkdtempSync(join(tmpdir(),'stomylos-history-migration-'));dirs.push(dir);
- const store=new Store(dir,resolve('native/advisory-lock.node'));const s=store.createSession();store.saveDraft(s.id,'Keep this unsent draft');store.close();
+ const store=new Store(dir,'isolated' as const);const s=store.createSession();store.saveDraft(s.id,'Keep this unsent draft');store.close();
  const db=new Database(join(dir,'stomylos.sqlite3'));dbs.push(db);db.exec('DROP TABLE genie_request_attempts; PRAGMA user_version=33;');
  return {dir,db,id:s.id};
 }

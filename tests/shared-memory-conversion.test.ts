@@ -16,7 +16,7 @@ import { v5Snapshot } from './time-fixtures';
 // @ts-expect-error Standalone external converter, never bundled with the app.
 import { convertSharedMemory, mergeMemories } from '../scripts/convert-shared-memory.mjs';
 let directory: string, file: string;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 const row = (character: string, texts: string[]) => {
   const doc = emptyMemory(character); doc.traits = texts.map((text, i) => ({ id: `item-${i}`, text }));
   const document = memoryJson(doc); return { character_id: character, document, document_hash: memoryHash(document) };

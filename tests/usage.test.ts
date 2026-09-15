@@ -129,7 +129,7 @@ it('captures ASR returned costs but keeps transport failures unknown', async () 
 });
 
 it('keeps device cost and budget through actual chat deletion and history backup restore without exporting them', async () => {
-  const native = resolve('native/advisory-lock.node'), source = join(directory, 'backup-source');
+  const native = 'isolated' as const, source = join(directory, 'backup-source');
   const original = new Store(source, native); original.createSession(); original.close();
   const file = join(directory, 'test.stomylos-backup'); await exportBackup(source, file, '0.1.0');
   const db = new Store(directory, native); const session = db.createSession();

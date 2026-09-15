@@ -15,7 +15,7 @@ import type { ExplainRecord, ExplainTarget } from '../src/shared/explain';
 import type { Completion, Gateway } from '../src/main/transport';
 let dir: string, store: Store, db: Database.Database, controller: ExplainController;
 let calls: { resolve: (r: Completion) => void; reject: (e: Error) => void; signal: AbortSignal; body: any }[], events: ExplainRecord[];
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'stomylos-explain-test-')); store = new Store(dir, native); db = (store as unknown as { db: Database.Database }).db; calls = []; events = [];
   const gateway = { complete: (body: any, _identity: any, signal: AbortSignal) => new Promise<Completion>((resolve, reject) => calls.push({ resolve, reject, signal, body })) } as unknown as Gateway;

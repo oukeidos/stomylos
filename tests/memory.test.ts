@@ -17,7 +17,7 @@ import type { MemoryPacket } from '../src/shared/memory';
 import { memoryChanges } from '../src/main/memory-history';
 
 let directory: string, store: Store;
-const native = resolve('native/advisory-lock.node');
+const native = 'isolated' as const;
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-memory-')); store = new Store(directory, native); });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
 function start(partner = 'model_04', text = 'I prefer quiet museums.') {

@@ -13,7 +13,7 @@ import schema from '../src/main/schema.sql?raw';
 const fixtures: {dir:string;store:Store;db:Database.Database}[]=[];
 afterEach(() => { for (const f of fixtures) { f.store.close(); if (f.db.open) f.db.close(); rmSync(f.dir,{recursive:true,force:true}); } fixtures.length=0; });
 function fixture() {
-  const dir=mkdtempSync('/tmp/stomylos-manual-memory-'), store=new Store(dir,resolve('native/advisory-lock.node'));
+  const dir=mkdtempSync('/tmp/stomylos-manual-memory-'), store=new Store(dir,'isolated' as const);
   const db=new Database(join(dir,'stomylos.sqlite3')); const f={dir,store,db};fixtures.push(f);
   const document=memoryJson({character_id:'shared',revision:3,database_records:[{id:'a',text:'Coffee in the morning.'},{id:'b',text:'Lives in 서울.'}]});
   db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(document,memoryHash(document));return f;
@@ -26,7 +26,7 @@ function send(store:Store,id:string) {store.searchMode(id,'off');store.selectMan
 it('edits exactly one record, preserves text and IDs, deletes the final record and persists across restart',()=>{
  const f=fixture();expect(change(f.store,' Tea\n한글  detail. ').document).toMatchObject({revision:4,database_records:[{id:'a',text:' Tea\n한글  detail. '},{id:'b',text:'Lives in 서울.'}]});
  change(f.store,null);const empty=change(f.store,null,'b');expect(empty.document).toMatchObject({revision:6,database_records:[]});
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));expect(f.store.memoryManagement().document).toEqual(empty.document);
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);expect(f.store.memoryManagement().document).toEqual(empty.document);
 });
 it.each(['starter','user'] as const)('allows untouched %s sessions and drafts, without freezing from reads; first request receives the edit',kind=>{
  const {store,db}=fixture();const s=store.createSession();if(kind==='user')store.setOpening(s.id,'opening',s.opening_revision,kind);
@@ -41,7 +41,7 @@ it('blocks accepted Send even before a snapshot and after failed preparation/res
  const prepared=f.store.prepareMemoryEdit(edit(f.store));f.store.submit(s.id,'My first message.');
  expect(f.db.prepare('SELECT COUNT(*) FROM session_memories').pluck().get()).toBe(0);
  expect(f.store.memoryManagement().blocker).toEqual({reason:'chat',sessionId:s.id});expect(()=>f.store.commitMemoryEdit(prepared)).toThrow('memory_in_use');
- f.store.close();f.store=new Store(f.dir,resolve('native/advisory-lock.node'));expect(()=>change(f.store)).toThrow('memory_in_use');
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);expect(()=>change(f.store)).toThrow('memory_in_use');
 });
 it('blocks frozen retry and unresolved end work; cancellation releases edits without changing history or accepting late results',()=>{
  const {store,db}=fixture(),s=store.createSession();send(store,s.id);const request=store.prepareChat(s.id,'reply');store.dispatch(request.id);store.failRequest(request.id,'request_timeout');
