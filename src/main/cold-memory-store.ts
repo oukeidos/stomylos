@@ -85,7 +85,7 @@ export class ColdMemoryStore {
     // Literal parameterized search: %, _ and SQL syntax never become query operators.
     const where = terms.length ? ' WHERE ' + terms.map(() => 'instr(cold_search_text(text),?)>0').join(' AND ') : '';
     const total = this.db.prepare('SELECT COUNT(*) FROM cold_memories' + where).pluck().get(...terms) as number;
-    const items = this.db.prepare('SELECT * FROM cold_memories' + where + ' ORDER BY source_order DESC,item_index ASC,id ASC LIMIT ? OFFSET ?')
+    const items = this.db.prepare('SELECT * FROM cold_memories' + where + ' ORDER BY source_order DESC,item_index DESC,id ASC LIMIT ? OFFSET ?')
       .all(...terms, limit, offset) as ColdMemory[];
     for (const item of items) if (coldHash(item.text) !== item.text_hash) throw new AppFailure('cold_original_hash');
     return { items, total, next: offset + items.length < total ? offset + items.length : null, revision: this.revision() };
