@@ -1,16 +1,19 @@
+export type ReportType = 'grammar' | 'expression';
+export interface ExpressionSuggestion { expression: string; explanation: string; example: string; evidence_ids: string[]; }
+export interface ReportMessage { id: string; role: 'user' | 'assistant'; content: string; sequence: number; }
 export interface PatternUnit {
   source_id: string; original: string; corrected: string; explanation: string;
   message_id: string; ordinal: number;
 }
 export interface PatternSource {
   session_id: string; analysis_id: string | null; evidence_kind?: 'grammar' | 'learner'; ended_at: string; source_hash: string;
-  units: PatternUnit[];
+  units: PatternUnit[]; title?: string; messages?: ReportMessage[];
 }
 export interface PatternSelection {
-  from: string; to: string; timezone: string; excludeCovered: boolean;
+  reportType?: ReportType; from: string; to: string; timezone: string; excludeCovered: boolean;
 }
 export interface PatternScope {
-  selection?: PatternSelection; covered?: number; inputCost?: number; longContext?: boolean;
+  characters?: number; characterLimit?: number; selection?: PatternSelection; covered?: number; inputCost?: number; longContext?: boolean;
   asOf: string; cutoff: string; count: number; records: number; from: string | null; to: string | null;
   eligible: number; excluded: { unavailable: number; older: number; overCount: number; overBudget: number };
   estimate: number; estimator: string; limit: number;
@@ -27,14 +30,14 @@ export interface PatternAttempt {
   finished_at: string | null; html: string | null; html_hash: string | null; metadata: string; failure: string | null;
 }
 export interface PatternCard {
-  cost?: number | null;
+  reportType?: ReportType; resultCount?: number; cost?: number | null;
   id: string; created_at: string; scope: PatternScope; status: PatternStatus;
   selected_attempt_id: string | null; last_attempt_id: string; failure: string | null;
 }
 export interface PatternDetail extends PatternCard {
   sources: (PatternSource & { deleted: boolean })[];
   attempts: Omit<PatternAttempt, 'html' | 'request'>[];
-  model: string; canRetry: boolean;
+  suggestions?: ExpressionSuggestion[]; reasoning?: string; model: string; canRetry: boolean;
 }
 export interface PatternState {
   revision: number; reportId: string | null; phase: 'idle' | 'generating' | 'saving';
@@ -46,7 +49,7 @@ export interface PatternCommandArgs {
   patternRelated: { id: string };
   patternPreview: PatternSelection | undefined; patternState: undefined; patternClose: undefined; patternRetrySave: undefined;
   patternCreate: { fingerprint: string; operationId: string; selection?: PatternSelection };
-  patternList: { offset: number }; patternDetail: { id: string }; patternOpen: { id: string };
+  patternList: { offset: number; reportType?: ReportType }; patternDetail: { id: string }; patternOpen: { id: string };
   patternCancel: { id: string }; patternRetry: { id: string; operationId: string }; patternDelete: { id: string };
 }
 export interface PatternCommandResults {

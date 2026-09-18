@@ -1,11 +1,12 @@
+import {expressionContract, expressionCharacters, expressionEstimator, expressionLimit, validateExpressions} from './expression-report';
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { AppFailure } from './errors';
 import { patternBody, patternContract, patternHash, resolvePatternContract, validatePatternHtml, directPatternEstimate, directPatternEstimator, directPatternLimit, patternInputCost } from './pattern-report';
-import type { PatternAttempt, PatternCard, PatternDetail, PatternSource, PatternStatus, PatternSelection, PatternPreview } from '../shared/pattern-report';
+import type { PatternAttempt, PatternCard, PatternDetail, PatternSource, PatternStatus, PatternSelection, PatternPreview, ReportMessage, ReportType } from '../shared/pattern-report';
 import type { Json } from '../shared/types';
 
-type Report = { id: string; created_at: string; fingerprint: string; snapshot: string; selected_attempt_id: string | null };
+type Report = { report_type: ReportType; id: string; created_at: string; fingerprint: string; snapshot: string; selected_attempt_id: string | null };
 const now = () => new Date().toISOString();
 const fail = (code: string): never => { throw new AppFailure('pattern_' + code); };
 export class PatternReportStore {
@@ -27,29 +28,37 @@ export class PatternReportStore {
       "SELECT id,content,sequence FROM messages WHERE session_id=? AND role='user' AND origin='learner' ORDER BY sequence", id)
       .map((m, ordinal) => ({ source_id: m.id, message_id: m.id, ordinal, original: m.content, corrected: '', explanation: '' }));
   }
+  private conversationMessages(id: string) {
+    return this.all<ReportMessage>("SELECT id,role,content,sequence FROM messages WHERE session_id=? AND (role='assistant' OR (role='user' AND origin='learner')) ORDER BY sequence", id);
+  }
   private selection(asOf: string, chosen?: PatternSelection) {
     const selection = chosen ?? { from: new Date(Date.parse(asOf) - 7 * 86400_000).toISOString(), to: asOf, timezone: 'UTC', excludeCovered: false };
     if (!Number.isFinite(Date.parse(selection.from)) || !Number.isFinite(Date.parse(selection.to)) || Date.parse(selection.from) >= Date.parse(selection.to)) fail('time');
-    const rows = this.all<{id: string; ended_at: string; covered: number}>(`SELECT s.id,s.ended_at,
+    const reportType = selection.reportType ?? 'grammar', expression = reportType === 'expression';
+    const selectedContract = expression ? expressionContract : patternContract;
+    const rows = this.all<{id: string; ended_at: string; title: string; covered: number}>(`SELECT s.id,s.ended_at,(SELECT substr(content,1,80) FROM messages WHERE session_id=s.id AND role='user' AND origin='learner' ORDER BY sequence LIMIT 1) title,
       EXISTS(SELECT 1 FROM pattern_report_sources ps JOIN pattern_reports p ON p.id=ps.report_id
-      WHERE ps.session_id=s.id AND p.selected_attempt_id IS NOT NULL) covered FROM sessions s
+      WHERE ps.session_id=s.id AND p.report_type=? AND p.selected_attempt_id IS NOT NULL) covered FROM sessions s
       WHERE s.state='ended' AND julianday(s.ended_at)>=julianday(?) AND julianday(s.ended_at)<julianday(?)
       AND EXISTS(SELECT 1 FROM messages m WHERE m.session_id=s.id AND m.role='user' AND m.origin='learner')
-      ORDER BY julianday(s.ended_at),s.id`, selection.from, selection.to);
+      ORDER BY julianday(s.ended_at),s.id`, reportType, selection.from, selection.to);
     const sources: PatternSource[] = rows.filter(r => !selection.excludeCovered || !r.covered).map(r => {
       const units = this.learnerUnits(r.id);
-      return {session_id: r.id, analysis_id: null, evidence_kind: 'learner', ended_at: r.ended_at, units, source_hash: patternHash(JSON.stringify(units))};
+      const messages = expression ? this.conversationMessages(r.id) : undefined;
+      return {session_id: r.id, analysis_id: null, evidence_kind: 'learner', ended_at: r.ended_at, units, ...(expression ? {messages, title: r.title} : {}), source_hash: patternHash(JSON.stringify(messages ?? units))};
     });
-    const body = patternBody(sources), estimate = directPatternEstimate(body);
-    const fingerprint = patternHash(JSON.stringify({sources, body, contract: patternContract, estimator: directPatternEstimator}));
+    const body = patternBody(sources, selectedContract), characters = expression ? expressionCharacters(body) : undefined;
+    const estimate = expression ? Math.ceil(characters! / 4) : directPatternEstimate(body);
+    const estimator = expression ? expressionEstimator : directPatternEstimator;
+    const fingerprint = patternHash(JSON.stringify({sources, body, contract: selectedContract, estimator}));
     const existingId = this.get<{id: string}>('SELECT id FROM pattern_reports WHERE fingerprint=?', fingerprint)?.id ?? null;
     const preview: PatternPreview = {fingerprint, existingId, unavailableSessions: [],
-      blocked: estimate > directPatternLimit ? 'input_limit' as const : sources.length < 5 ? 'insufficient' as const : null,
+      blocked: (expression ? characters! > expressionLimit : estimate > directPatternLimit) ? 'input_limit' as const : sources.length < (expression ? 1 : 5) ? 'insufficient' as const : null,
       scope: {asOf, cutoff: selection.from, selection, count: sources.length, records: sources.reduce((n,s)=>n+s.units.length,0),
         from: sources[0]?.ended_at ?? null, to: sources.at(-1)?.ended_at ?? null, eligible: rows.length,
         covered: rows.filter(r=>r.covered).length, excluded: {unavailable:0, older:0, overCount:0, overBudget:0},
-        estimate, estimator: directPatternEstimator, limit: directPatternLimit, ...patternInputCost(estimate)}};
-    return {sources, body, preview};
+        estimate, estimator, limit: expression ? expressionContract.capacity.max_input : directPatternLimit, ...(expression ? {characters, characterLimit: expressionLimit} : {}), ...patternInputCost(estimate)}};
+    return {sources, body, preview, contract: selectedContract, reportType};
   }
   preview(asOf = now(), selection?: PatternSelection) { return this.db.transaction(() => this.selection(asOf, selection).preview)(); }
   create(fingerprint: string, operationId: string, asOf = now(), selection?: PatternSelection) {
@@ -65,8 +74,8 @@ export class PatternReportStore {
       if (s.preview.blocked) fail(s.preview.blocked);
       if (s.preview.existingId) return { id: s.preview.existingId, reused: true, attemptId: null };
       if (this.active()) fail('busy');
-      const snapshot = JSON.stringify({ scope: s.preview.scope, sources: s.sources, contract: patternContract });
-      this.run('INSERT INTO pattern_reports(id,created_at,fingerprint,snapshot) VALUES(?,?,?,?)', operationId, now(), fingerprint, snapshot);
+      const snapshot = JSON.stringify({ scope: s.preview.scope, sources: s.sources, contract: s.contract });
+      this.run('INSERT INTO pattern_reports(id,created_at,fingerprint,snapshot,report_type) VALUES(?,?,?,?,?)', operationId, now(), fingerprint, snapshot, s.reportType);
       s.sources.forEach((source, ordinal) => this.run('INSERT INTO pattern_report_sources(report_id,session_id,analysis_id,evidence_kind,source_hash,ordinal) VALUES(?,?,?,?,?,?)', operationId, source.session_id, source.analysis_id, 'learner', source.source_hash, ordinal));
       const attempt = this.insertAttempt(operationId, randomUUID(), null, JSON.stringify(s.body));
       return { id: operationId, reused: false, attemptId: attempt.id };
@@ -82,7 +91,9 @@ export class PatternReportStore {
     for (const source of sources) {
       const session = this.get<{selected_analysis_id: string}>('SELECT selected_analysis_id FROM sessions WHERE id=?', source.session_id);
       if (!session) fail('source_deleted');
-      if (source.evidence_kind === 'learner') {
+      if (this.report(reportId).report_type === 'expression') {
+        if (patternHash(JSON.stringify(this.conversationMessages(source.session_id))) !== source.source_hash) fail('source_changed');
+      } else if (source.evidence_kind === 'learner') {
         if (patternHash(JSON.stringify(this.learnerUnits(source.session_id))) !== source.source_hash) fail('source_changed');
       } else if (session!.selected_analysis_id !== source.analysis_id || patternHash(JSON.stringify(this.sourceUnits(source.session_id, source.analysis_id!))) !== source.source_hash) fail('source_changed');
     }
@@ -108,7 +119,9 @@ export class PatternReportStore {
     if (patternHash(a.request) !== a.request_hash) fail('request_changed');
     const saved = JSON.parse(this.report(a.report_id).snapshot);
     const contract = resolvePatternContract(saved.contract);
+    if ((this.report(a.report_id).report_type === 'expression') !== (contract.version === expressionContract.version)) fail('request_changed');
     if (JSON.stringify(JSON.parse(a.request)) !== JSON.stringify(patternBody(saved.sources, contract))) fail('request_changed');
+    if (contract.version === expressionContract.version && expressionCharacters(JSON.parse(a.request)) > expressionLimit) fail('input_limit');
     return contract;
   }
   private requestSupported(a: PatternAttempt) {
@@ -128,7 +141,9 @@ export class PatternReportStore {
     })();
   }
   save(id: string, html: string, metadata: Json) {
-    validatePatternHtml(html, this.assertRequest(this.attempt(id)));
+    const attempt = this.attempt(id), contract = this.assertRequest(attempt);
+    if (contract.version === expressionContract.version) validateExpressions(html, JSON.parse(this.report(attempt.report_id).snapshot).sources);
+    else validatePatternHtml(html, contract);
     return this.db.transaction(() => {
       const a = this.attempt(id), report = this.report(a.report_id);
       if (a.status === 'succeeded' && report.selected_attempt_id === id && a.html === html) return;
@@ -151,22 +166,28 @@ export class PatternReportStore {
   private card(r: Report): PatternCard {
     const a = this.all<PatternAttempt>('SELECT * FROM pattern_report_attempts WHERE report_id=? ORDER BY rowid DESC LIMIT 1', r.id)[0];
     const reportedCost = JSON.parse(a.metadata).usage?.cost;
-    return { cost: typeof reportedCost === 'number' && Number.isFinite(reportedCost) && reportedCost >= 0 ? reportedCost : null, id: r.id, created_at: r.created_at, scope: JSON.parse(r.snapshot).scope, selected_attempt_id: r.selected_attempt_id,
+    const resultCount = r.report_type === 'expression' && r.selected_attempt_id ? this.expressions(r).length : undefined;
+    return { reportType: r.report_type, resultCount, cost: typeof reportedCost === 'number' && Number.isFinite(reportedCost) && reportedCost >= 0 ? reportedCost : null, id: r.id, created_at: r.created_at, scope: JSON.parse(r.snapshot).scope, selected_attempt_id: r.selected_attempt_id,
       last_attempt_id: a.id, status: a.status, failure: a.failure };
   }
-  list(offset = 0) {
-    const rows = this.all<Report>('SELECT * FROM pattern_reports ORDER BY created_at DESC,id DESC LIMIT 21 OFFSET ?', offset);
+  list(offset = 0, reportType?: ReportType) {
+    const rows = this.all<Report>('SELECT * FROM pattern_reports' + (reportType ? ' WHERE report_type=?' : '') + ' ORDER BY created_at DESC,id DESC LIMIT 21 OFFSET ?', ...(reportType ? [reportType, offset] : [offset]));
     return { reports: rows.slice(0, 20).map(r => this.card(r)), hasMore: rows.length > 20 };
   }
   detail(id: string): PatternDetail {
     const r = this.report(id), snapshot = JSON.parse(r.snapshot), card = this.card(r);
-    return { ...card, model: snapshot.contract.parameters.model, sources: snapshot.sources.map((s: PatternSource) =>
+    return { ...card, ...(r.report_type === 'expression' && r.selected_attempt_id ? {suggestions: this.expressions(r)} : {}), reasoning: snapshot.contract.parameters.reasoning.effort, model: snapshot.contract.parameters.model, sources: snapshot.sources.map((s: PatternSource) =>
       ({ ...s, deleted: !this.get('SELECT id FROM sessions WHERE id=?', s.session_id) })),
       attempts: this.all<PatternAttempt>('SELECT * FROM pattern_report_attempts WHERE report_id=? ORDER BY rowid', id).map(({ html, request, ...a }) => a),
       canRetry: !r.selected_attempt_id && ['failed', 'cancelled', 'interrupted'].includes(card.status) && this.sourcesPresent(id) && this.requestSupported(this.attempt(card.last_attempt_id)) };
   }
+  private expressions(r: Report) {
+    const a = this.attempt(r.selected_attempt_id!);
+    if (a.status !== 'succeeded' || !a.html || patternHash(a.html) !== a.html_hash) fail('output_changed');
+    return validateExpressions(a.html!, JSON.parse(r.snapshot).sources);
+  }
   html(id: string) {
-    const r = this.report(id); if (!r.selected_attempt_id) fail('not_ready');
+    const r = this.report(id); if (r.report_type === 'expression') fail('not_html'); if (!r.selected_attempt_id) fail('not_ready');
     const a = this.attempt(r.selected_attempt_id!);
     if (a.status !== 'succeeded' || !a.html || patternHash(a.html) !== a.html_hash) fail('output_changed');
     return { html: a.html!, createdAt: r.created_at };

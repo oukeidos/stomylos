@@ -1,0 +1,24 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import Database from 'better-sqlite3';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import schema from '../src/main/schema.sql?raw';
+import {migrateDatabase,validateSchema,currentSchema} from '../src/main/database-migrations';
+import {StarterStore} from '../src/main/starter-store';
+import {memoryHash} from '../src/main/memory-updater';
+const fixtures:{dir:string;db:Database.Database}[]=[];
+afterEach(()=>{for(const f of fixtures.splice(0)){f.db.close();rmSync(f.dir,{recursive:true,force:true});}});
+it('upgrades schema 43 atomically, preserving grammar bytes and recovering a failed new step',()=>{
+ const dir=mkdtempSync('/tmp/expression-migration-'),db=new Database(join(dir,'stomylos.sqlite3'));fixtures.push({dir,db});
+ const old=schema.replace(/\n-- Public schema 43 -> 44:[\s\S]*$/,'');db.exec(old);db.pragma('user_version=43');
+ const document=JSON.stringify({character_id:'shared',revision:0,database_records:[]});db.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run(document,memoryHash(document));db.transaction(()=>new StarterStore(db).initialize())();
+ db.exec("INSERT INTO pattern_reports(id,created_at,fingerprint,snapshot) VALUES('old','2026-09-17','fingerprint','frozen snapshot'); INSERT INTO pattern_report_attempts(id,report_id,request,request_hash,status,created_at) VALUES('a','old','frozen request','hash','queued','2026-09-17');");
+ const attempts=db.prepare('SELECT * FROM pattern_report_attempts').all();
+ const exec=db.exec.bind(db),fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const r=exec(sql);if(sql.includes('43 -> 44'))throw Error('migration fault');return r;});
+ expect(()=>migrateDatabase(db,dir)).toThrow('migration fault');fault.mockRestore();expect(db.pragma('user_version',{simple:true})).toBe(43);validateSchema(db,old);
+ const path=join(dir,'stomylos.pre-migration-v43.sqlite3'),backup=readFileSync(path);migrateDatabase(db,dir);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);validateSchema(db,schema);
+ expect(db.prepare('SELECT * FROM pattern_report_attempts').all()).toEqual(attempts);expect(db.prepare('SELECT report_type,snapshot FROM pattern_reports').get()).toEqual({report_type:'grammar',snapshot:'frozen snapshot'});
+ expect(()=>db.exec("UPDATE pattern_reports SET report_type='expression'")).toThrow('immutable');
+ expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
+ migrateDatabase(db,dir);expect(readFileSync(path)).toEqual(backup);
+});

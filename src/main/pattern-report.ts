@@ -1,3 +1,4 @@
+import {expressionContract, expressionBody} from './expression-report';
 import { createHash } from 'node:crypto';
 import prompt from './pattern-prompt.txt?raw';
 import scopePrompt from './pattern-scope.txt?raw';
@@ -15,7 +16,7 @@ export const patternContract = directContract;
 export const legacyPatternContract = contract;
 export const patternHash = (text: string) => createHash('sha256').update(text).digest('hex');
 export const patternEstimator = 'utf8-request-plus-1024-v1';
-export type PatternContract = typeof historicalContract | typeof contract | typeof directContract;
+export type PatternContract = typeof historicalContract | typeof contract | typeof directContract | typeof expressionContract;
 const originalSystem = prompt + '\n' + scopePrompt;
 const styleAnchor = 'Return only a complete self-contained HTML document';
 const styledSystem = originalSystem.replace(styleAnchor, stylePrompt.trim() + '\n\n' + styleAnchor);
@@ -26,7 +27,7 @@ export function verifyPatternRuntime() {
       patternHash(originalSystem) !== 'b3027e3d454cb5178b6e8a492670572b67c858e9a45df992fc1b6ff5e7466c83') throw new AppFailure('pattern_contract');
 }
 export function resolvePatternContract(saved: unknown): PatternContract {
-  for (const supported of [historicalContract, contract, directContract]) {
+  for (const supported of [historicalContract, contract, directContract, expressionContract]) {
     if (JSON.stringify(saved) === JSON.stringify(supported)) return supported;
   }
   throw new AppFailure('pattern_unsupported_contract');
@@ -34,6 +35,7 @@ export function resolvePatternContract(saved: unknown): PatternContract {
 export function patternBody(sources: PatternSource[], selected: PatternContract = directContract): Json {
   verifyPatternRuntime();
   const supported = resolvePatternContract(selected);
+  if (supported.version === expressionContract.version) return expressionBody(sources);
   if (supported.version === directContract.version) {
     // JSON string quoting makes each numbered occurrence one physical line. Newlines,
     // quotes and delimiter-like user text round-trip without forging source labels.
@@ -83,5 +85,5 @@ export function patternInputCost(tokens: number) {
   return { inputCost: tokens * (longContext ? directContract.pricing.long_input_per_million : directContract.pricing.input_per_million) / 1_000_000, longContext };
 }
 export function patternResponsePolicy(selected: PatternContract) {
-  return selected.version === directContract.version ? { maxResponseBytes: null } : {};
+  return [directContract.version, expressionContract.version].includes(selected.version) ? { maxResponseBytes: null } : {};
 }

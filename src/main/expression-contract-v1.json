@@ -1,0 +1,12 @@
+{
+  "version": "stomylos_expression_report_v1",
+  "parameters": {
+    "model": "openai/gpt-6-astra", "stream": false, "max_tokens": 128000,
+    "reasoning": { "effort": "low", "exclude": true },
+    "provider": { "allow_fallbacks": true, "require_parameters": true, "data_collection": "deny" }
+  },
+  "identity": { "allowed_models": ["openai/gpt-6-astra", "openai/gpt-6-astra-20260903"] },
+  "timeout_ms": 3600000,
+  "capacity": { "context": 1050000, "max_input": 922000, "input_characters": 2000000 },
+  "response_max_bytes": null
+}

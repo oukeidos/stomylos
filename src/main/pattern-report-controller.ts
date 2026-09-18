@@ -28,7 +28,7 @@ export class PatternReportController {
     if (name === 'patternState') return Promise.resolve(this.snapshot()) as Promise<PatternCommandResults[K]>;
     if (name === 'patternClose') { this.hooks.closeViewer(); return Promise.resolve() as Promise<PatternCommandResults[K]>; }
     if (name === 'patternPreview') return this.db.call('patternPreview', undefined, args as PatternCommandArgs['patternPreview']) as Promise<PatternCommandResults[K]>;
-    if (name === 'patternList') return this.db.call('patternList', (args as PatternCommandArgs['patternList']).offset) as Promise<PatternCommandResults[K]>;
+    if (name === 'patternList') return this.db.call('patternList', (args as PatternCommandArgs['patternList']).offset, (args as PatternCommandArgs['patternList']).reportType) as Promise<PatternCommandResults[K]>;
     if (name === 'patternDetail') return this.db.call('patternDetail', (args as { id: string }).id) as Promise<PatternCommandResults[K]>;
     if (name === 'patternRetrySave') return this.hooks.retrySave() as Promise<PatternCommandResults[K]>;
     const operation = this.control.then(async () => {
@@ -77,7 +77,8 @@ export class PatternReportController {
       metadata = { ...result.metadata, elapsed_seconds: (performance.now() - start) / 1000 };
       html = result.content;
       if (abort.signal.aborted) throw new AppFailure('request_cancelled');
-      validatePatternHtml(html, attempt.contract);
+      // Store validates the kind-specific output and evidence before selecting it.
+      if (attempt.contract.version !== 'stomylos_expression_report_v1') validatePatternHtml(html, attempt.contract);
       this.state.phase = 'saving'; this.publish();
       await this.hooks.write('patternSave', id, html, metadata);
     } catch (error) {

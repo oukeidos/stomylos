@@ -329,6 +329,7 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
 }
 function App() {
   const [learning, setLearning] = useState(false);
+  const [reportSource, setReportSource] = useState<{sessionId: string; messageId?: string} | null>(null);
   const [requestedReport, setRequestedReport] = useState<string | null>(null);
   const handledReport = useCallback(() => setRequestedReport(null), []);
   const [relatedReports, setRelatedReports] = useState<{reports: PatternCard[]; total: number} | null>(null);
@@ -382,6 +383,18 @@ function App() {
   }), []);
   useEffect(() => { if (app?.activity.error && app.activity.operation !== 'opener') setError(errorText(app.activity.error)); }, [app?.activity.error, app?.activity.operation]);
   const show = useCallback(async (id: string) => { if (genieBusy()) return; if (!await beforeDictationNavigation()) return; if (selectedRef.current) await flushDraft(selectedRef.current); setLearning(false); setSelected(id); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus({ preventScroll: true })); }, []);
+  const showReportSource = async (sessionId: string, messageId?: string) => {
+    await show(sessionId); setReportSource({sessionId, messageId});
+  };
+  useEffect(() => {
+    if (learning || !reportSource?.messageId || view?.session.id !== reportSource.sessionId) return;
+    const frame = requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(reportSource.messageId!)}"]`);
+      scroll.pause();
+      target?.scrollIntoView({block:'center'});
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [reportSource, view?.session.id, learning]);
   const openLearning = async () => { if (genieBusy() || composing || !await beforeDictationNavigation()) return false; if (selectedRef.current) await flushDraft(selectedRef.current); await window.stomylos.command('speechStop', undefined); setHistoryOpen(true); setLearning(true); return true; };
   const backToChat = () => { setLearning(false); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus({ preventScroll: true })); };
   useEffect(() => { if (app && !selected) setSelected((app.unfinished ?? app.sessions.find(s => !isDeleted(s.id)))?.id ?? null); }, [app, selected]);
@@ -465,7 +478,7 @@ function App() {
       <IconButton className="history-toggle" label={historyOpen ? 'Hide history' : 'Show history'} tooltip={historyOpen ? 'Hide library' : 'Show library'} icon="sidebar" aria-expanded={historyOpen} aria-controls="conversation-sidebar" onClick={() => setHistoryOpen(open => !open)} />
       <IconButton ref={settingsTrigger} label="Settings" icon="settings" onClick={() => setSettings(true)} />
     </div>
-    <div className="chat-navigation">
+    <div className="chat-navigation" hidden={learning}>
       <div className="header-partner">{view && <Partner view={view} characters={app.characters} act={act} blocked={app.activity.phase !== 'idle' || !!app.activity.storageError || app.activity.closing} />}</div>
       {(app.settings.simulation || app.settings.development) && <span className="build-label">{app.settings.simulation ? 'Preview' : 'Development'}</span>}
       {view?.canBookmark && <IconButton icon="bookmark" className="bookmark-toggle" label={view.bookmarked ? 'Remove bookmark' : 'Bookmark chat'}  aria-pressed={view.bookmarked} aria-busy={bookmarks.pending.has(view.session.id)} disabled={bookmarkDisabled(view.session.id)} onClick={() => mark({ id: view.session.id, bookmarked: view.bookmarked })} />}
@@ -495,8 +508,12 @@ function App() {
       {session.state !== 'ended' && <div className="menu-hint">End this chat before deleting it.</div>}
     </Menu.Content></Menu.Portal></Menu.Root></div>)}</nav>
     {!learning && (library.offset > 0 || library.hasMore) && <div className="history-pages"><button disabled={!library.offset || library.loading} onClick={() => library.move(library.offset - 40)}>Newer</button><button disabled={!library.hasMore || library.loading} onClick={() => library.move(library.offset + 40)}>Older</button></div>}
-    <Learning requestedReport={requestedReport} handledReport={handledReport} active={learning && historyOpen} revision={app.revision} state={patternState} disabled={!!app.activity.storageError || app.activity.closing} keyPresent={app.settings.keyPresent} back={backToChat} source={show} />
+    <div id="report-history" hidden={!learning} />
   </aside><div className="workspace">
+    <Learning requestedReport={requestedReport} handledReport={handledReport} active={learning} revision={app.revision} state={patternState} disabled={!!app.activity.storageError || app.activity.closing} keyPresent={app.settings.keyPresent} source={showReportSource} />
+    <div className="conversation-workspace" hidden={learning}>
+    {reportSource && <div className="report-return"><button className="quiet" onClick={() => act(openLearning)}>← Back to report</button><button className="quiet" onClick={() => setReportSource(null)}>Dismiss</button></div>}
+
 
     <span className="bookmark-announcement" role="status" aria-live="polite">{bookmarks.announcement}</span>
     {bookmarks.undo && <BookmarkUndo key={bookmarks.undo.serial} undo={bookmarks.undo} disabled={bookmarkDisabled(bookmarks.undo.sessionId)} restore={() => act(() => bookmarks.set(bookmarks.undo!.sessionId, true))} dismiss={bookmarks.dismiss} />}
@@ -532,7 +549,7 @@ function App() {
     }}><Icon name="down" /><span aria-live="polite">{scroll.unread ? 'New reply' : 'Latest message'}</span></TooltipButton></div>}
     <div className="conversation-footer">{view && view.session.state !== 'ended' ? <Composer key={view.session.id} view={view} app={app} act={act} blocked={openingBusy} onComposition={setComposing} afterAcceptedAction={scroll.afterAcceptedAction} openingAction={<>{openingAction}{starterAction}</>} starter={canChangeOpening && starter && <Bubble message={starter} partner="Partner" />} /> : <footer className="ended-footer">
       <>{unfinished && <IconButton label="Return to current chat" icon="back" onClick={() => act(() => show(unfinished.id))} />}</></footer>}</div>
-  </div>
+  </div></div>
   {app.endBlocker && <EndProcessingDialog key={app.endBlocker} sessionId={app.endBlocker} automaticMemory={!!app.activity.memoryProcessing} storageError={app.activity.storageError ?? null} errorText={errorText} />}
   <ExplainDialog sessionId={view?.session.id ?? null} />
   <DictationNavigationDialog />

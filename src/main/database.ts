@@ -1188,7 +1188,7 @@ export class Store {
   patternRetry(id: string, operationId: string) { return this.patterns.retry(id, operationId); }
   patternSave(id: string, html: string, metadata: Json) { return this.patterns.save(id, html, metadata); }
   patternFinish(id: string, status: Extract<PatternStatus, 'failed' | 'cancelled' | 'interrupted'>, failure: string, html: string | null, metadata: Json) { return this.patterns.finish(id, status, failure, html, metadata); }
-  patternList(offset: number) { return this.patterns.list(offset); }
+  patternList(offset: number, reportType?: import('../shared/pattern-report').ReportType) { return this.patterns.list(offset, reportType); }
   patternDetail(id: string) { return this.patterns.detail(id); }
   patternHtml(id: string) { return this.patterns.html(id); }
   patternRelated(id: string) { return this.patterns.related(id); }

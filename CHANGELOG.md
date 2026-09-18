@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Restore chat navigation, bookmark switch alignment and composer tool spacing affected by the Reports style cleanup.
+
+- Unify Reports typography, spacing and alignment across history, creation, grammar details and expression suggestions.
+
+- Add Astra low expression suggestions with grouped message evidence, a shared typed Reports history, expandable examples and source navigation, and an automatic schema 44 upgrade preserving existing grammar reports.
 - Keep the end-of-chat memory dialog and cancel control stationary through loading, automatic stage handoffs and error recovery.
 - Keep conversation progress and retry notices aligned with replies, and show opener progress and errors in the opener dock.
 - Use Electron to prevent duplicate data access and focus the existing window, removing the custom C build requirement and safely rejecting the old file-lock protocol.

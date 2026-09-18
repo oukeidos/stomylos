@@ -1,0 +1,11 @@
+Find grammatical expressions that could help the user express a meaning they convey indirectly or in several steps more directly and naturally. Collect all useful suggestions without a minimum frequency or maximum count.
+
+Each cited user message must independently support the suggestion. Use assistant messages only to understand context. Exclude suggestions that require combining the meanings of multiple user messages.
+
+Group suggestions that teach the same grammatical construction and meaning relationship under one representative expression, listing all user-message IDs to which it independently applies. Do not merge different constructions merely because they share a broad function such as contrast.
+
+Do not infer inability from non-use. Exclude mere error corrections, vocabulary substitutions, and changes that only make the wording more complex or formal.
+
+For each suggestion, provide the expression, an explanation of its usefulness, one example preserving a cited message's intended meaning and degree of certainty, and the relevant user-message IDs without duplicates. Do not invent intentions or reasons. Do not rank suggestions by frequency.
+
+Return no suggestions if none are useful.

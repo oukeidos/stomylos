@@ -1,6 +1,6 @@
 # Stomylos
 
-A Linux desktop app for English practice through AI chat and grammar pattern reports.
+A Linux desktop app for English practice through AI chat, grammar pattern reports and expression suggestions.
 
 ## Installation
 
@@ -51,6 +51,28 @@ npm run model:fetch
 npm run build
 npm start
 ```
+
+## Reports
+
+Open the library and select **Reports → New report**, choose **Grammar patterns**
+or **Expression suggestions**, then choose a period. Grammar reports review
+recurring errors; expression suggestions offer useful grammatical ways to convey
+what you already mean. Expression reports need at least one ended conversation;
+grammar reports need five. The preview shows the selected conversations and an
+input-cost estimate; output costs are additional.
+
+Expression suggestions appear in the main pane, ordered by the number of matching
+user messages. Expand an expression for its explanation and example, then choose
+**View your messages** for the original evidence and preceding assistant context.
+**Open conversation** jumps to the cited message; **Back to report** restores the
+report. Counts are applicable messages, not errors or independent occasions.
+
+The type filter separates saved reports. **Exclude conversations used in this
+report type** only considers successful reports of that kind. Saved reports work
+offline, including reports with no suggestions. Generation can be cancelled and
+failed attempts retried; already successful results are reused. Expression reports
+send the selected original conversations, including assistant context, to the model.
+Selections above 2,000,000 characters are blocked; shorten the period to continue.
 
 ## Provider data policy
 

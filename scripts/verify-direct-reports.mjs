@@ -23,7 +23,7 @@ try{
   const ids=[];
   for(let i=0;i<5;i++){
     const snap=await command('snapshot'),id=snap.unfinished?.id??await command('newSession');ids.push(id);
-    await command('selectPartner',{sessionId:id,character:'model_04'});await command('searchMode',{sessionId:id,mode:'off'});
+    await command('selectPartner',{sessionId:id,character:snap.characters[0].id});await command('searchMode',{sessionId:id,mode:'off'});
     await command('sendMessage',{sessionId:id,text:'I enjoy visiting quiet museums.',revision:1});
     await wait(async()=> (await command('snapshot')).activity.phase==='idle');
     await command('endSession',{sessionId:id});await wait(async()=>!(await command('snapshot')).endBlocker);
@@ -44,19 +44,21 @@ try{
   await details.evaluate(n=>n.scrollTop=0);await page.screenshot({path:output+'/grammar-details.png'});await page.keyboard.press('Escape');
   assert.equal(await button('Analyze this conversation').count(),0);assert.equal(await page.getByRole('button',{name:/Analysis details/}).count(),0);
   result.checks.push('Grammar is started in Conversation details only; stored success has no regeneration action');
-  await button('Reports').click();const scope=page.getByRole('region',{name:'Report scope'});
+  await button('Reports').click();await button('+ New report').click();await button('Grammar patterns').click();
+  const scope=page.getByRole('region',{name:'Report scope'});
   assert.equal(await button('1 week').getAttribute('aria-pressed'),'true');
   for(const value of ['2','3','4','1']){await button(value+' '+(value==='1'?'week':'weeks')).click();await wait(async()=>await scope.locator('.scope-number').count()>0);}
-  const exclude=page.getByRole('checkbox',{name:'Exclude conversations already included in a report'});assert.equal(await exclude.isChecked(),false);
-  await button('Create report').click();await wait(async()=> (await command('patternState')).phase==='idle');
-  await button('View existing report').waitFor();const reports=mock.requests.filter(r=>r.model==='openai/gpt-6-astra'&&!r.stream);assert.equal(reports.length,1);
-  await button('View existing report').focus();await page.keyboard.press('Enter');assert.equal(mock.requests.filter(r=>r.model==='openai/gpt-6-astra'&&!r.stream).length,1);await command('patternClose');
+  const exclude=page.getByRole('checkbox',{name:'Exclude conversations used in this report type'});assert.equal(await exclude.isChecked(),false);
+  await button('Create report').click();await button('Open report').waitFor();
+  const reports=mock.requests.filter(r=>r.model==='openai/gpt-6-astra'&&!r.stream);assert.equal(reports.length,1);
+  await button('Open report').focus();await page.keyboard.press('Enter');await command('patternClose');
+  await button('+ New report').click();await button('Grammar patterns').click();await button('Open existing report').waitFor();
   await exclude.check();await wait(async()=> (await scope.locator('.scope-number').innerText()).startsWith('0 '));
-  assert.equal(await button('Create report').isDisabled(),true);await exclude.uncheck();await button('View existing report').waitFor();
-  for(const width of [1180,760]){await app.evaluate(({BrowserWindow},w)=>BrowserWindow.getAllWindows()[0].setContentSize(w,820),width);await page.screenshot({path:`${output}/reports-${width}.png`});assert.equal(await scope.evaluate(n=>n.scrollWidth>n.clientWidth),false);assert.equal(await page.locator('.learning').evaluate(n=>n.scrollWidth>n.clientWidth),false,'report container overflows');}
-  await button('Custom dates').click();await page.getByLabel('From',{exact:true}).fill('2020-01-01');await page.getByLabel('Through',{exact:true}).fill('2030-01-01');await button('View existing report').waitFor();
-  await page.screenshot({path:output+'/custom-dates.png'});assert.equal(await page.locator('.learning').evaluate(n=>n.scrollWidth>n.clientWidth),false);
-  result.checks.push('Week presets/default/custom dates, scope and input cost, exclusion and existing-report reuse work with one report call');
+  assert.equal(await button('Create report').isDisabled(),true);await exclude.uncheck();await button('Open existing report').waitFor();
+  for(const width of [1180,760]){await app.evaluate(({BrowserWindow},w)=>BrowserWindow.getAllWindows()[0].setContentSize(w,820),width);await page.screenshot({path:`${output}/reports-${width}.png`});assert.equal(await scope.evaluate(n=>n.scrollWidth>n.clientWidth),false);}
+  await button('Custom dates').click();await page.getByLabel('From',{exact:true}).fill('2020-01-01');await page.getByLabel('Through',{exact:true}).fill('2030-01-01');await button('Open existing report').waitFor();
+  await button('Open existing report').click();await button('Open report').waitFor();assert.equal(mock.requests.filter(r=>r.model==='openai/gpt-6-astra'&&!r.stream).length,1);
+  result.checks.push('Typed report creation, week/custom dates, kind-scoped exclusion and existing-report reuse');
   assert.deepEqual(result.errors,[]);result.status='passed';
 }catch(e){result.status='failed';result.errors.push(e.stack);process.exitCode=1;}
 finally{if(app)await app.close();mock.server.closeAllConnections();await new Promise(r=>mock.server.close(r));writeFileSync(output+'/report.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));}

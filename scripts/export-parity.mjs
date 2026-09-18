@@ -167,3 +167,7 @@ assert.equal(createHash('sha256').update(readFileSync('src/main/conversation-v9-
 const oldNine=JSON.parse(readFileSync('src/main/conversation-v9-config.json','utf8'));
 assert.deepEqual(current.conversation.characters,oldNine.conversation.characters.filter(c=>c.id!=='model_08'));
 console.log('Pro retirement preserves frozen v9 and every remaining character setting.');
+
+// Coverage selection: retain the exact accepted v007 prompt and strict schema.
+assert.deepEqual(readFileSync('src/main/expression-prompt-v1.txt'), readFileSync('../experiments/EXP-042-coverage-report/prompt-v007.txt'));
+assert.deepEqual(readFileSync('src/main/expression-format-v1.json'), readFileSync('../experiments/EXP-042-coverage-report/response-format-v007.json'));

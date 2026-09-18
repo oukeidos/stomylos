@@ -1,3 +1,4 @@
+import {prepareProviderRequest} from '../src/main/provider-policy';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
@@ -11,6 +12,7 @@ import type {PatternSelection} from '../src/shared/pattern-report';
 import {OpenRouter} from '../src/main/transport';
 import {makePatternHistorical} from './pattern-report-history';
 let dir:string,store:Store;
+const routed=prepareProviderRequest({provider:{}},patternContract.identity);
 const html='<!DOCTYPE html><html><head><title>Report</title></head><body>Practice</body></html>';
 beforeEach(()=>{dir=mkdtempSync(join(tmpdir(),'direct-report-'));store=new Store(dir,'isolated' as const);});
 afterEach(()=>{store.close();rmSync(dir,{recursive:true,force:true});vi.useRealTimers();vi.unstubAllGlobals();});
@@ -78,14 +80,14 @@ it('allows large report envelopes through transport and strict parser while othe
   const raw={id:'test',model:'openai/gpt-6-astra',provider:'OpenAI',choices:[{index:0,finish_reason:'stop',message:{role:'assistant',content}}],usage:{cost:0.2}};
   vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(raw))));const gateway=new OpenRouter(()=> 'fake');
   const signal=new AbortController().signal;
-  expect((await gateway.complete({},patternContract.identity,signal,3600000,{maxResponseBytes:null})).content).toBe(content);
-  await expect(gateway.complete({},patternContract.identity,signal,3600000)).rejects.toThrow('response_too_large');
+  expect((await gateway.complete(routed.body,routed.identity!,signal,3600000,{maxResponseBytes:null})).content).toBe(content);
+  await expect(gateway.complete(routed.body,routed.identity!,signal,3600000)).rejects.toThrow('response_too_large');
 });
 it('times out at one hour and relays cancellation without a real-time soak',async()=>{
   vi.useFakeTimers();vi.stubGlobal('fetch',vi.fn((_u:any,o:any)=>new Promise((_r,j)=>o.signal.addEventListener('abort',()=>j(new Error('abort'))))));
   const gateway=new OpenRouter(()=> 'fake');const abort=new AbortController();
-  const result=gateway.complete({},patternContract.identity,abort.signal,3600000,{maxResponseBytes:null}).catch(e=>e.message);
+  const result=gateway.complete(routed.body,routed.identity!,abort.signal,3600000,{maxResponseBytes:null}).catch(e=>e.message);
   await vi.advanceTimersByTimeAsync(3599999);expect(vi.getTimerCount()).toBe(1);
   await vi.advanceTimersByTimeAsync(1);expect(await result).toBe('request_timeout');expect(vi.getTimerCount()).toBe(0);
-  const cancelled=gateway.complete({},patternContract.identity,abort.signal,3600000,{maxResponseBytes:null}).catch(e=>e.message);abort.abort();expect(await cancelled).toBe('request_cancelled');
+  const cancelled=gateway.complete(routed.body,routed.identity!,abort.signal,3600000,{maxResponseBytes:null}).catch(e=>e.message);abort.abort();expect(await cancelled).toBe('request_cancelled');
 });
