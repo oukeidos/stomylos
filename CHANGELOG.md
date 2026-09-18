@@ -2,6 +2,8 @@
 
 ## 0.7.0 — 2026-09-18
 
+- Add integrated Jev reranking of up to 20 locally retrieved memory records for new conversations, with a 0.60 admission threshold, a shared 1.5-second preparation limit, and schema 45 preserving existing sessions and retries.
+
 - Restore chat navigation, bookmark switch alignment and composer tool spacing affected by the Reports style cleanup.
 - Unify Reports typography, spacing and alignment across history, creation, grammar details and expression suggestions.
 - Add Astra low expression suggestions with grouped message evidence, a shared typed Reports history, expandable examples and source navigation, and an automatic schema 44 upgrade preserving existing grammar reports.

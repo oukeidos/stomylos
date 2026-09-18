@@ -7,6 +7,7 @@ import { budgetState, sumMoney, validBudget, type UsageSnapshot } from '../share
 
 /** Called exactly at network dispatch, independent of UI/job/source lifetimes. */
 export interface UsageRecorder {
+  allowOptional?(): boolean;
   begin(estimate?: { amount: string; basis: string }): string | undefined;
   report(id: string | undefined, cost: unknown): void;
 }
@@ -75,6 +76,7 @@ export class UsageStore implements UsageRecorder {
     try { this.db?.prepare('UPDATE preferences SET incomplete=1 WHERE id=1').run(); } catch { /* Keep a visible in-process warning even when the disk is unavailable. */ }
     if (notify) this.changed();
   }
+  allowOptional() { try { return this.snapshot().level !== 'reached'; } catch { return false; } }
   begin(estimate?: { amount: string; basis: string }) {
     if (!this.db) { this.failed(); return undefined; }
     try {

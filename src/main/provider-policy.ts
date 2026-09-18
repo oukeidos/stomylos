@@ -4,9 +4,9 @@ import type { Json } from '../shared/types';
 import { AppFailure } from './errors';
 
 export const providerPolicyVersion = 'stomylos_provider_policy_v1';
-export type InferenceEndpoint = 'chat' | 'speech' | 'transcription';
+export type InferenceEndpoint = 'chat' | 'speech' | 'transcription' | 'decisions';
 export const endpointCapabilities = Object.freeze({
-  chat: 'supported', speech: 'unverified', transcription: 'unsupported'
+  chat: 'supported', decisions: 'supported', speech: 'unverified', transcription: 'unsupported'
 } as const);
 export interface ProviderRequest {
   version: typeof providerPolicyVersion;
@@ -50,4 +50,4 @@ export function validateProviderRequest(value: ProviderRequest, original?: { bod
   if (original && value.sourceHash !== digest(original)) throw new AppFailure('provider_source_changed');
   return value;
 }
-export type ProviderOwner = 'opener' | 'memory_add' | 'model' | 'search' | 'pattern' | 'memory' | 'cleanup' | 'explain';
+export type ProviderOwner = 'associative' | 'opener' | 'memory_add' | 'model' | 'search' | 'pattern' | 'memory' | 'cleanup' | 'explain';

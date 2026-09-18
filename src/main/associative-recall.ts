@@ -10,7 +10,7 @@ const outro = '\n</associative_recall>';
 export interface AssociativeItem { id: string; text: string; text_hash: string; source_order: number; }
 export interface AssociativeSelection {
   query_source?: 'user_input';
-  version: typeof associativeRecallVersion; query_ids: string[]; source_revision: number; threshold: number;
+  version: typeof associativeRecallVersion | 'stomylos_associative_recall_v2'; attempt_id?: string; context_hash?: string; query_ids: string[]; source_revision: number; threshold: number;
   items: AssociativeItem[]; block: string; reason: 'selected' | 'empty' | 'unavailable' | 'revoked' | 'integrity';
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -49,9 +49,10 @@ export function selectAssociative(query: { id: string; vector: number[] }[], can
     items, block: renderAssociative(items), reason: items.length ? 'selected' : 'empty' };
 }
 export function validateAssociative(selection: AssociativeSelection) {
-  if (!selection || selection.version !== associativeRecallVersion || !Array.isArray(selection.query_ids) || new Set(selection.query_ids).size !== selection.query_ids.length ||
+  if (selection?.version === 'stomylos_associative_recall_v2' && (typeof selection.attempt_id!=='string' || !selection.attempt_id || typeof selection.context_hash!=='string' || !/^[a-f0-9]{64}$/.test(selection.context_hash) || selection.query_source !== 'user_input')) throw new AppFailure('associative_snapshot');
+  if (!selection || !['stomylos_associative_recall_v1','stomylos_associative_recall_v2'].includes(selection.version) || !Array.isArray(selection.query_ids) || new Set(selection.query_ids).size !== selection.query_ids.length ||
     selection.query_ids.some(id => typeof id !== 'string' || !id) || !Number.isSafeInteger(selection.source_revision) || selection.source_revision < 0 ||
-    selection.threshold !== associativeSimilarityFloor || !Array.isArray(selection.items) || selection.items.length > associativeItemLimit ||
+    selection.threshold !== (selection.version === associativeRecallVersion ? associativeSimilarityFloor : 0.60) || !Array.isArray(selection.items) || selection.items.length > associativeItemLimit ||
     selection.items.some(item => typeof item.id !== 'string' || typeof item.text !== 'string' || typeof item.text_hash !== 'string' || hash(item.text) !== item.text_hash || !Number.isSafeInteger(item.source_order) || item.source_order < 0) ||
     new Set(selection.items.map(item => item.id)).size !== selection.items.length || selection.block !== renderAssociative(selection.items) || codePoints(selection.block) > associativeCharacterCap ||
     !['selected','empty','unavailable','revoked','integrity'].includes(selection.reason)) throw new AppFailure('associative_snapshot');

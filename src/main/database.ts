@@ -1,3 +1,4 @@
+import { jevVersion, jevPolicy, jevPacket, jevHash, jevScores, jevSelection, type JevSnapshot } from './associative-jev';
 import { openerBody, openerVersion } from './opener';
 import { requestHistory } from './request-history-store';
 import { requestSettings } from '../shared/request-history';
@@ -138,6 +139,7 @@ export class Store {
   private run(sql: string, ...values: any[]) { return this.db.prepare(sql).run(...values); }
   private transaction<T>(fn: () => T): T { return this.db.transaction(fn)(); }
   private recover() {
+    this.run("UPDATE associative_attempts SET status='interrupted',failure='interrupted_unknown_outcome',finished_at=? WHERE status IN ('queued','dispatched')", now());
     this.transaction(() => {
       this.run("UPDATE model_requests SET status='interrupted',failure='interrupted_unknown_outcome',finished_at=? WHERE status='dispatched'", now());
       this.run("UPDATE model_requests SET status='interrupted',failure='queued_not_dispatched',finished_at=? WHERE status='queued'", now());
@@ -380,7 +382,7 @@ export class Store {
   searchView(id: string) { this.session(id); return this.search.view(id); }
   searchPrepare(id: string) { return this.search.prepare(id); }
   prepareProvider(owner: ProviderOwner, id: string, body: Json, identity: Json | null): ProviderRequest {
-    const tables = { opener: 'opener_attempts', model: 'model_requests', search: 'search_router_attempts', pattern: 'pattern_report_attempts',
+    const tables = { associative: 'associative_attempts', opener: 'opener_attempts', model: 'model_requests', search: 'search_router_attempts', pattern: 'pattern_report_attempts',
       memory_add: 'memory_add_attempts', memory: 'memory_attempts', cleanup: 'memory_cleanup_attempts', explain: 'explanation_attempts' } as const;
     if (!Object.hasOwn(tables, owner)) throw new AppFailure('provider_owner_invalid');
     const table = tables[owner], state = owner === 'explain' ? 'state' : 'status';
@@ -388,7 +390,7 @@ export class Store {
       const row = this.db.prepare(`SELECT provider_request, ${state} AS state FROM ${table} WHERE id=?`).get(id) as { provider_request: string | null; state: string } | undefined;
       if (!row || !['queued', 'dispatched', 'pending'].includes(row.state)) throw new AppFailure('provider_attempt_inactive');
       if (row.provider_request) return validateProviderRequest(JSON.parse(row.provider_request), { body, identity });
-      const request = prepareProviderRequest(body, identity);
+      const request = prepareProviderRequest(body, identity, owner === 'associative' ? 'decisions' : 'chat');
       this.db.prepare(`UPDATE ${table} SET provider_request=? WHERE id=?`).run(JSON.stringify(request), id);
       return request;
     });
@@ -411,7 +413,7 @@ export class Store {
       const kind: OpeningKind = 'user';
       const id = randomUUID();
       this.run("INSERT INTO sessions(id,state,starter_id,starter_version,starter_text,created_at,chat_config,opening_kind,search_mode,memory_add_scope) VALUES(?,'draft',?,?,?,?,?,?,?,'session')",
-        id, null, null, null, now(), JSON.stringify({ ...conversationSnapshot(kind), opener_version: openerVersion, reply_context: replyContext(this.all<{mode: ReplyMode}>('SELECT mode FROM reply_preferences WHERE id=1')[0].mode) }), kind, this.all<{mode: SearchMode}>('SELECT mode FROM search_preferences WHERE id=1')[0].mode);
+        id, null, null, null, now(), JSON.stringify({ ...conversationSnapshot(kind), associative_context_version: jevVersion, associative_policy: jevPolicy, opener_version: openerVersion, reply_context: replyContext(this.all<{mode: ReplyMode}>('SELECT mode FROM reply_preferences WHERE id=1')[0].mode) }), kind, this.all<{mode: SearchMode}>('SELECT mode FROM search_preferences WHERE id=1')[0].mode);
       this.run('INSERT INTO conversation_openers(session_id,message_id) VALUES(?,?)', id, randomUUID());
       return this.session(id);
     });
@@ -682,10 +684,14 @@ export class Store {
         snapshot.memory_context = memory;
         if (snapshot.memory_version === coldContextVersion) snapshot.cold_recollections = this.recollections.snapshot(id, flattenMemory(memory));
       } else snapshot.memory_control = memoryControlVersion;
+      if (!associative && !parent && last && snapshot.associative_context_version===jevVersion) {
+        // Even a never-transmitted retry retains the previous reply's recall outcome.
+        associative=JSON.parse(last.config).associative_recall ?? null;
+      }
       if (associative) {
-        if (!memory || snapshot.associative_context_version !== 'stomylos_associative_recall_v1') throw new AppFailure('associative_memory_disabled');
-        this.associative.assertNotRevoked(associative);
-        snapshot.associative_recall = associative;
+        if (associative.version===jevVersion && (!memory || !this.jevSelectionValid(associative,id,user.id))) associative=null;
+        if (associative && (!memory || snapshot.associative_context_version !== associative.version)) throw new AppFailure('associative_memory_disabled');
+        if(associative) {this.associative.assertNotRevoked(associative); snapshot.associative_recall = associative;}
       }
       let target = pending?.selected_character ?? this.partners.state(session).current_character ?? session.character;
       if (parent) {
@@ -778,12 +784,80 @@ export class Store {
   associativeFail(job: AssociativeEmbeddingJob, failure: string, retry = false) { return this.associative.fail(job, failure, retry); }
   associativePending() { return this.associative.pending(); }
   associativeSelection(query: { id: string; vector: number[] }[], currentOrder: number, alreadySent: string[]) { return this.associative.selection(query, currentOrder, alreadySent); }
-  associativeInput(sessionId:string,messageId:string): {id:string;text:string}|null {
+  associativeInput(sessionId:string,messageId:string): {id:string;text:string;version:string}|null {
     const session=this.session(sessionId);
-    if(session.state!=='active'||!memoryReadAllowed(this.db,sessionId)||JSON.parse(session.chat_config).associative_context_version!=='stomylos_associative_recall_v1')return null;
+    if(session.state!=='active'||!memoryReadAllowed(this.db,sessionId)||!['stomylos_associative_recall_v1',jevVersion].includes(JSON.parse(session.chat_config).associative_context_version))return null;
     const message=this.messages(sessionId).findLast(isLearner);
     if(!message||message.id!==messageId||message.delivery!=='complete')return null;
-    return {id:message.id,text:message.content};
+    return {id:message.id,text:message.content,version:JSON.parse(session.chat_config).associative_context_version};
+  }
+  private jevContext(sessionId:string,messageId:string) {
+    const input=this.associativeInput(sessionId,messageId);
+    if(!input || input.version!==jevVersion) throw new AppFailure('associative_inactive');
+    const session=this.session(sessionId), hot=this.memory.snapshot(session);
+    if(!hot) throw new AppFailure('associative_inactive');
+    const cold=this.recollections.snapshot(sessionId,flattenMemory(hot));
+    const supplied=[...flattenMemory(hot).database_records,...(cold?.items??[])];
+    const messages=this.messages(sessionId), current=messages.find(m=>m.id===messageId)!;
+    const previous=messages.filter(m=>m.sequence<current.sequence).at(-1);
+    const context={current:input.text,previous:previous?.role==='assistant'?previous.content:null,supplied};
+    return {...context,hash:jevHash(context)};
+  }
+  jevBegin(sessionId:string,messageId:string,deadline:number) {
+    return this.transaction(()=>{
+      const context=this.jevContext(sessionId,messageId);
+      const existing=this.db.prepare('SELECT id,status,selection FROM associative_attempts WHERE message_id=?').get(messageId) as {id:string;status:string;selection:string|null}|undefined;
+      if(existing) return {id:existing.id,reused:true,selection:existing.selection?JSON.parse(existing.selection) as AssociativeSelection:null};
+      if(!Number.isFinite(deadline)||Date.now()>=deadline) throw new AppFailure('associative_timeout');
+      const id=randomUUID();
+      const snapshot:JevSnapshot={sessionId,messageId,contextHash:context.hash,revision:0,candidates:[],mapping:{},body:{}};
+      this.run("INSERT INTO associative_attempts(id,session_id,message_id,status,deadline,snapshot,created_at) VALUES(?,?,?,'queued',?,?,?)",id,sessionId,messageId,deadline,JSON.stringify(snapshot),now());
+      return {id,reused:false,selection:null};
+    });
+  }
+  private jevActive(id:string) {
+    const row=this.db.prepare('SELECT * FROM associative_attempts WHERE id=?').get(id) as {id:string;session_id:string;message_id:string;status:string;deadline:number;snapshot:string;provider_request:string|null}|undefined;
+    if(!row || !['queued','dispatched'].includes(row.status) || Date.now()>=row.deadline)throw new AppFailure('associative_timeout');
+    const snapshot=JSON.parse(row.snapshot) as JevSnapshot, context=this.jevContext(row.session_id,row.message_id);
+    if(context.hash!==snapshot.contextHash || !this.associative.candidatesValid(snapshot.candidates))throw new AppFailure('associative_stale');
+    return {row,snapshot,context};
+  }
+  jevPrepare(id:string,vector:number[]) {
+    return this.transaction(()=>{
+      const {row,snapshot,context}=this.jevActive(id);
+      if(row.status!=='queued'||row.provider_request)throw new AppFailure('associative_attempt_state');
+      const pool=this.associative.candidatePool(vector,row.session_id,context.supplied);
+      Object.assign(snapshot,pool,jevPacket(row.message_id,context.current,context.previous,context.supplied.map(r=>r.text),pool.candidates));
+      this.run('UPDATE associative_attempts SET snapshot=? WHERE id=?',JSON.stringify(snapshot),id);
+      return {body:snapshot.body,count:snapshot.candidates.length};
+    });
+  }
+  jevDispatch(id:string) {
+    return this.transaction(()=>{const {row}=this.jevActive(id);
+      if(row.status!=='queued'||!row.provider_request)throw new AppFailure('associative_attempt_state');
+      this.run("UPDATE associative_attempts SET status='dispatched' WHERE id=?",id);
+    });
+  }
+  jevFinish(id:string,raw:Json|null,failure:string|null):AssociativeSelection|null {
+    return this.transaction(()=>{
+      if(failure) {
+        this.run("UPDATE associative_attempts SET status='failed',selection=NULL,failure=?,finished_at=? WHERE id=? AND (status IN ('queued','dispatched') OR (status='succeeded' AND ?='associative_cancelled' AND NOT EXISTS (SELECT 1 FROM model_requests WHERE json_extract(config,'$.associative_recall.attempt_id')=?)))",failure,now(),id,failure,id);
+        return null;
+      }
+      const {row,snapshot}=this.jevActive(id);
+      if(snapshot.candidates.length && row.status!=='dispatched')throw new AppFailure('associative_attempt_state');
+      const scores=raw?jevScores(raw,Object.keys(snapshot.mapping)):{};
+      if(!raw && snapshot.candidates.length)throw new AppFailure('associative_response');
+      const selection=jevSelection(snapshot,scores,id);
+      this.run("UPDATE associative_attempts SET status='succeeded',scores=?,selection=?,metadata=?,finished_at=? WHERE id=?",JSON.stringify(scores),JSON.stringify(selection),JSON.stringify(raw?{model:raw.model,provider:raw.provider,usage:raw.usage}:{}),now(),id);
+      return selection;
+    });
+  }
+  private jevSelectionValid(selection:AssociativeSelection,sessionId:string,messageId:string) {
+    const row=this.db.prepare("SELECT snapshot,selection FROM associative_attempts WHERE id=? AND session_id=? AND message_id=? AND status='succeeded'").get(selection.attempt_id,sessionId,messageId) as {snapshot:string;selection:string}|undefined;
+    if(!row || row.selection!==JSON.stringify(selection))return false;
+    const snapshot=JSON.parse(row.snapshot) as JevSnapshot;
+    return this.jevContext(sessionId,messageId).hash===selection.context_hash && this.associative.candidatesValid(snapshot.candidates);
   }
   associativeFromInput(sessionId:string,messageId:string,vector:number[]):AssociativeSelection|null {
     return this.transaction(()=>{

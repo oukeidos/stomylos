@@ -1,3 +1,4 @@
+import { jevScores } from './associative-jev';
 import { assertProviderBody } from './provider-policy';
 import type { UsageRecorder } from './usage-store';
 import type { Json } from '../shared/types';
@@ -15,6 +16,7 @@ export class CompletionFailure extends AppFailure {
 export interface Completion { content: string; metadata: Json }
 export interface CompletionOptions { maxResponseBytes?: number | null }
 export interface Gateway {
+  decisions?(body: Json, signal: AbortSignal, timeoutMs: number): Promise<Json>;
   complete(body: Json, identity: Json, signal: AbortSignal, timeoutMs: number, options?: CompletionOptions): Promise<Completion>;
   stream(body: Json, signal: AbortSignal, chunk: (text: string) => void, options?: SearchStreamOptions): Promise<Completion>;
 }
@@ -22,8 +24,9 @@ const MAX_BYTES = 2 * 1024 * 1024;
 export class OpenRouter implements Gateway {
   constructor(private key: () => string | null, private endpoint = 'https://openrouter.ai/api/v1/chat/completions', private usage?: UsageRecorder) {}
   private async request<T>(body: Json, signal: AbortSignal, timeout: number, streaming: boolean,
-    consume: (text: string, final: boolean) => T | undefined, options: SearchStreamOptions & CompletionOptions = {}, metadata: () => Json = () => ({})): Promise<T> {
-    assertProviderBody(body);
+    consume: (text: string, final: boolean) => T | undefined, options: SearchStreamOptions & CompletionOptions = {}, metadata: () => Json = () => ({}), endpoint: 'chat' | 'decisions' = 'chat'): Promise<T> {
+    assertProviderBody(body, endpoint);
+    if(endpoint==='decisions' && this.usage?.allowOptional && !this.usage.allowOptional()) throw new AppFailure('usage_budget_reached');
     const key = this.key(); if (!key) throw new AppFailure('api_key_missing');
     if (signal.aborted) throw new AppFailure('request_cancelled');
     const payload = JSON.stringify(body);
@@ -39,7 +42,7 @@ export class OpenRouter implements Gateway {
     try {
       resetIdle();
       charge = this.usage?.begin();
-      const response = await fetch(this.endpoint, { method: 'POST', redirect: 'error', signal: abort.signal,
+      const response = await fetch(endpoint === 'decisions' ? 'https://openrouter.ai/api/alpha/decisions' : this.endpoint, { method: 'POST', redirect: 'error', signal: abort.signal,
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json',
           ...(options.search || options.gate ? { 'X-OpenRouter-Metadata': 'enabled' } : {}) }, body: payload });
       if (!response.ok) throw new HttpFailure(response.status, response.headers.get('retry-after'));
@@ -65,6 +68,13 @@ export class OpenRouter implements Gateway {
       clearTimeout(total); clearTimeout(idle); signal.removeEventListener('abort', relay);
       await reader?.cancel().catch(() => undefined);
     }
+  }
+  decisions(body: Json, signal: AbortSignal, timeoutMs: number): Promise<Json> {
+    let text='', metadata: Json={};
+    return this.request(body,signal,timeoutMs,false,(part,final)=>{
+      text+=part;
+      if(final) { const raw=strictJson(text); metadata=safeMetadata(raw ?? {}); jevScores(raw,Object.keys(body.questions)); return raw; }
+    },{maxResponseBytes:128000},()=>metadata,'decisions');
   }
   complete(body: Json, identity: Json, signal: AbortSignal, timeoutMs: number, options: CompletionOptions = {}): Promise<Completion> {
     if (identity.provider !== null) throw new AppFailure('provider_policy_invalid');

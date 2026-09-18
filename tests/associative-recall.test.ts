@@ -1,8 +1,10 @@
+import schema from '../src/main/schema.sql?raw';
+import { installCurrentCatalog } from '../src/main/catalog-content';
 import { currentSchema } from '../src/main/database-migrations';
 import { expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { associativeCharacterCap, associativeSimilarityFloor, renderAssociative, selectAssociative, validateAssociative } from '../src/main/associative-recall';
-import { conversationBody, conversationSnapshot } from '../src/main/contracts';
+import { characters, conversationBody, conversationSnapshot } from '../src/main/contracts';
 import { memoryControlVersion } from '../src/shared/memory-control';
 import { timed } from './time-fixtures';
 import type { Message } from '../src/shared/types';
@@ -68,7 +70,13 @@ it.each([['HOT', 'other-session'], ['COLD', 'other-session'], ['HOT', null], ['C
       const vector = Array.from({ length: 384 }, (_, index) => index === 0 ? 1 : 0);
       store.associativeComplete(job!, { vector, inputHash: coldHash(job!.text), chunkCount: 1 });
     };
-    const session = store.createSession(); store.searchMode(session.id, 'off'); store.selectManual(session.id, 'model_04');
+    const session = store.createSession();
+    // Pin the historical turn-ADD/associative-v1 contract this test exercises.
+    const config=JSON.parse(session.chat_config); config.associative_context_version='stomylos_associative_recall_v1';delete config.associative_policy;
+    fixture.db.exec('DROP TRIGGER immutable_memory_add_scope');
+    fixture.db.prepare("UPDATE sessions SET chat_config=?,memory_add_scope='turn' WHERE id=?").run(JSON.stringify(config),session.id);
+    fixture.db.exec("CREATE TRIGGER immutable_memory_add_scope BEFORE UPDATE OF memory_add_scope ON sessions BEGIN SELECT RAISE(ABORT, 'Immutable memory ADD scope'); END");
+    store.searchMode(session.id, 'off'); store.selectManual(session.id, characters[0].id);
     const first = store.submit(session.id, 'I enjoyed a mountain hike.', 'first'); store.commitRoute(session.id, null, 'fixture', null);
     expect(store.admitAssociativeMemory(session.id, first.id)).toBe(true);
     const firstAttempt = receiveNotes(store, ['The user enjoyed a mountain hike.']); store.acceptMemoryAdd(firstAttempt.id); index();
@@ -103,7 +111,12 @@ it('migrates a schema-32 database to the additive associative index without chan
   try {
     const before = fixture.db.prepare('SELECT document,document_hash FROM shared_memory').get();
     fixture.store.close();
-    fixture.db.exec('DROP TABLE genie_request_attempts; DROP INDEX associative_embedding_queue; DROP TABLE associative_embeddings; PRAGMA user_version=32;'); fixture.db.close();
+    fixture.db.close();
+    rmSync(resolve(fixture.directory,'stomylos.sqlite3'));
+    const legacy=new Database(resolve(fixture.directory,'stomylos.sqlite3'));
+    legacy.exec(schema.replace(/\n-- Public schema 32 -> 33:[\s\S]*$/,''));
+    legacy.prepare('INSERT INTO shared_memory(id,document,document_hash) VALUES(1,?,?)').run((before as any).document,(before as any).document_hash);
+    legacy.transaction(()=>installCurrentCatalog(legacy))();legacy.pragma('user_version=32');legacy.close();
     upgraded = new Store(fixture.directory, 'isolated' as const);
     expect(upgraded.integrity()).toEqual({ integrity: [{ integrity_check: 'ok' }], foreignKeys: [] });
     const verify = new Database(resolve(fixture.directory, 'stomylos.sqlite3'));

@@ -1,3 +1,4 @@
+import { installCurrentCatalog } from '../src/main/catalog-content';
 import { flattenMemory } from '../src/main/memory-flat';
 import source23 from '../src/main/migrations/schema-v23.sql?raw';
 import source21 from '../src/main/migrations/schema-v21.sql?raw';
@@ -317,4 +318,13 @@ it.each([32,40])('admits v10 from schema %i with rollback, preserved drafts and 
   expect(db.prepare('SELECT id,state,draft,chat_config FROM sessions').all()).toEqual(before);
   expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
   migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
+});
+
+it('adds Jev attempts from schema 44 atomically and preserves old session configuration on restart',()=>{
+ const source44=current.replace(/\n-- Public schema 44 -> 45:[\s\S]*$/,'');
+ const {db,dir}=fixture(source44,44);db.transaction(()=>installCurrentCatalog(db))();const document=db.prepare('SELECT document FROM shared_memory').pluck().get();
+ const exec=db.exec.bind(db);const fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=exec(sql);if(sql.includes('CREATE TABLE associative_attempts'))throw new Error('Jev interruption');return result;});
+ expect(()=>migrateDatabase(db,dir)).toThrow('Jev interruption');fault.mockRestore();expect(db.pragma('user_version',{simple:true})).toBe(44);validateSchema(db,source44);
+ migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);expect(db.prepare('SELECT document FROM shared_memory').pluck().get()).toBe(document);
+ expect(db.prepare('SELECT COUNT(*) FROM associative_attempts').pluck().get()).toBe(0);migrateDatabase(db,dir);
 });

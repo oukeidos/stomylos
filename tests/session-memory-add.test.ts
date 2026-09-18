@@ -131,12 +131,14 @@ it('queries the exact user input with local embeddings and freezes recall into t
  f.store.associativeTick();const job=f.store.associativeClaim()!,vector=Array.from({length:384},(_,i)=>i===0?1:0);
  f.store.associativeComplete(job,{vector,inputHash:memoryHash(job.text),chunkCount:1});
  const query=vi.fn(async(_text:string,_signal:AbortSignal)=>vector),complete=vi.fn(async()=>{throw Error('No ADD before End');});const bodies:Json[]=[];
- const c=controller(f,{complete,async stream(body){bodies.push(body);return {content:'Which trail?',metadata:{}};}});
+ const decisions=vi.fn(async(body:Json)=>({model:'typesafe/jev-1.13-20260917',provider:'TypeSafe',answers:Object.fromEntries(Object.keys(body.questions).map(k=>[k,{type:'noul',noul:.60}]))}));
+ const c=controller(f,{complete,decisions,async stream(body){bodies.push(body);return {content:'Which trail?',metadata:{}};}});
  c.cold={query,async close(){},async preferenceChanged(){},wake(){}} as unknown as NonNullable<Coordinator['cold']>;
  try{await c.command('sendMessage',{sessionId:s.id,text:'I want to hike tomorrow.\nCan we discuss it?',revision:0});
   await vi.waitFor(()=>expect(bodies).toHaveLength(1));expect(query.mock.calls[0][0]).toBe('I want to hike tomorrow.\nCan we discuss it?');expect(complete).not.toHaveBeenCalled();
   const request=f.store.requests(s.id).find(r=>r.role==='chat')!;const saved=JSON.parse(request.config).associative_recall;
   expect(saved).toMatchObject({query_source:'user_input',query_ids:[f.store.messages(s.id)[0].id],items:[{id:'old'}]});
+  expect(decisions).toHaveBeenCalledTimes(1);expect(saved.threshold).toBe(.60);expect(saved.version).toBe('stomylos_associative_recall_v2');
   expect(JSON.stringify(bodies[0])).toContain('The user enjoys hiking.');expect(f.store.view(s.id).memory.addJobs).toEqual([]);
  }finally{await c.command('close',undefined);}
 });

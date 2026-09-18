@@ -1,3 +1,5 @@
+import { dot } from './associative-recall';
+import type { JevCandidate } from './associative-jev';
 import type Database from 'better-sqlite3';
 import { ColdMemoryStore, coldHash } from './cold-memory-store';
 import { MemoryStore } from './memory-store';
@@ -82,6 +84,23 @@ export class AssociativeRecallStore {
   release(job: AssociativeEmbeddingJob) {
     return this.db.prepare("UPDATE associative_embeddings SET state='pending',lease=NULL,attempts=0,failure=NULL WHERE memory_id=? AND state='running' AND lease=?")
       .run(job.id, job.lease).changes === 1;
+  }
+  candidatePool(vector: number[], sessionId: string, supplied: {id:string;text:string}[]): {revision:number;candidates:JevCandidate[]} {
+    const source=new Map(this.sources().map(r=>[r.id,r])); const sent=new Set(supplied.map(r=>r.id)), hashes=new Set(supplied.map(r=>coldHash(r.text)));
+    const dimensions=this.db.prepare('SELECT dimensions FROM embedding_spaces WHERE id=?').pluck().get(embeddingSpaceId) as number | undefined;
+    if(!dimensions) return {revision:this.revision(),candidates:[]};
+    const rows=this.db.prepare("SELECT memory_id,vector,vector_hash FROM associative_embeddings WHERE space_id=? AND state='ready'").all(embeddingSpaceId) as {memory_id:string;vector:Uint8Array;vector_hash:string}[];
+    const candidates=rows.flatMap(row=>{
+      const r=source.get(row.memory_id);
+      if(!r || r.source_session_id===sessionId || sent.has(r.id) || hashes.has(r.text_hash) || this.cold.revoked(r.id))return [];
+      if(coldHash(row.vector)!==row.vector_hash || coldHash(r.text)!==r.text_hash)throw new AppFailure('associative_integrity');
+      return [{id:r.id,text:r.text,text_hash:r.text_hash,source_order:r.source_order,cosine:dot(vector,Array.from(decodeVector(row.vector,dimensions)))}];
+    }).sort((a,b)=>b.cosine-a.cosine || a.source_order-b.source_order || (a.id<b.id?-1:a.id>b.id?1:0)).slice(0,20);
+    return {revision:this.revision(),candidates};
+  }
+  candidatesValid(candidates: JevCandidate[]) {
+    const source=new Map(this.sources().map(r=>[r.id,r]));
+    return candidates.every(r=>source.get(r.id)?.text_hash===r.text_hash && !this.cold.revoked(r.id));
   }
   selection(query: { id: string; vector: number[] }[], currentOrder: number, alreadySent: string[], suppliedText: string[] = [], excludedSessionId?: string): AssociativeSelection {
     if (!Number.isSafeInteger(currentOrder) || currentOrder < 0) throw new AppFailure('associative_source_order');

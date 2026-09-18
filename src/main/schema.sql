@@ -935,3 +935,21 @@ BEGIN SELECT RAISE(ABORT,'immutable memory source attempt'); END;
 ALTER TABLE pattern_reports ADD COLUMN report_type TEXT NOT NULL DEFAULT 'grammar' CHECK(report_type IN ('grammar','expression'));
 CREATE TRIGGER immutable_report_type BEFORE UPDATE OF report_type ON pattern_reports
 BEGIN SELECT RAISE(ABORT,'Report type is immutable'); END;
+
+-- Public schema 44 -> 45: versioned associative Jev attempts; old snapshots remain immutable.
+CREATE TABLE associative_attempts (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  message_id TEXT NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK(status IN ('queued','dispatched','succeeded','failed','interrupted')),
+  deadline REAL NOT NULL,
+  snapshot TEXT NOT NULL,
+  provider_request TEXT,
+  scores TEXT,
+  selection TEXT,
+  metadata TEXT,
+  failure TEXT,
+  created_at TEXT NOT NULL,
+  finished_at TEXT
+);
+CREATE INDEX associative_attempt_session ON associative_attempts(session_id);

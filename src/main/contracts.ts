@@ -1,3 +1,4 @@
+import { jevVersion, jevPolicy } from './associative-jev';
 import { openerVersion, openerBridge } from './opener';
 import { replyMode, replyPrefix } from './reply-context';
 import { coldContextVersion, coldRecallPolicy, renderCold, validateRecall } from './memory-recall';
@@ -185,9 +186,10 @@ function validateConversationSnapshot(snapshot: Json) {
   if ((snapshot.version === runtime.conversation.version && snapshot.router_prompt_version !== currentRouterVersion) || (snapshot.version === conversationV9.conversation.version && snapshot.router_prompt_version !== retainedRouterVersion) || (snapshot.version === conversationV8.conversation.version && snapshot.router_prompt_version !== eightRouterVersion)) throw new AppFailure('unsupported_router_settings');
   if (snapshot.router_prompt_version !== undefined && !((snapshot.router_prompt_version === compactRouterVersion && snapshot.version === conversationV7.conversation.version) || (snapshot.router_prompt_version === eightRouterVersion && snapshot.version === conversationV8.conversation.version) || (snapshot.router_prompt_version === retainedRouterVersion && snapshot.version === conversationV9.conversation.version) || (snapshot.router_prompt_version === currentRouterVersion && snapshot.version === runtime.conversation.version))) throw new AppFailure('unsupported_router_settings');
   if (snapshot.cache_version !== undefined && snapshot.cache_version !== conversationCacheVersion) throw new AppFailure('unsupported_conversation_settings');
-  if (snapshot.associative_context_version !== undefined && snapshot.associative_context_version !== associativeRecallVersion) throw new AppFailure('unsupported_conversation_settings');
+  if (snapshot.associative_context_version !== undefined && ! [associativeRecallVersion,jevVersion].includes(snapshot.associative_context_version)) throw new AppFailure('unsupported_conversation_settings');
+  if (snapshot.associative_context_version === jevVersion && !isDeepStrictEqual(snapshot.associative_policy,jevPolicy)) throw new AppFailure('unsupported_associative_settings');
   if (snapshot.associative_recall !== undefined) {
-    if (snapshot.associative_context_version !== associativeRecallVersion) throw new AppFailure('unsupported_associative_settings');
+    if (snapshot.associative_context_version !== snapshot.associative_recall.version) throw new AppFailure('unsupported_associative_settings');
     validateAssociative(snapshot.associative_recall);
   }
   const modern = [runtime.conversation.version, conversationV9.conversation.version, conversationV8.conversation.version, conversationV7.conversation.version, conversationV6.conversation.version, conversationV5.conversation.version].includes(snapshot.version);

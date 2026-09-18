@@ -1,3 +1,4 @@
+import { jevVersion } from './associative-jev';
 import { conversationLimits } from '../shared/conversation-limits';
 import { genieRecentMessages } from './genie';
 import { DadouchosController } from './dadouchos-controller';
@@ -38,6 +39,7 @@ export class Coordinator {
   readonly patterns: PatternReportController;
   patternViewer: { open(id: string, html: string, createdAt: string): Promise<void>; close(id?: string): void } | null = null;
   cold?: MemoryEmbeddingController;
+  private recallAbort: AbortController | null = null;
   speech?: SpeechController;
   dictation?: DictationController;
   private exiting = false;
@@ -314,7 +316,7 @@ export class Coordinator {
       }
       case 'setMemoryPreference': {
         const value = await this.admitMemory(() => this.write('setMemoryPreference', args.enabled, args.revision));
-        if (!value.enabled) this.memory?.abort.abort();
+        if (!value.enabled) {this.memory?.abort.abort(); this.recallAbort?.abort();}
         await this.cold?.preferenceChanged(value.enabled);
         this.settings.memory = value; await this.publish(); return value;
       }
@@ -777,7 +779,10 @@ export class Coordinator {
   }
   private async recallFromInput(sessionId: string, messageId: string, signal: AbortSignal) {
     if (!this.cold || signal.aborted) return null;
-    const bounded = AbortSignal.any([signal, AbortSignal.timeout(1500)]);
+    const local=new AbortController(); this.recallAbort=local;
+    const deadline=Date.now()+1500, monotonic=performance.now()+1500;
+    const bounded = AbortSignal.any([signal,local.signal, AbortSignal.timeout(1500)]);
+    let attemptId: string | null=null;
     let stop!: () => void;
     const expired = new Promise<null>(resolve => {
       stop = () => resolve(null);
@@ -786,15 +791,43 @@ export class Coordinator {
     try {
       const source = await Promise.race([this.db.call('associativeInput', sessionId, messageId), expired]);
       if (!source || bounded.aborted) return null;
-      const vector = await Promise.race([this.cold.query(source.text, bounded), expired]);
-      if (!vector || bounded.aborted) return null;
-      return await Promise.race([this.db.call('associativeFromInput', sessionId, messageId, vector), expired]);
+      if(source.version!==jevVersion) {
+        const vector=await Promise.race([this.cold.query(source.text,bounded),expired]);
+        if(!vector||bounded.aborted)return null;
+        return await Promise.race([this.db.call('associativeFromInput',sessionId,messageId,vector),expired]);
+      }
+      const run=async()=>{
+        const attempt=await this.db.call('jevBegin',sessionId,messageId,deadline); attemptId=attempt.id;
+        if(attempt.reused)return attempt.selection;
+        try {
+          if(bounded.aborted)throw new AppFailure('associative_timeout');
+          const vector=await this.cold!.query(source.text,bounded);
+          if(bounded.aborted || !vector)throw new AppFailure('associative_timeout');
+          const prepared=await this.db.call('jevPrepare',attempt.id,vector);
+          if(!prepared.count)return await this.db.call('jevFinish',attempt.id,null,null);
+          const routed=await this.db.call('prepareProvider','associative',attempt.id,prepared.body,null);
+          const launch=await this.admitMemory(async()=>{
+            if(bounded.aborted || !this.gateway.decisions)throw new AppFailure('associative_unavailable');
+            await this.db.call('jevDispatch',attempt.id);
+            const remaining=monotonic-performance.now();
+            if(bounded.aborted||remaining<=0)throw new AppFailure('associative_timeout');
+            return {response:this.gateway.decisions(routed.body,bounded,remaining)};
+          });
+          const raw=await launch.response;
+          if(bounded.aborted)throw new AppFailure('associative_timeout');
+          return await this.db.call('jevFinish',attempt.id,raw,null);
+        } catch(error) { await this.db.call('jevFinish',attempt.id,null,failureCode(error)); return null; }
+      };
+      return await Promise.race([run(),expired]);
     } catch (error) {
       // Recall is optional, but failed DB admission must remain diagnosable.
       console.warn('Associative recall unavailable:', failureCode(error));
       return null;
     } finally {
       bounded.removeEventListener('abort', stop);
+      const cancelled=bounded.aborted;
+      local.abort(); if(this.recallAbort===local)this.recallAbort=null;
+      if(attemptId && cancelled) void this.db.call('jevFinish',attemptId,null,'associative_cancelled').catch(()=>undefined);
     }
   }
   private async memoryChanged(sessionId: string) {

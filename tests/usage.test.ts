@@ -101,8 +101,8 @@ it('records streaming usage once even on interruption and bundled search, and mi
     usage: { cost: .12, cost_details: { upstream_inference_cost: .08, upstream_inference_prompt_cost: .06, upstream_inference_completions_cost: .02 } } });
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(stream + stream)).mockRejectedValueOnce(new Error('network')));
   const gateway = new OpenRouter(() => 'synthetic', undefined, store);
-  await expect(gateway.stream({ model: 'test' }, signal(), () => undefined)).rejects.toThrow('stream_incomplete');
-  await expect(gateway.stream({ model: 'test' }, signal(), () => undefined)).rejects.toThrow();
+  await expect(gateway.stream(prepareProviderRequest({ model: 'test' }).body, signal(), () => undefined)).rejects.toThrow('stream_incomplete');
+  await expect(gateway.stream(prepareProviderRequest({ model: 'test' }).body, signal(), () => undefined)).rejects.toThrow();
   expect(store.snapshot()).toMatchObject({ total: '0.12', requests: 2, unreported: 1 });
 });
 
@@ -156,4 +156,9 @@ it('does not silently reset an invalid ledger or block generation when accountin
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(response(.1))));
   await new OpenRouter(() => 'synthetic', undefined, store).complete({ model: 'test' }, identity, signal(), 1000);
   expect(readFileSync(path)).toEqual(before);
+});
+
+it('allows optional Jev calls below budget and rejects them at the budget without changing ordinary accounting',()=>{
+ expect(store.allowOptional()).toBe(true);store.setBudget('0.01');const id=store.begin();store.report(id,.01);
+ expect(store.allowOptional()).toBe(false);expect(store.snapshot().requests).toBe(1);
 });

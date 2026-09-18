@@ -116,7 +116,7 @@ it('checks the actual wire for every active text request shape and keeps search 
       const sent = JSON.parse(wire.mock.calls.at(-1)![1].body as string);
       expect(sent, c.name).toEqual(routed.body); expect(JSON.stringify(c.body)).toBe(before);
     }
-    expect(cases).toHaveLength(40); expect(wire).toHaveBeenCalledTimes(cases.length);
+    expect(cases).toHaveLength(characters.length * 3 + 19); expect(wire).toHaveBeenCalledTimes(cases.length);
     expect(searchOverlay.max_tool_calls).toBe(4); expect(searchOverlay.tools[0].parameters.max_uses).toBe(2);
     expect(searchOverlay.stop_server_tools_when[0]).toEqual({ type: 'step_count_is', step_count: 4 });
     const cache = hashConfig(speechConfig);
@@ -155,4 +155,20 @@ it('sends Lighter and Standard conversation prefixes unchanged through search an
       store.end(s.id);store.cancelEnd(s.id);
     }
   } finally {store.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+it('guards the Decisions endpoint and accounts a Jev call separately, including invalid responses', async()=>{
+ const {jevPacket,jevModel}=await import('../src/main/associative-jev');
+ const body=jevPacket('m','Current',null,[],[{id:'r',text:'Synthetic',text_hash:'x',source_order:1,cosine:.1}]).body;
+ const routed=prepareProviderRequest(body,null,'decisions'); const begin=vi.fn(()=>'charge'),report=vi.fn();
+ const raw={model:jevModel+'-20260917',provider:'Alternate',answers:{c01:{type:'noul',noul:.6}},usage:{cost:.001}};
+ const wire=vi.fn(async()=>new Response(JSON.stringify(raw)));vi.stubGlobal('fetch',wire);
+ const gateway=new OpenRouter(()=>'synthetic',undefined,{begin,report});
+ await gateway.decisions(routed.body,new AbortController().signal,1000);
+ expect((wire.mock.calls[0] as unknown as [string])[0]).toBe('https://openrouter.ai/api/alpha/decisions');
+ expect(JSON.parse((wire.mock.calls[0] as unknown as [string,RequestInit])[1].body as string)).toEqual(routed.body);
+ expect(begin).toHaveBeenCalledTimes(1);expect(report).toHaveBeenCalledWith('charge',.001);
+ await expect(gateway.decisions({...body,provider:{}},new AbortController().signal,1000)).rejects.toThrow('provider_policy_invalid');expect(begin).toHaveBeenCalledTimes(1);
+ const blocked=new OpenRouter(()=>'synthetic',undefined,{begin,report,allowOptional:()=>false});await expect(blocked.decisions(body,new AbortController().signal,1000)).rejects.toThrow('usage_budget_reached');expect(begin).toHaveBeenCalledTimes(1);
+ raw.model='wrong';await expect(gateway.decisions(body,new AbortController().signal,1000)).rejects.toThrow('associative_response');expect(begin).toHaveBeenCalledTimes(2);expect(report).toHaveBeenLastCalledWith('charge',.001);
 });

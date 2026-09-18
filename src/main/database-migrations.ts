@@ -51,12 +51,14 @@ import step21 from './migrations/021.sql?raw';
 import current from './schema.sql?raw';
 import step42 from './migrations/042.sql?raw';
 import step43 from './migrations/043.sql?raw';
+import step45 from './migrations/045.sql?raw';
 import step44 from './migrations/044.sql?raw';
 import { AppFailure } from './errors';
 
 // v0.1.0 ships schema 13. Keep published source schemas and steps immutable.
 export const minimumPublicSchema = 13;
-export const currentSchema = 44;
+export const currentSchema = 45;
+const source44 = current.replace(/\n-- Public schema 44 -> 45:[\s\S]*$/, '');
 const source43 = current.replace(/\n-- Public schema 43 -> 44:[\s\S]*$/, '');
 const source42 = current.replace(/\n-- Public schema 42 -> 43:[\s\S]*$/, '');
 const source39 = current.replace(/\n-- Public schema 39 -> 40:[\s\S]*$/, '');
@@ -92,11 +94,11 @@ function dataFingerprint(db: Database.Database): string {
   }
   return digest.digest('hex');
 }
-const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }, { from: 21, to: 22, sql: step22 }, { from: 22, to: 23, sql: step23 }, { from: 23, to: 24, sql: step24 }, { from: 24, to: 25, sql: step25 }, { from: 25, to: 26, sql: step26 }, { from: 26, to: 27, sql: step27 }, { from: 27, to: 28, sql: step28 }, { from: 28, to: 29, sql: step29 }, { from: 29, to: 30, sql: step30 }, { from: 30, to: 31, sql: step31 }, { from: 31, to: 32, sql: step32 }, { from: 32, to: 33, sql: step33 }, { from: 33, to: 34, sql: step34 }, { from: 34, to: 35, sql: step35 }, { from: 35, to: 36, sql: step36 }, { from: 36, to: 37, sql: step37 }, { from: 37, to: 38, sql: step38 }, { from: 38, to: 39, sql: step39 }, { from: 39, to: 40, sql: step40 }, { from: 40, to: 41, sql: step41 }, { from: 41, to: 42, sql: step42 }, { from: 42, to: 43, sql: step43 }, { from: 43, to: 44, sql: step44 }];
+const steps = [{ from: 13, to: 14, sql: step14 }, { from: 14, to: 15, sql: step15 }, { from: 15, to: 16, sql: step16 }, { from: 16, to: 17, sql: step17 }, { from: 17, to: 18, sql: step18 }, { from: 18, to: 19, sql: step19 }, { from: 19, to: 20, sql: step20 }, { from: 20, to: 21, sql: step21 }, { from: 21, to: 22, sql: step22 }, { from: 22, to: 23, sql: step23 }, { from: 23, to: 24, sql: step24 }, { from: 24, to: 25, sql: step25 }, { from: 25, to: 26, sql: step26 }, { from: 26, to: 27, sql: step27 }, { from: 27, to: 28, sql: step28 }, { from: 28, to: 29, sql: step29 }, { from: 29, to: 30, sql: step30 }, { from: 30, to: 31, sql: step31 }, { from: 31, to: 32, sql: step32 }, { from: 32, to: 33, sql: step33 }, { from: 33, to: 34, sql: step34 }, { from: 34, to: 35, sql: step35 }, { from: 35, to: 36, sql: step36 }, { from: 36, to: 37, sql: step37 }, { from: 37, to: 38, sql: step38 }, { from: 38, to: 39, sql: step39 }, { from: 39, to: 40, sql: step40 }, { from: 40, to: 41, sql: step41 }, { from: 41, to: 42, sql: step42 }, { from: 42, to: 43, sql: step43 }, { from: 43, to: 44, sql: step44 }, { from: 44, to: 45, sql: step45 }];
 export function inspectMigration(db: Database.Database): number {
   const version = Number(db.pragma('user_version', { simple: true }));
   if (version < minimumPublicSchema || version > currentSchema) throw new AppFailure('unsupported_schema_version');
-  validateSchema(db, version === 13 ? source13 : version < 19 ? source18 : version === 19 ? source19 : version < 22 ? source21 : version < 24 ? source23 : version < 26 ? source25 : version === 26 ? source26 : version === 27 ? source27 : version === 28 ? source28 : version === 29 ? source29 : version === 30 ? source30 : version === 31 ? source31 : version === 32 ? source32 : version === 33 ? source33 : version < 36 ? source35 : version < 38 ? source37 : version === 38 ? source38 : version === 39 ? source39 : version < 43 ? source42 : version === 43 ? source43 : current);
+  validateSchema(db, version === 13 ? source13 : version < 19 ? source18 : version === 19 ? source19 : version < 22 ? source21 : version < 24 ? source23 : version < 26 ? source25 : version === 26 ? source26 : version === 27 ? source27 : version === 28 ? source28 : version === 29 ? source29 : version === 30 ? source30 : version === 31 ? source31 : version === 32 ? source32 : version === 33 ? source33 : version < 36 ? source35 : version < 38 ? source37 : version === 38 ? source38 : version === 39 ? source39 : version < 43 ? source42 : version === 43 ? source43 : version === 44 ? source44 : current);
   integrity(db);
   return version;
 }
