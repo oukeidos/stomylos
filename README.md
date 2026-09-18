@@ -52,15 +52,6 @@ npm run build
 npm start
 ```
 
-## Memory recall
-
-With Memory On, new conversations use Jev to assess locally retrieved records
-before adding useful background to a reply. This sends the current message,
-previous assistant reply, session memory and up to 20 candidate records through
-OpenRouter, and adds a small API charge. If recall is unavailable or too slow,
-the conversation continues without that extra context. Existing conversations
-keep their saved recall method; start a new conversation to use the update.
-
 ## Provider data policy
 
 Text requests ask OpenRouter to exclude providers that collect data by setting
