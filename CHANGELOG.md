@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep the header model name at the same size in active and ended conversations across window widths.
 - Add integrated Jev reranking of up to 20 locally retrieved memory records for new conversations, with a 0.60 admission threshold, a shared 1.5-second preparation limit, and schema 45 preserving existing sessions and retries.
 
 ## 0.7.0 — 2026-09-18
