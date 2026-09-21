@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Give new conversations a fixed local start date and separate report-date metadata for memory context without changing memory extraction or note text.
 - Clear the report notification after viewing its result or failure while retaining generation progress and notifying again for a new completion.
 - Preserve the New report preview when reselecting the current type or period and keep creation controls visible with clear loading and date guidance.
 - Keep the header model name at the same size in active and ended conversations across window widths.

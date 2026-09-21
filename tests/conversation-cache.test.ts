@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { Store } from '../src/main/database';
 import * as contracts from '../src/main/contracts';
@@ -15,15 +16,20 @@ function open() { store = new Store(directory, 'isolated' as const, () => 0, () 
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-cache-')); clock = publicTime; open(); });
 afterEach(() => { vi.restoreAllMocks(); store.close(); rmSync(directory, { recursive: true, force: true }); });
 function start(partner = 'model_01') {
-  const s = store.createSession(); store.searchMode(s.id, 'off');
+  const s = store.createSession();
+  // Frozen pre-date sessions continue to exercise the historical cache contract.
+  const db = new Database(join(directory, 'stomylos.sqlite3'));
+  const saved = JSON.parse(s.chat_config); delete saved.conversation_date_version;
+  db.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(saved), s.id); db.close();
+  store.searchMode(s.id, 'off');
   store.setOpening(s.id, randomUUID(), s.opening_revision, 'user');
   store.selectManual(s.id, partner); store.submit(s.id, 'Tomorrow I will visit a museum.');
   store.commitRoute(s.id, null, 'fixture', null);
   return s.id;
 }
 function finish(id: string, requestId: string) {
-  store.dispatch(requestId); const reply = store.prepareReply(id, requestId);
-  store.finishReply(requestId, reply.id, 'Which exhibit caught your eye?', {});
+  const started = store.startChat(requestId);
+  store.finishReply(started.request.id, started.bubble.id, 'Which exhibit caught your eye?', {});
 }
 
 it('omits exactly the time addition, retains settings/history, and enables only selected Claude models', () => {
@@ -32,7 +38,8 @@ it('omits exactly the time addition, retains settings/history, and enables only 
     const config = JSON.parse(request.config), body = store.chatBody(request.id);
     expect(body.messages[0].content).toBe(config.system_prompt + memoryContext(config.memory_context, config.memory_version));
     expect(body.messages[0].content).not.toContain('application_time_context');
-    expect(body.messages.slice(1)).toEqual(JSON.parse(contracts.transcriptJson(store.messages(id))));
+    const history = JSON.parse(contracts.transcriptJson(store.messages(id)));
+    expect(body.messages.slice(-history.length)).toEqual(history);
     expect(body.cache_control).toEqual(['model_01', 'model_03'].includes(partner.id) ? { type: 'ephemeral' } : undefined);
     expect(body.reasoning).toEqual(partner.reasoning);
     expect(body.provider).toEqual(config.provider); expect(body.max_tokens).toBe(config.max_tokens);
@@ -56,8 +63,8 @@ it('retains an identical input prefix across midnight while time and memory-upda
   expect(nextBody.messages.slice(0, body.messages.length)).toEqual(body.messages);
   expect(JSON.parse(next.config).time_context.sources.map((s: any) => s.sent_time)).toEqual([publicTime, clock]);
   finish(id, next.id); store.end(id);
-  const packet = JSON.parse(store.memoryJob(id)!.source);
-  expect(packet.messages.filter((m: any) => m.role === 'user').map((m: any) => m.sent_time)).toEqual([publicTime, clock]);
+  const packet = JSON.parse(store.memoryAddReady()!.source_manifest!);
+  expect(packet.messages.filter((m: any) => m.role === 'user').map((m: any) => m.sent_at)).toEqual([publicTime.utc, clock.utc]);
 });
 
 for (const historical of [false, true]) it(`preserves exact ${historical ? 'historical' : 'cached'} retries across restart, then adopts caching on a new Send`, () => {

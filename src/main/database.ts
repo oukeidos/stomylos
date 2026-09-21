@@ -1,3 +1,5 @@
+import { conversationDateVersion } from './conversation-dates';
+import { conversationDates } from './conversation-date-store';
 import { jevVersion, jevPolicy, jevPacket, jevHash, jevScores, jevSelection, type JevSnapshot } from './associative-jev';
 import { openerBody, openerVersion } from './opener';
 import { requestHistory } from './request-history-store';
@@ -413,7 +415,7 @@ export class Store {
       const kind: OpeningKind = 'user';
       const id = randomUUID();
       this.run("INSERT INTO sessions(id,state,starter_id,starter_version,starter_text,created_at,chat_config,opening_kind,search_mode,memory_add_scope) VALUES(?,'draft',?,?,?,?,?,?,?,'session')",
-        id, null, null, null, now(), JSON.stringify({ ...conversationSnapshot(kind), associative_context_version: jevVersion, associative_policy: jevPolicy, opener_version: openerVersion, reply_context: replyContext(this.all<{mode: ReplyMode}>('SELECT mode FROM reply_preferences WHERE id=1')[0].mode) }), kind, this.all<{mode: SearchMode}>('SELECT mode FROM search_preferences WHERE id=1')[0].mode);
+        id, null, null, null, now(), JSON.stringify({ ...conversationSnapshot(kind), conversation_date_version: conversationDateVersion, associative_context_version: jevVersion, associative_policy: jevPolicy, opener_version: openerVersion, reply_context: replyContext(this.all<{mode: ReplyMode}>('SELECT mode FROM reply_preferences WHERE id=1')[0].mode) }), kind, this.all<{mode: SearchMode}>('SELECT mode FROM search_preferences WHERE id=1')[0].mode);
       this.run('INSERT INTO conversation_openers(session_id,message_id) VALUES(?,?)', id, randomUUID());
       return this.session(id);
     });
@@ -705,6 +707,7 @@ export class Store {
           const sources = timeSources(source, messageId => readMessageTime(this.db, messageId));
           snapshot.time_context = { reply_reference: this.clock(), sources };
           snapshot.temporal_source_hash = temporalHash(sources);
+          if (snapshot.conversation_date_version) snapshot.conversation_dates = conversationDates(this.db, id, snapshot);
           snapshot.system_sha256 = hash(conversationSystem(snapshot, source));
         }
         // Bind every new target independently of mutable UI selection. Old requests stay exact.
@@ -964,7 +967,10 @@ export class Store {
           if (snapshot.memory_version === coldContextVersion) snapshot.cold_recollections = this.recollections.snapshot(session.id, flattenMemory(snapshot.memory_context));
         } else snapshot.memory_control = memoryControlVersion;
         const source = this.messages(session.id).filter(m => m.sequence <= request.source_sequence);
-        if (snapshot.time_version) snapshot.system_sha256 = hash(conversationSystem(snapshot, source));
+        if (snapshot.time_version) {
+          if (snapshot.conversation_date_version) snapshot.conversation_dates = conversationDates(this.db, session.id, snapshot);
+          snapshot.system_sha256 = hash(conversationSystem(snapshot, source));
+        }
         this.failRequest(request.id, 'memory_setting_changed');
         const original = request;
         request = this.createRequest(session.id,'chat',snapshot);

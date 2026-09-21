@@ -1,0 +1,26 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import Database from 'better-sqlite3';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import schema from '../src/main/schema.sql?raw';
+import {migrateDatabase,validateSchema,currentSchema} from '../src/main/database-migrations';
+import {StarterStore} from '../src/main/starter-store';
+import {memoryHash} from '../src/main/memory-updater';
+const fixtures:{dir:string;db:Database.Database}[]=[];
+afterEach(()=>{for(const f of fixtures.splice(0)){f.db.close();rmSync(f.dir,{recursive:true,force:true});}});
+it.each([32,45])('upgrades schema %i with rollback, backup, immutable old rows and fresh parity',(version)=>{
+ const dir=mkdtempSync('/tmp/stomylos-date-migration-'),db=new Database(join(dir,'stomylos.sqlite3'));fixtures.push({dir,db});
+ const marker=version===32?'32 -> 33':'45 -> 46';
+ const old=schema.slice(0,schema.indexOf('\n-- Public schema '+marker+':'));db.exec(old);db.pragma('user_version='+version);
+ const document=JSON.stringify({character_id:'shared',revision:0,database_records:[]});db.prepare('INSERT INTO shared_memory VALUES(1,?,?)').run(document,memoryHash(document));db.transaction(()=>new StarterStore(db).initialize())();
+ db.exec("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind) VALUES('old','active','2026-08-01','{}','user')");
+ const sessions=db.prepare('SELECT id,state,created_at,chat_config FROM sessions').all(),memory=db.prepare('SELECT * FROM shared_memory').all();
+ const exec=db.exec.bind(db),fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const r=exec(sql);if(sql.includes('45 -> 46'))throw Error('migration fault');return r;});
+ expect(()=>migrateDatabase(db,dir)).toThrow('migration fault');fault.mockRestore();expect(db.pragma('user_version',{simple:true})).toBe(version);validateSchema(db,old);
+ const path=join(dir,'stomylos.pre-migration-v'+version+'.sqlite3'),backup=readFileSync(path);
+ db.close();const restarted=new Database(join(dir,'stomylos.sqlite3'));fixtures[fixtures.length-1].db=restarted;
+ migrateDatabase(restarted,dir);expect(restarted.pragma('user_version',{simple:true})).toBe(currentSchema);validateSchema(restarted,schema);
+ expect(restarted.prepare('SELECT id,state,created_at,chat_config FROM sessions').all()).toEqual(sessions);expect(restarted.prepare('SELECT * FROM shared_memory').all()).toEqual(memory);
+ expect(restarted.prepare('SELECT count(*) FROM session_date_contexts').pluck().get()).toBe(0);
+ migrateDatabase(restarted,dir);expect(readFileSync(path)).toEqual(backup);
+});

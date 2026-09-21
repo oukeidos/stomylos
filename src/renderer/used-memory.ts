@@ -18,12 +18,12 @@ export function usedMemory(requests: RequestRecord[]) {
     const memory = config.memory_context as StoredMemoryDocument | undefined;
     if (memory) {
       used = true;
-      collect(hot, isFlatMemory(memory) ? memory.database_records : memoryCategories.flatMap(category => memory[category]));
+      collect(hot, config.conversation_dates?.hot.items ?? (isFlatMemory(memory) ? memory.database_records : memoryCategories.flatMap(category => memory[category])));
     }
-    collect(cold, config.cold_recollections?.items ?? []);
+    collect(cold, config.conversation_dates?.cold.items ?? config.cold_recollections?.items ?? []);
     let turn = associative.get(request.source_sequence);
     if (!turn) { turn = new Map<string, MemoryItem>(); associative.set(request.source_sequence, turn); }
-    collect(turn, config.associative_recall?.items ?? []);
+    collect(turn, config.conversation_dates?.associative.items ?? config.associative_recall?.items ?? []);
   }
   return { dispatched, used, hot: [...hot.values()], cold: [...cold.values()], associative: [...associative].sort(([a], [b]) => a - b).map(([sourceSequence, items]) => ({ sourceSequence, items: [...items.values()] })) };
 }

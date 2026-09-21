@@ -16,6 +16,13 @@ const config = {
   cold_recollections: { items: [record('cold', 'Older note')] },
   associative_recall: { items: [record('recall', 'Relevant earlier note')] }
 };
+it('shows only records actually admitted by the dated wire budget', () => {
+  const dates = { hot: { items: [] }, cold: { items: config.cold_recollections.items }, associative: { items: [] } };
+  const memory = usedMemory([request({ ...config, conversation_dates: dates })]);
+  expect(memory.hot).toEqual([]);
+  expect(memory.cold.map(item => item.text)).toEqual(['Older note']);
+  expect(memory.associative[0].items).toEqual([]);
+});
 it('groups dispatched memory by type, deduplicates retries, and excludes prepared requests', () => {
   const requests = [request(config), request(config, { id: 'retry', status: 'failed' }),
     request({ memory_context: { ...config.memory_context, database_records: [record('never', 'NEVER_SENT')] } }, { dispatched_at: null }),
