@@ -800,8 +800,17 @@ export class Store {
     const session=this.session(sessionId), hot=this.memory.snapshot(session);
     if(!hot) throw new AppFailure('associative_inactive');
     const cold=this.recollections.snapshot(sessionId,flattenMemory(hot));
-    const supplied=[...flattenMemory(hot).database_records,...(cold?.items??[])];
     const messages=this.messages(sessionId), current=messages.find(m=>m.id===messageId)!;
+    let supplied=[...flattenMemory(hot).database_records,...(cold?.items??[])];
+    if (JSON.parse(session.chat_config).conversation_date_version) {
+      // Freeze and render the same dated blocks used by prepareChat before
+      // excluding supplied records from retrieval or presenting them to Jev.
+      const dates=conversationDates(this.db,sessionId,{
+        memory_context:flattenMemory(hot),cold_recollections:cold,
+        time_context:{sources:timeSources(messages.filter(m=>m.sequence<=current.sequence),id=>readMessageTime(this.db,id))}
+      });
+      supplied=[...dates.hot.items,...dates.cold.items].map(({id,text})=>({id,text}));
+    }
     const previous=messages.filter(m=>m.sequence<current.sequence).at(-1);
     const context={current:input.text,previous:previous?.role==='assistant'?previous.content:null,supplied};
     return {...context,hash:jevHash(context)};

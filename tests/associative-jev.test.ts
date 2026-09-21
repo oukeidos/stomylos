@@ -45,7 +45,10 @@ it('freezes at most 20 eligible records, accounts attempts, injects only the fin
  const f=setup();expect(JSON.parse(f.store.session(f.s.id).chat_config)).toMatchObject({associative_context_version:jevVersion,associative_policy:jevPolicy});
  const {a,p}=launch(f);expect(p.count).toBeGreaterThan(0);expect(p.count).toBeLessThanOrEqual(20);
  const selected=f.store.jevFinish(a.id,answer(p.body),null)!;expect(selected.threshold).toBe(.6);
- const prepared=f.store.prepareChat(f.s.id,randomUUID(),'send',selected);const body=f.store.chatBody(prepared.id);expect(body.messages.at(-1).content).toBe(f.u.content+selected.block);expect(f.store.messages(f.s.id).find(m=>m.id===f.u.id)?.content).toBe(f.u.content);
+ const prepared=f.store.prepareChat(f.s.id,randomUUID(),'send',selected);const body=f.store.chatBody(prepared.id);
+ const dates=JSON.parse(prepared.config).conversation_dates;
+ expect(dates.associative.items.map((r:any)=>r.id)).toEqual(selected.items.map(r=>r.id));
+ expect(body.messages.at(-1).content).toBe(f.u.content+dates.associative.block);expect(f.store.messages(f.s.id).find(m=>m.id===f.u.id)?.content).toBe(f.u.content);
  f.store.failRequest(prepared.id,'synthetic',null,{});
  const retry=f.store.prepareChat(f.s.id,randomUUID(),'retry');expect(JSON.parse(retry.config).associative_recall).toEqual(JSON.parse(prepared.config).associative_recall);
  expect(f.store.jevBegin(f.s.id,f.u.id,Date.now()+10000)).toMatchObject({id:a.id,reused:true});
