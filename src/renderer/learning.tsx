@@ -106,10 +106,10 @@ export function Learning({active,revision,state,disabled,keyPresent,source,reque
     {newReport?<>
       <div className="report-heading"><h1>New report</h1></div>
       <section className="learning-scope" aria-label="Report scope">
-        <fieldset className="report-field"><legend>Report type</legend><div className="report-types">{(['grammar','expression'] as const).map(t=><button key={t} aria-pressed={type===t} onClick={()=>changeScope(()=>setType(t))}>{label(t)}</button>)}</div>
+        <fieldset className="report-field"><legend>Report type</legend><div className="report-types">{(['grammar','expression'] as const).map(t=><button key={t} aria-pressed={type===t} onClick={()=>{if(type!==t)changeScope(()=>setType(t));}}>{label(t)}</button>)}</div>
         <p className="note">{type==='expression'?'Find useful ways to express your meaning.':'Review recurring grammar errors.'}</p></fieldset>
         <fieldset className="report-field"><legend>Time period</legend>
-        <div className="report-weeks">{[1,2,3,4].map(n=><button key={n} aria-pressed={weeks===String(n)} onClick={()=>changeScope(()=>setWeeks(String(n)))}>{n} {n===1?'week':'weeks'}</button>)}<button aria-pressed={weeks==='custom'} onClick={()=>changeScope(()=>setWeeks('custom'))}>Custom dates</button></div>
+        <div className="report-weeks">{[1,2,3,4].map(n=><button key={n} aria-pressed={weeks===String(n)} onClick={()=>{if(weeks!==String(n))changeScope(()=>setWeeks(String(n)));}}>{n} {n===1?'week':'weeks'}</button>)}<button aria-pressed={weeks==='custom'} onClick={()=>{if(weeks!=='custom')changeScope(()=>setWeeks('custom'));}}>Custom dates</button></div>
         {weeks==='custom'&&<div className="report-dates"><label>From<input type="date" value={from} onChange={e=>changeScope(()=>setFrom(e.target.value))}/></label><label>Through<input type="date" value={to} onChange={e=>changeScope(()=>setTo(e.target.value))}/></label></div>}
         <label className="check"><input type="checkbox" checked={exclude} onChange={e=>changeScope(()=>setExclude(e.target.checked))}/>Exclude conversations used in this report type</label></fieldset>
         {preview?<>
@@ -123,12 +123,13 @@ export function Learning({active,revision,state,disabled,keyPresent,source,reque
             <p className="note">{type==='expression'?'Original user messages and assistant context from ended conversations. Assistant messages are not evidence.':'Original learner messages from ended conversations. Individual grammar analysis is not required.'}</p>
             <p className="note">Weeks count back from now. Custom dates include both dates in your local timezone. No conversations are removed automatically. Exclusion counts successful reports of this type.</p>
           </details>
-          </section><div className="learning-actions report-submit"><button className="primary" disabled={busy||disabled||!!preview.blocked||generating||(!keyPresent&&!preview.existingId)} onClick={()=>void act(async()=>{
+          </section>
+        </>:<p role="status">{weeks==='custom'&&(!from||!to)?'Choose a start and end date.':error?'Scope preview unavailable. Resolve the error above to continue.':'Checking selected conversations…'}</p>}
+        <div className="learning-actions report-submit"><button className="primary" disabled={!preview||busy||disabled||!!preview.blocked||generating||(!keyPresent&&!preview.existingId)} onClick={()=>{if(!preview)return;void act(async()=>{
             if(preview.existingId){choose(preview.existingId);return;}
             const r=await window.stomylos.command('patternCreate',{fingerprint:preview.fingerprint,operationId:crypto.randomUUID(),selection:preview.scope.selection});setOffset(0);choose(r.id);
-          })}>{preview.existingId?'Open existing report':'Create report'}</button><button onClick={()=>setNewReport(false)}>Cancel</button></div>
-          {!keyPresent&&!preview.existingId&&<p className="note">Add an API key in Settings to generate a report. Saved reports work offline.</p>}
-        </>:<p role="status">Choose a date range or wait for the scope preview…</p>}
+          });}}>{preview?.existingId?'Open existing report':'Create report'}</button><button onClick={()=>setNewReport(false)}>Cancel</button></div>
+          {!keyPresent&&!preview?.existingId&&<p className="note">Add an API key in Settings to generate a report. Saved reports work offline.</p>}
       </section>{progress}
     </>:detail?<>
       <div className="report-heading"><div><h1>{label(detail.reportType)}</h1><p className="report-date">{range(detail)}</p><p className="note">{countLabel(detail.scope.count,'conversation')}{detail.resultCount!==undefined?` · ${countLabel(detail.resultCount,'suggestion')}`:''}</p></div><button aria-expanded={info} onClick={()=>setInfo(v=>!v)}>Details</button></div>

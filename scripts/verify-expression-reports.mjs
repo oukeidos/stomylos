@@ -4,7 +4,8 @@ import {createServer} from 'vite';
 import react from '@vitejs/plugin-react';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-const output='test-results/expression-reports';mkdirSync(output,{recursive:true});
+const scopeOnly=process.argv.includes('--scope-only');
+const output=scopeOnly?'test-results/report-scope':'test-results/expression-reports';mkdirSync(output,{recursive:true});
 writeFileSync(`${output}/index.html`,'<div id="root"></div><script type="module" src="./harness.tsx"></script>');
 writeFileSync(`${output}/harness.tsx`,`
 import React,{useState} from 'react';import{createRoot}from'react-dom/client';
@@ -19,7 +20,7 @@ window.stomylos={subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn);
  if(name==='patternState')return fixture.state;
  if(name==='patternList')return{reports:fixture.records.filter(r=>!args.reportType||r.reportType===args.reportType),hasMore:false};
  if(name==='patternDetail')return structuredClone(fixture.records.find(r=>r.id===args.id));
- if(name==='patternPreview'){const over=fixture.over,delay=fixture.delay;await new Promise(r=>setTimeout(r,delay));return{fingerprint:'a'.repeat(64),scope:{...scope,selection:args,characters:over?2180000:24000},blocked:over?'input_limit':null,existingId:null};}
+ if(name==='patternPreview'){const over=fixture.over,delay=fixture.delay,fail=fixture.previewFailure;await new Promise(r=>setTimeout(r,delay));if(fail)throw Error('Preview failed');return{fingerprint:'a'.repeat(64),scope:{...scope,selection:args,characters:over?2180000:24000},blocked:over?'input_limit':null,existingId:null};}
  if(name==='patternCreate'||name==='patternRetry'){const id=name==='patternRetry'?args.id:'new-'+fixture.records.length;let r=fixture.records.find(r=>r.id===id);if(!r){r={...base,id,reportType:args.selection.reportType,selected_attempt_id:null,status:'dispatched',suggestions:undefined};fixture.records.unshift(r);}publish({reportId:id,phase:'generating',startedAt:new Date().toISOString()});timer=setTimeout(()=>{Object.assign(r,fixture.mode==='failed'?{status:'failed',failure:'request_timeout',canRetry:true}:{status:'succeeded',selected_attempt_id:'a',resultCount:fixture.mode==='empty'?0:2,suggestions:fixture.mode==='empty'?[]:suggestions,canRetry:false});publish({phase:'idle'});},400);return{id,reused:false};}
  if(name==='patternCancel'){clearTimeout(timer);Object.assign(fixture.records.find(r=>r.id===args.id),{status:'cancelled',failure:'request_cancelled',canRetry:true});publish({phase:'idle'});return;}
  if(name==='patternDelete'){fixture.records=fixture.records.filter(r=>r.id!==args.id);return;}
@@ -35,6 +36,32 @@ try{
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${output}/index.html`);
  const button=name=>page.getByRole('button',{name,exact:true});
  const capture=async name=>{for(const [width,height]of[[1180,860],[760,620]]){await page.setViewportSize({width,height});await page.screenshot({path:`${output}/${name}-${width}.png`});assert.equal(await page.locator('.reports-main').evaluate(e=>e.scrollWidth>e.clientWidth),false);assert.equal(await page.locator('.reports-main h1').evaluate(e=>getComputedStyle(e).fontSize),'22px');}await page.setViewportSize({width:1180,height:860});};
+ if(scopeOnly){
+  await button('+ New report').click();
+  const ready=()=>page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='Create report'&&!b.disabled));
+  const count=()=>page.evaluate(()=>window.fixture.calls.filter(c=>c.name==='patternPreview').length);
+  await ready();
+  const initial=await count();
+  await button('Expression suggestions').click();await button('1 week').click();
+  assert.equal(await count(),initial);assert.equal(await button('Create report').isEnabled(),true);
+  await page.locator('.report-preview').waitFor();
+  await button('Custom dates').click();await page.getByText('Choose a start and end date.',{exact:true}).waitFor();assert(await button('Create report').isDisabled());
+  await page.getByLabel('From',{exact:true}).fill('2026-09-11');await page.getByLabel('Through',{exact:true}).fill('2026-09-18');await ready();
+  const custom=await count();await button('Custom dates').click();assert.equal(await count(),custom);assert(await button('Create report').isEnabled());
+  await page.evaluate(()=>window.fixture.delay=500);await button('Grammar patterns').click();
+  await page.getByText('Checking selected conversations…',{exact:true}).waitFor();assert(await button('Create report').isDisabled());assert(await button('Cancel').isVisible());
+  assert.equal(await page.getByLabel('From',{exact:true}).inputValue(),'2026-09-11');assert.equal(await page.getByLabel('Through',{exact:true}).inputValue(),'2026-09-18');
+  await ready();assert.equal(await page.evaluate(()=>window.fixture.calls.filter(c=>c.name==='patternPreview').at(-1).args.reportType),'grammar');
+  const grammar=await count();await button('Grammar patterns').click();assert.equal(await count(),grammar);assert(await button('Create report').isEnabled());
+  await capture('scope-ready');
+  await page.getByLabel('From',{exact:true}).fill('2026-09-19');await page.getByRole('alert').filter({hasText:'Choose a valid date range.'}).waitFor();assert(await button('Create report').isDisabled());assert.equal(await page.getByText('Checking selected conversations…',{exact:true}).count(),0);
+  await page.evaluate(()=>{window.fixture.delay=0;window.fixture.previewFailure=true;});await button('1 week').click();await page.getByText('Scope preview unavailable. Resolve the error above to continue.',{exact:true}).waitFor();assert(await button('Create report').isDisabled());
+  await page.evaluate(()=>window.fixture.previewFailure=false);await button('Reload').click();await ready();
+  await page.evaluate(()=>{window.fixture.delay=400;window.fixture.over=false;});await button('2 weeks').click();await page.getByText('Checking selected conversations…',{exact:true}).waitFor();
+  await page.evaluate(()=>{window.fixture.delay=0;window.fixture.over=true;});await button('3 weeks').click();await page.getByText('This selection is too long. Choose a shorter period.',{exact:true}).waitFor();await page.waitForTimeout(500);assert(await button('Create report').isDisabled());
+  assert.equal(await page.evaluate(()=>window.fixture.calls.filter(c=>c.name==='patternCreate').length),0);
+  report.checks=['same-type and preset/custom-period reselection preserves preview without requests','type changes preserve custom dates','visible disabled actions during loading, missing dates, invalid dates and errors','preview failure recovery','stale preview rejected','1180/760 creation layout'];
+ }else{
  await page.locator('.expression-item').first().waitFor();assert.equal(await page.locator('.expression-item').count(),2);
  await button('View your messages (2)').click();assert.equal(await page.locator('.expression-evidence').count(),2);
  await button('Show context').click();await page.getByText('How is the garden going?',{exact:true}).waitFor();
@@ -44,7 +71,7 @@ try{
  // Re-selecting the current report must not leave a permanent loading screen.
  await page.locator('.report-history-item').first().click();await page.locator('.expression-item').first().waitFor();
  await capture('report');
- await button('+ New report').click();await button('Create report').waitFor();await capture('new-report');await button('Custom dates').click();await page.getByLabel('From',{exact:true}).fill('2026-09-11');await page.getByLabel('Through',{exact:true}).fill('2026-09-18');await button('Create report').waitFor();await page.locator('.report-preview summary').click();await capture('new-report-custom');await page.getByLabel('From',{exact:true}).fill('2026-09-19');await page.getByLabel('Through',{exact:true}).fill('2026-09-18');assert.equal(await button('Create report').count(),0);
+ await button('+ New report').click();await button('Create report').waitFor();await capture('new-report');await button('Custom dates').click();await page.getByLabel('From',{exact:true}).fill('2026-09-11');await page.getByLabel('Through',{exact:true}).fill('2026-09-18');await button('Create report').waitFor();await page.locator('.report-preview summary').click();await capture('new-report-custom');await page.getByLabel('From',{exact:true}).fill('2026-09-19');await page.getByLabel('Through',{exact:true}).fill('2026-09-18');assert(await button('Create report').isDisabled());
  await button('1 week').click();await button('Create report').waitFor();
  await page.evaluate(()=>window.fixture.over=true);await button('2 weeks').click();await page.getByText('This selection is too long. Choose a shorter period.',{exact:true}).waitFor();assert(await button('Create report').isDisabled());
  await page.evaluate(()=>{window.fixture.over=false;window.fixture.mode='empty';});await button('1 week').click();await button('Create report').click();await page.getByRole('heading',{name:'No useful suggestions in this report'}).waitFor();
@@ -53,5 +80,6 @@ try{
  await button('Details').click();await button('Delete report').click();await page.getByRole('dialog').getByRole('button',{name:'Delete report',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
  // Older slow previews cannot enable creation for a newer oversized scope.
  await button('+ New report').click();await page.evaluate(()=>{window.fixture.delay=350;window.fixture.over=false;});await button('2 weeks').click();await page.evaluate(()=>{window.fixture.delay=0;window.fixture.over=true;});await button('3 weeks').click();await page.getByText('This selection is too long. Choose a shorter period.',{exact:true}).waitFor();await page.waitForTimeout(450);assert(await button('Create report').isDisabled());
- assert.deepEqual(report.errors,[]);report.status='passed';report.checks=['evidence/context/source return','type filter and grammar viewer','1180/760 expression, grammar, metadata and creation layouts','custom dates and input limit','empty success, failure/retry, cancel, deletion','stale preview rejected'];console.log(JSON.stringify(report));
+ report.checks=['evidence/context/source return','type filter and grammar viewer','1180/760 expression, grammar, metadata and creation layouts','custom dates and input limit','empty success, failure/retry, cancel, deletion','stale preview rejected'];}
+ assert.deepEqual(report.errors,[]);report.status='passed';console.log(JSON.stringify(report));
 }catch(e){report.status='failed';report.failure=String(e.stack??e);throw e;}finally{writeFileSync(`${output}/result.json`,JSON.stringify(report,null,2));await browser?.close();await server?.close();}

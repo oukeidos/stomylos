@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve the New report preview when reselecting the current type or period and keep creation controls visible with clear loading and date guidance.
 - Keep the header model name at the same size in active and ended conversations across window widths.
 - Add integrated Jev reranking of up to 20 locally retrieved memory records for new conversations, with a 0.60 admission threshold, a shared 1.5-second preparation limit, and schema 45 preserving existing sessions and retries.
 
