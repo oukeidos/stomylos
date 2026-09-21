@@ -14,6 +14,15 @@ export function usePatternState() {
   }, []);
   return state;
 }
+// Acknowledgement belongs to the displayed completion, not the active job.
+export function useReportIndicator(state: PatternState) {
+  const [seen,setSeen]=useState<{id:string;revision:number}|null>(null);
+  const viewed=useCallback((id:string,revision:number)=>{
+    if(state.phase==='idle'&&id===state.reportId&&revision===state.revision)setSeen({id,revision});
+  },[state.phase,state.reportId,state.revision]);
+  const pending=!!state.reportId&&(seen?.id!==state.reportId||seen.revision!==state.revision);
+  return {visible:state.phase!=='idle'||pending,viewed};
+}
 const countLabel = (n:number, word:string) => `${n} ${word}${n===1?'':'s'}`;
 const label = (type?: ReportType) => type === 'expression' ? 'Expression suggestions' : 'Grammar patterns';
 const date = (text: string | null) => text ? new Date(text).toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' }) : '—';
@@ -37,9 +46,9 @@ function message(error: unknown) {
   };
   return messages[code] ?? `The report action could not finish (${code}).`;
 }
-export function Learning({active,revision,state,disabled,keyPresent,source,requestedReport,handledReport}: {
+export function Learning({active,revision,state,disabled,keyPresent,source,requestedReport,handledReport,reportViewed}: {
   active:boolean; revision:number; state:PatternState; disabled:boolean; keyPresent:boolean;
-  source(id:string,messageId?:string):Promise<void>; requestedReport:string|null; handledReport():void;
+  source(id:string,messageId?:string):Promise<void>; requestedReport:string|null; handledReport():void; reportViewed?(id:string,revision:number):void;
 }) {
   const [sidebar,setSidebar]=useState<HTMLElement|null>(null);
   useEffect(()=>setSidebar(document.getElementById('report-history')),[]);
@@ -50,6 +59,7 @@ export function Learning({active,revision,state,disabled,keyPresent,source,reque
   const [error,setError]=useState<string|null>(null), [busy,setBusy]=useState(false), [loading,setLoading]=useState(false), [removing,setRemoving]=useState(false);
   const [open,setOpen]=useState(0), [evidence,setEvidence]=useState(false), [context,setContext]=useState<string|null>(null), [info,setInfo]=useState(false);
   const [tick,setTick]=useState(Date.now()), [refresh,setRefresh]=useState(0);
+  const detailRevision=useRef(-1);
   const operation=useRef(false), selectionEpoch=useRef(0), navigation=useRef({selected,newReport});
   navigation.current={selected,newReport};
   const choose=useCallback((id:string)=>{setRefresh(n=>n+1);setSelected(id);setDetail(null);setNewReport(false);setOpen(0);setEvidence(false);setContext(null);setInfo(false);setError(null);},[]);
@@ -64,7 +74,7 @@ export function Learning({active,revision,state,disabled,keyPresent,source,reque
   },[active,revision,state.revision,offset,filter,refresh,choose]);
   useEffect(()=>{
     if(!active||!selected||newReport)return;let current=true;
-    void window.stomylos.command('patternDetail',{id:selected}).then(d=>{if(current)setDetail(d);}).catch(e=>{if(current)setError(message(e));});
+    void window.stomylos.command('patternDetail',{id:selected}).then(d=>{if(current){detailRevision.current=state.revision;setDetail(d);}}).catch(e=>{if(current)setError(message(e));});
     return()=>{current=false;};
   },[active,selected,newReport,revision,state.revision,refresh]);
   useEffect(()=>{
@@ -81,6 +91,11 @@ export function Learning({active,revision,state,disabled,keyPresent,source,reque
     void window.stomylos.command('patternPreview',selection).then(p=>{if(epoch===selectionEpoch.current)setPreview(p);}).catch(e=>{if(epoch===selectionEpoch.current)setError(message(e));});
     return()=>{selectionEpoch.current++;};
   },[active,newReport,weeks,from,to,exclude,type,revision,state.revision,refresh]);
+  useEffect(()=>{
+    if(!active||newReport||!detail||detail.id!==selected||state.phase!=='idle'||state.reportId!==detail.id||detailRevision.current!==state.revision)return;
+    // Grammar results are read in their separate viewer; failures are read here.
+    if((detail.reportType==='expression'&&detail.selected_attempt_id)||(!detail.selected_attempt_id&&['failed','cancelled','interrupted'].includes(detail.status)))reportViewed?.(detail.id,state.revision);
+  },[active,newReport,detail,selected,state.phase,state.reportId,state.revision,reportViewed]);
   useEffect(()=>{if(state.phase==='idle')return;const timer=setInterval(()=>setTick(Date.now()),1000);return()=>clearInterval(timer);},[state.phase]);
   const act=async(fn:()=>Promise<unknown>)=>{if(operation.current)return;operation.current=true;setBusy(true);setError(null);try{await fn();}catch(e){setError(message(e));}finally{operation.current=false;setBusy(false);setRefresh(n=>n+1);}};
   const changeScope=(fn:()=>void)=>{setPreview(null);setError(null);fn();};
@@ -151,7 +166,7 @@ export function Learning({active,revision,state,disabled,keyPresent,source,reque
             </div>{context===id&&previous?.role==='assistant'&&<div className="expression-context"><small>Assistant · before your message</small><p>{previous.content}</p></div>}</section>;})}
           </div>}
         </article>)}</div></>:<div className="report-empty"><h2>No useful suggestions in this report</h2><p>This report is saved. You can try another time period.</p><button onClick={startNew}>New report</button></div>}
-      </>:<><section className="grammar-report-ready" aria-label="Saved grammar report"><p>Review recurring grammar errors in your saved report.</p><button className="primary" onClick={()=>void act(()=>window.stomylos.command('patternOpen',{id:detail.id}))}>Open report</button></section>
+      </>:<><section className="grammar-report-ready" aria-label="Saved grammar report"><p>Review recurring grammar errors in your saved report.</p><button className="primary" onClick={()=>void act(async()=>{await window.stomylos.command('patternOpen',{id:detail.id});reportViewed?.(detail.id,state.revision);})}>Open report</button></section>
         <details className="report-sources"><summary>Source conversations <span className="note">({detail.sources.length})</span></summary><div className="report-source-list">{detail.sources.map(s=><div className="report-source-row" key={s.session_id}><div><p>{date(s.ended_at)}</p><p className="note">{countLabel(s.units.length,'message')}{s.deleted?' · Original conversation deleted':''}</p></div>{!s.deleted&&<button className="quiet" onClick={()=>void act(()=>source(s.session_id))}>Open conversation</button>}</div>)}</div></details></>)
       :!generating&&<div className="report-empty"><h2>{detail.status==='queued'?'Report is waiting':'Report couldn’t finish'}</h2><p>{message(detail.failure??detail.status)}</p>{detail.canRetry&&<><p className="note">Retry uses the saved selection. An interrupted request may already have incurred a charge.</p><button className="primary" disabled={busy||disabled||!keyPresent} onClick={()=>void act(()=>window.stomylos.command('patternRetry',{id:detail.id,operationId:crypto.randomUUID()}))}>Retry generation</button></>}{detail.sources.some(s=>s.deleted)&&<p>A source was deleted. Create a new report instead.</p>}</div>}
     </>:<>{progress}<div className="report-empty"><h1>Reports</h1><p>{selected?'Loading report…':'Select a report or create one from your conversations.'}</p><button className="primary" onClick={startNew}>New report</button></div></>}

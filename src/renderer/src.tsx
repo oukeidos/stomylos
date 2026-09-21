@@ -17,7 +17,7 @@ import { EndProcessingDialog } from './end-processing';
 import { Explainable, ExplainHistory, ExplainDialog } from './explain';
 import { SearchSources } from './search';
 import type { PatternCard } from '../shared/pattern-report';
-import { Learning, usePatternState } from './learning';
+import { Learning, usePatternState, useReportIndicator } from './learning';
 import { GenieDock, UndoGenie, useGenie, genieBusy, openGenie, captureGenieRange, closeGenieForApp, genieError } from './genie';
 import { recoveryDictationText, DictationPanel, RecordButton, DictationNavigationDialog, useDictation, dictationBusy, beforeDictationNavigation, selectDictationSession, prepareDictationSend, dictationSent } from './dictation';
 import { SpeechControl, selectSpeechSession } from './speech';
@@ -334,6 +334,7 @@ function App() {
   const handledReport = useCallback(() => setRequestedReport(null), []);
   const [relatedReports, setRelatedReports] = useState<{reports: PatternCard[]; total: number} | null>(null);
   const patternState = usePatternState();
+  const reportIndicator = useReportIndicator(patternState);
   const startupError = useStartupError();
   const genie = useGenie();
   const dictation = useDictation();
@@ -489,7 +490,7 @@ function App() {
     </div>
   </header><aside id="conversation-sidebar" hidden={!historyOpen} inert={!!genie.opening || !!genie.episode?.open}>
     <div className="library-tabs"><IconButton icon="chat" label="Chats" aria-pressed={!learning} onClick={backToChat} />
-      <IconButton icon="book" className="learning-nav" label="Reports" tooltip={patternState.phase !== 'idle' ? 'Reports · Creating…' : patternState.reportId && !patternState.error ? 'Reports · Ready' : 'Reports'} aria-pressed={learning} onClick={() => act(openLearning)}>{(patternState.phase !== 'idle' || patternState.reportId) && <span className="report-indicator" aria-label={patternState.phase !== 'idle' ? 'Creating report' : patternState.error ? 'Report needs attention' : 'Report ready'} />}</IconButton>
+      <IconButton icon="book" className="learning-nav" label="Reports" tooltip={patternState.phase !== 'idle' ? 'Reports · Creating…' : reportIndicator.visible && !patternState.error ? 'Reports · Ready' : 'Reports'} aria-pressed={learning} onClick={() => act(openLearning)}>{reportIndicator.visible && <span className="report-indicator" aria-label={patternState.phase !== 'idle' ? 'Creating report' : patternState.error ? 'Report needs attention' : 'Report ready'} />}</IconButton>
       {!learning && <IconButton icon="bookmark" className="history-filter-switch" label="Show bookmarked chats only" role="switch" aria-checked={library.filter === 'bookmarked'} onClick={() => library.choose(library.filter === 'bookmarked' ? 'all' : 'bookmarked')}>
         <span className="history-filter-track" aria-hidden="true"><span /></span>
       </IconButton>}
@@ -510,7 +511,7 @@ function App() {
     {!learning && (library.offset > 0 || library.hasMore) && <div className="history-pages"><button disabled={!library.offset || library.loading} onClick={() => library.move(library.offset - 40)}>Newer</button><button disabled={!library.hasMore || library.loading} onClick={() => library.move(library.offset + 40)}>Older</button></div>}
     <div id="report-history" hidden={!learning} />
   </aside><div className="workspace">
-    <Learning requestedReport={requestedReport} handledReport={handledReport} active={learning} revision={app.revision} state={patternState} disabled={!!app.activity.storageError || app.activity.closing} keyPresent={app.settings.keyPresent} source={showReportSource} />
+    <Learning reportViewed={reportIndicator.viewed} requestedReport={requestedReport} handledReport={handledReport} active={learning} revision={app.revision} state={patternState} disabled={!!app.activity.storageError || app.activity.closing} keyPresent={app.settings.keyPresent} source={showReportSource} />
     <div className="conversation-workspace" hidden={learning}>
     {reportSource && <div className="report-return"><button className="quiet" onClick={() => act(openLearning)}>← Back to report</button><button className="quiet" onClick={() => setReportSource(null)}>Dismiss</button></div>}
 
