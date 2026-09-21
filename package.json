@@ -23,6 +23,7 @@
     "test:bookmarks": "node scripts/verify-bookmarks.mjs",
     "test:package": "node scripts/verify-package.mjs",
     "test:source-parity": "node scripts/export-parity.mjs --check",
+    "audit:source-provenance": "node scripts/audit-source-provenance.mjs",
     "test:continuity": "node scripts/test.mjs --conversion",
     "release:archive": "node scripts/archive-release.mjs",
     "test:install": "node scripts/verify-install.mjs",

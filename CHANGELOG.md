@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Separate repository-only contract parity from optional workspace provenance auditing and validate grammar v3 budgets while preserving v1/v2 expectations.
 - Keep memories omitted by date-context limits eligible for Jev recall by excluding only records actually supplied to the conversation.
 - Give new conversations a fixed local start date and separate report-date metadata for memory context without changing memory extraction or note text.
 - Clear the report notification after viewing its result or failure while retaining generation progress and notifying again for a new completion.
