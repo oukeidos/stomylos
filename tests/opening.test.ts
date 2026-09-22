@@ -1,3 +1,6 @@
+import { historicalConversation } from './historical-fixtures';
+import config from '../src/main/conversation-v7-config.json';
+import { historicalSession } from './historical-fixtures';
 import { timed, universalSnapshot } from './time-fixtures';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
@@ -6,7 +9,7 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { Store } from '../src/main/database';
-import { characters, config, conversationBody, conversationRequestSnapshot, conversationSnapshot, grammarBody, grammarSnapshot, hash, routerBody, routerSnapshot, transcriptJson, validateGrammar } from '../src/main/contracts';
+import { characters, conversationBody, conversationRequestSnapshot, conversationSnapshot, grammarBody, grammarSnapshot, hash, routerBody, routerSnapshot, transcriptJson, validateGrammar } from '../src/main/contracts';
 import { emptyMemory } from '../src/main/memory-updater';
 import { starterBody, starterSnapshot, renewalV2 } from '../src/main/starter-renewal';
 import { validateCommand } from '../src/main/ipc';
@@ -30,7 +33,7 @@ function newSession() {
     raw.prepare("UPDATE sessions SET analysis_state='skipped' WHERE id=?").run(blocker);
     if (store.endBlocker()) store.cancelEnd(blocker);
   }
-  const session = store.createSession(), saved = JSON.parse(session.chat_config);
+  const session = historicalSession(store, raw.prepare('SELECT kind FROM opening_preferences').pluck().get() as OpeningKind), saved = JSON.parse(session.chat_config);
   // These fixtures represent pre-opener drafts, whose original controls remain supported.
   if (saved.opener_version) {
     delete saved.opener_version;
@@ -139,15 +142,15 @@ it('uses exact historical contracts for old sessions and direct routing/assembly
   const prompt = readFileSync('src/main/direct-router-seven-prompt.txt', 'utf8');
   expect(hash(prompt)).toBe('9aea4092950d333da528772588014540472af3b99599a440d57252d6dfc90711');
   expect(prompt.split('Characters:')[1].split('The first message')[0]).toBe(config.routerPrompt.split('Characters:')[1].split('The starter question')[0]);
-  for (const partner of characters) {
-    const snapshot = conversationRequestSnapshot(saved); snapshot.memory_context = emptyMemory('shared');
+  for (const partner of saved.characters) {
+    const snapshot = conversationRequestSnapshot(saved); snapshot.memory_context = {character_id:'shared',revision:0,database_records:[]};
     const body = conversationBody(timed(snapshot, [user]), partner.id, null, [user]);
     expect(body.messages).toHaveLength(2); expect(body.messages[1]).toEqual({ role: 'user', content: user.content });
     expect(body.messages[0].content.startsWith(config.conversationPrompt)).toBe(true);
     expect(body.messages.some((m: any) => m.content.includes('Opening question:'))).toBe(false);
     expect(() => conversationBody(snapshot, partner.id, 'Unseen question?', [user])).toThrow('opening_source_changed');
   }
-  const legacy = conversationSnapshot(); delete legacy.router_prompt_version;
+  const legacy = historicalConversation(); delete legacy.router_prompt_version;
   expect(routerSnapshot(legacy).version).toBe(config.router.version);
   expect(routerBody('Known question?', 'Known answer.', legacy).messages[0].content).toBe(config.routerPrompt);
   expect(() => conversationRequestSnapshot({ ...saved, opening: { kind: 'user', version: 'unknown' } })).toThrow('unsupported_opening');

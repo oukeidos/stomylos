@@ -13,7 +13,7 @@ function fixture(){
   const space=groups.register('{"request fixture":1}',3),gen=groups.begin(space);
   f.db.transaction(()=>{f.db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,origin) VALUES('old',1,0,'legacy')").run();raw.archive([{id:'old',text:'COLD_SENTINEL: Enjoyed mountain hiking.'}]);f.db.prepare("DELETE FROM memory_item_metadata WHERE id='old'").run();})();
   const job=groups.claim(space)!;groups.complete(job,{vector:[1,0,0],inputHash:coldHash(job.text),chunkCount:1});groups.reconcile();groups.activate(gen);recall.cacheMetadata();
-  const session=f.store.createSession();f.store.searchMode(session.id,'off');f.store.selectManual(session.id,'model_04');f.store.submit(session.id,'I enjoy my weekend.');f.store.commitRoute(session.id,null,'fixture',null);
+  const session=f.store.createSession();f.store.searchMode(session.id,'off');f.store.selectManual(session.id,'model_03');f.store.submit(session.id,'I enjoy my weekend.');f.store.commitRoute(session.id,null,'fixture',null);
   return {...f,session,raw,groups};
 }
 it('freezes COLD in the actual provider request, preserves exact retries and blocks revoked evidence without rewriting history',()=>{
@@ -38,7 +38,7 @@ it('applies Memory Off at handoff to both HOT and COLD and keeps a transmitted n
 });
 
 it('keeps already-bound legacy flat-memory sessions HOT-only even when valid COLD is available',()=>{
-  const f=fixture(),config=JSON.parse(f.store.session(f.session.id).chat_config);config.memory_version='stomylos_memory_context_v5';config.component_hashes=conversationComponents(config.version,config.memory_version);
+  const f=fixture(),config=JSON.parse(f.store.session(f.session.id).chat_config);delete config.conversation_date_version;config.memory_version='stomylos_memory_context_v5';config.component_hashes=conversationComponents(config.version,config.memory_version);
   f.db.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(config),f.session.id);
   f.db.prepare('INSERT INTO session_memory_policy VALUES(?,1,0)').run(f.session.id);
   // Binding requires saved context; an undispatched policy row alone no longer binds a chat.

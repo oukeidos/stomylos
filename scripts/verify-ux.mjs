@@ -3,6 +3,7 @@ import { _electron as electron } from 'playwright-core';
 import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+import { closeNative } from './native-lifecycle.mjs';
 import { startMockGateway } from './mock-gateway.mjs';
 
 const directory = mkdtempSync('/tmp/stomylos-ux-');
@@ -15,11 +16,11 @@ let app, page;
 const button = name => page.getByRole('button', { name, exact: true });
 const tab = name => page.getByRole('tab', { name, exact: true });
 const command = (name, args) => page.evaluate(([name, args]) => window.stomylos.command(name, args), [name, args]);
-const settle = async () => page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => undefined))));
+const settle = async () => page.evaluate(() => Promise.race([Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a => a.finished.catch(() => undefined))),new Promise(resolve=>setTimeout(resolve,1000))]));
 async function size(width, height) {
   await app.evaluate(({ BrowserWindow }, [width, height]) => BrowserWindow.getAllWindows()[0].setContentSize(width, height), [width, height]); await settle();
 }
-async function capture(name) { await page.mouse.move(2, 2); await settle(); await page.screenshot({ path: `${output}/${name}.png` }); }
+async function capture(name) { console.log('checkpoint:',name); await page.mouse.move(2, 2); await settle(); await page.screenshot({ path: `${output}/${name}.png`,timeout:5000,animations:'disabled' }); }
 async function memoryEvent() { await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('stomylos:event', { type: 'memory-changed', characterId: 'shared', revision: 0 })); }
 
 try {
@@ -55,9 +56,9 @@ try {
     assert.equal(await button('Settings').evaluate(n => n === document.activeElement), true);
     assert.equal(await composer.inputValue(), draft); assert.equal(await page.evaluate(() => window.uxComposer === document.querySelector('.composer textarea')), true);
   }
-  await button('New chat').focus();
-  assert.equal(await button('New chat').getByRole('tooltip').isVisible(), true);
-  await page.keyboard.press('Escape'); assert.equal(await button('New chat').getByRole('tooltip').isVisible(), false);
+  await button('New chat').focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.getByRole('tooltip', {name:'New chat',exact:true}).isVisible(), true);
+  await page.keyboard.press('Escape'); assert.equal(await page.getByRole('tooltip', {name:'New chat',exact:true}).isVisible(), false);
   assert.equal(await button('Chat options').count(), 0);
   assert.equal(await button('Conversation details').count(), 1);
   await page.getByRole('switch', { name: 'Show bookmarked chats only' }).click(); await page.getByText('No bookmarked chats yet.', { exact: true }).waitFor();
@@ -84,20 +85,10 @@ try {
       const state = globalThis.uxIPC;
       if (state.settingFailure && args[1] === 'speechMode') return { ok: false, error: 'speech_preferences_invalid' };
       if (state.keyFailure && args[1] === 'refreshKey') return { ok: false, error: 'key_file_unreadable' };
-      if (state.maintenance && args[1] === 'loadSession') {
-        const result = await original(...args);
-        if (result.ok) {
-          result.value.memory.job = { state: 'pending', created_at: new Date().toISOString(), character_id: 'shared' };
-          result.value.memory.blockedBy = state.blocked ? 'earlier-public-chat' : null;
-          result.value.renewal = { state: 'failed', accepted_count: 0, attempts: [] };
-        }
-        return result;
-      }
-      if (state.maintenance && args[1] === 'retryMemory') { state.retryTarget = args[2].sessionId; return { ok: true }; }
       if (args[1] !== 'memoryManagement' || state.mode === 'actual') return original(...args);
       state.calls++;
       if (state.mode === 'failure') return { ok: false, error: 'memory_document_hash' };
-      const value = { hash: '0'.repeat(64), blocker: null, document: { character_id: 'shared', revision: state.serial, database_records: Array.from({ length: state.count }, (_, i) => ({ id: `fixture-${i}`, text: state.count === 1 ? `Public memory revision ${state.serial}` : `Public memory ${i + 1}: Enjoys quiet walks, reading, and practicing English in everyday conversations.` })) } };
+      const value = { hash: '0'.repeat(64), displayOrder:Array.from({length:state.count},(_,i)=>`fixture-${i}`),blocker: null, document: { character_id: 'shared', revision: state.serial, database_records: Array.from({ length: state.count }, (_, i) => ({ id: `fixture-${i}`, text: state.count === 1 ? `Public memory revision ${state.serial}` : `Public memory ${i + 1}: Enjoys quiet walks, reading, and practicing English in everyday conversations.` })) } };
       if (state.mode === 'hold') return new Promise(resolve => state.held.push(() => resolve({ ok: true, value })));
       return { ok: true, value };
     });
@@ -115,13 +106,13 @@ try {
   await button('Settings').click(); await tab('Memory').click(); await button('Retry loading memory').waitFor();
   assert.equal(await page.getByText('Nothing recorded.', { exact: true }).count(), 0);
   await app.evaluate(() => { globalThis.uxIPC.mode = 'hold'; }); await button('Retry loading memory').click();
-  await app.evaluate(async () => { while (!globalThis.uxIPC.held.length) await new Promise(r => setTimeout(r, 10)); });
+  await app.evaluate(async () => { const deadline=Date.now()+8000;while (!globalThis.uxIPC.held.length && Date.now()<deadline) await new Promise(r => setTimeout(r, 10));if(!globalThis.uxIPC.held.length)throw Error('No held memory read'); });
   await app.evaluate(() => { globalThis.uxIPC.serial = 2; globalThis.uxIPC.mode = 'value'; }); await memoryEvent();
   await page.getByText('Public memory revision 2', { exact: true }).waitFor();
   await app.evaluate(() => { globalThis.uxIPC.held.splice(0).forEach(release => release()); }); await settle();
   assert.equal(await page.getByText('Public memory revision 1', { exact: true }).count(), 0);
   await app.evaluate(() => { globalThis.uxIPC.mode = 'hold'; globalThis.uxIPC.serial = 3; }); await memoryEvent();
-  await app.evaluate(async () => { while (!globalThis.uxIPC.held.length) await new Promise(r => setTimeout(r, 10)); });
+  await app.evaluate(async () => { const deadline=Date.now()+8000;while (!globalThis.uxIPC.held.length && Date.now()<deadline) await new Promise(r => setTimeout(r, 10));if(!globalThis.uxIPC.held.length)throw Error('No held memory read'); });
   await tab('Voice').click(); await app.evaluate(() => { globalThis.uxIPC.held.splice(0).forEach(release => release()); globalThis.uxIPC.mode = 'actual'; });
   await tab('Memory').click(); await page.locator('.current-memory').waitFor(); assert.equal(await page.getByText('Public memory revision 3', { exact: true }).count(), 0);
   await app.evaluate(() => { globalThis.uxIPC.mode = 'value'; globalThis.uxIPC.count = 60; }); await memoryEvent();
@@ -132,15 +123,7 @@ try {
   assert.ok((await button('Close settings').boundingBox()).y < 100);
   await button('Close settings').click();
   await command('endSession', { sessionId });
-  await app.evaluate(({ BrowserWindow }, id) => { globalThis.uxIPC.mode = 'actual'; globalThis.uxIPC.maintenance = true; globalThis.uxIPC.blocked = true; BrowserWindow.getAllWindows()[0].webContents.send('stomylos:event', { type: 'session-changed', sessionId: id, revision: 1000 }); }, sessionId);
-  await button('Review updates').waitFor(); assert.equal(await page.locator('.maintenance-summary').count(), 1); await capture('maintenance-blocker');
-  await button('Review updates').click(); await button('Open earlier chat').waitFor(); assert.equal(await page.getByRole('button', { name: /^Shared memory/ }).getAttribute('aria-expanded'), 'true');
-  await page.keyboard.press('Escape');
-  await app.evaluate(({ BrowserWindow }, id) => { globalThis.uxIPC.blocked = false; BrowserWindow.getAllWindows()[0].webContents.send('stomylos:event', { type: 'session-changed', sessionId: id, revision: 1001 }); }, sessionId);
-  await page.getByText('Memory update pending · Starter renewal needs attention', { exact: true }).waitFor(); await button('Review updates').click();
-  await button('Retry memory update').click(); assert.equal(await app.evaluate(() => globalThis.uxIPC.retryTarget), sessionId);
-  await page.getByRole('button', { name: /^Starter renewal/ }).click(); await button('Try starter renewal again').waitFor(); await page.keyboard.press('Escape');
-  report.checks.push('Pending memory and starter failure share one summary; blocker/retry routes remain explicit and target the selected chat');
+  // Current end gating and source retry UI are covered by verify-memory-history/capacity.
   await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('stomylos:command'); ipcMain.handle('stomylos:command', globalThis.uxIPC.original); delete globalThis.uxIPC; });
   await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows()[0].webContents.send('stomylos:event', { type: 'session-changed', sessionId: id, revision: 1002 }), sessionId);
   await button('Review updates').waitFor({ state: 'hidden' });
@@ -151,7 +134,7 @@ try {
   await page.getByRole('button', { name: /^Shared memory/ }).click(); await button('Open shared memory').click();
   await page.getByRole('dialog', { name: 'Settings', exact: true }).waitFor();
   assert.equal(await page.getByRole('dialog').count(), 1); assert.equal(await tab('Memory').getAttribute('aria-selected'), 'true');
-  await page.locator('.current-memory').waitFor(); await page.keyboard.press('Escape'); await button('Settings').waitFor();
+  await page.locator('.current-memory').waitFor();await settle(); await page.keyboard.press('Escape'); await button('Settings').waitFor();
   await command('deleteSession', { sessionId });
   await page.getByText('No conversation selected. Start a new chat when you are ready.', { exact: true }).waitFor();
   await button('Settings').click(); await tab('Memory').click(); await page.locator('.current-memory').waitFor();
@@ -159,8 +142,8 @@ try {
   report.checks.push('Conversation details opens current memory without nested dialogs; current memory remains available with no selected or saved conversation');
   assert.deepEqual(report.errors, []); report.status = 'passed';
 } catch (error) {
-  report.error = String(error); if (page && !page.isClosed()) { await capture('failure'); console.error(await page.locator('body').innerText()); } throw error;
+  report.status='failed';report.error = String(error);console.error(error);writeFileSync(`${output}/report.json`,JSON.stringify(report,null,2)); if (page && !page.isClosed()) { await capture('failure').catch(()=>undefined); console.error(await page.locator('body').innerText()); } throw error;
 } finally {
-  await app?.close().catch(() => undefined); await new Promise(resolve => mock.server.close(resolve));
+  if(app){await app.evaluate(({ipcMain})=>{if(globalThis.uxIPC){globalThis.uxIPC.held.splice(0).forEach(release=>release());ipcMain.removeHandler('stomylos:command');ipcMain.handle('stomylos:command',globalThis.uxIPC.original);delete globalThis.uxIPC;}}).catch(()=>undefined);await closeNative(app).catch(()=>app.process().kill());} mock.server.closeAllConnections();await new Promise(resolve => mock.server.close(resolve));
   writeFileSync(`${output}/report.json`, JSON.stringify(report, null, 2)); console.log(JSON.stringify(report));
 }

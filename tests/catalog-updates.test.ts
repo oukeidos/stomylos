@@ -1,3 +1,4 @@
+import { historicalSession } from './historical-fixtures';
 import { afterEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -54,16 +55,16 @@ it('rejects a changed hash at the same revision and changed IDs without overwrit
  const {db}=fresh(),bad=structuredClone(readCurrentCatalog());bad.rows[0].en='A different question?';bad.manifest.sha256=catalogHash(bad.rows);expect(()=>updateCatalog(db,bad)).toThrow('starter_catalog_corrupt');
  bad.manifest.revision=3;bad.manifest.version='stomylos_catalog_v3';bad.rows[0].id='Q99999';bad.manifest.sha256=catalogHash(bad.rows);expect(()=>db.transaction(()=>updateCatalog(db,bad))()).toThrow('starter_catalog_corrupt');expect(verifyInstalledCatalog(db).revision).toBe(2);
 });
-function copyRow(db:Database.Database,table:string,row:Record<string,unknown>){const keys=Object.keys(row);db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(row));}
+function copyRow(db:Database.Database,table:string,row:Record<string,unknown>){const allowed=new Set((db.pragma(`table_info(${table})`) as {name:string}[]).map(c=>c.name));const keys=Object.keys(row).filter(k=>allowed.has(k));db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...keys.map(k=>row[k]));}
 it.each(['draft','parked','legacy'])('preserves a changed %s opening, counts by lineage, and excludes its successor',mode=>{
- const template=fresh(),session=template.store.createSession(),old=readCatalog().find(r=>r.id==='Q00004')!;
+ const template=fresh(),session=historicalSession(template.store),old=readCatalog().find(r=>r.id==='Q00004')!;
  const {db,directory}=legacy();const originalId=mode==='legacy'?'legacy-question':id;
  if(mode==='legacy')db.prepare("INSERT INTO starter_questions(id,version,text,normalized_text,origin,state,created_at) VALUES(?,'old',?,?,'seed','retired','today')").run(originalId,old.en,old.en.toLowerCase());
  const original=template.store.messages(session.id)[0];const saved={...session,starter_id:originalId,starter_version:'stomylos_catalog_v1',starter_text:old.en,draft:'My unfinished answer.'};const message={...original,content:old.en};
  if(mode==='parked'){const parked={question:{id,version:saved.starter_version,text:old.en},message};const config=JSON.parse(saved.chat_config);config.opening.kind='user';saved.chat_config=JSON.stringify(config);Object.assign(saved,{opening_kind:'user',starter_id:null,starter_version:null,starter_text:null,parked_starter:JSON.stringify(parked)});}
  copyRow(db,'sessions',saved);if(mode!=='parked')copyRow(db,'messages',message);
  db.prepare("INSERT INTO starter_events VALUES('shown',?,'presented',?,'stomylos_catalog_v1',?,'today')").run(session.id,originalId,old.en);
- const snap=JSON.stringify(db.prepare('SELECT * FROM sessions').all());const msg=JSON.stringify(db.prepare('SELECT * FROM messages').all());migrateDatabase(db,directory);expect(JSON.stringify(db.prepare('SELECT * FROM sessions').all())).toBe(snap);expect(JSON.stringify(db.prepare('SELECT * FROM messages').all())).toBe(msg);
+ const sessionColumns=(db.pragma('table_info(sessions)') as {name:string}[]).map(c=>c.name).join(',');const snap=JSON.stringify(db.prepare(`SELECT ${sessionColumns} FROM sessions`).all());const msg=JSON.stringify(db.prepare('SELECT * FROM messages').all());migrateDatabase(db,directory);expect(JSON.stringify(db.prepare(`SELECT ${sessionColumns} FROM sessions`).all())).toBe(snap);expect(JSON.stringify(db.prepare('SELECT * FROM messages').all())).toBe(msg);
  for(let i=0;i<4;i++)expect(selectCatalog(db,undefined,session.id,()=>0).question.id).not.toBe(id);
  db.close();const reopened=new Store(directory,'isolated' as const);stores.push(reopened);
  if(mode==='parked')reopened.setOpening(session.id,'restore',saved.opening_revision,'starter');
@@ -77,7 +78,7 @@ it('upgrades a supported backup in staging and installs latest, refusing a newer
  await installBackup(target.directory,prepared.directory);const check=new Database(join(target.directory,'stomylos.sqlite3'));dbs.push(check);expect(verifyInstalledCatalog(check).revision).toBe(2);check.prepare("UPDATE starter_catalog_install SET revision=99").run();const newer=archive(check,24);check.close();const saved=readFileSync(join(target.directory,'stomylos.sqlite3'));await expect(prepareBackup(target.directory,newer)).rejects.toThrow('starter_catalog_newer');expect(readFileSync(join(target.directory,'stomylos.sqlite3'))).toEqual(saved);
 });
 it('preserves active/ended session, message, event and frozen request snapshots byte-for-byte',()=>{
- const template=fresh(),s=template.store.createSession(),{db,directory}=legacy(),old=readCatalog().find(r=>r.id==='Q00004')!;
+ const template=fresh(),s=historicalSession(template.store),{db,directory}=legacy(),old=readCatalog().find(r=>r.id==='Q00004')!;
  for(const state of ['ended','active']){
   copyRow(db,'sessions',{...s,id:state,state:'active',starter_id:id,starter_version:'stomylos_catalog_v1',starter_text:old.en});
   copyRow(db,'messages',{...template.store.messages(s.id)[0],id:`m-${state}`,session_id:state,content:old.en});
@@ -85,10 +86,10 @@ it('preserves active/ended session, message, event and frozen request snapshots 
   db.prepare("INSERT INTO starter_events VALUES(?,?,'answered',?,'stomylos_catalog_v1',?,'then')").run(`e-${state}`,state,id,old.en);
   if(state==='ended')db.prepare("UPDATE sessions SET state='ended' WHERE id=?").run(state);
  }
- const snapshots=()=>['sessions','messages','model_requests','starter_events'].map(t=>JSON.stringify(db.prepare(`SELECT * FROM ${t}`).all()));const before=snapshots();migrateDatabase(db,directory);expect(snapshots()).toEqual(before);
+ const columns=Object.fromEntries(['sessions','messages','model_requests','starter_events'].map(t=>[t,(db.pragma(`table_info(${t})`) as {name:string}[]).map(c=>c.name).join(',')]));const snapshots=()=>Object.entries(columns).map(([t,c])=>JSON.stringify(db.prepare(`SELECT ${c} FROM ${t}`).all()));const before=snapshots();migrateDatabase(db,directory);expect(snapshots()).toEqual(before);
 });
 it('skips preserved v1 text exactly once and uses stable IDs for recent and same-session exclusions',()=>{
- const t=fresh(),s=t.store.createSession(),{db,directory}=legacy(),old=readCatalog().find(r=>r.id==='Q00004')!;
+ const t=fresh(),s=historicalSession(t.store),{db,directory}=legacy(),old=readCatalog().find(r=>r.id==='Q00004')!;
  copyRow(db,'sessions',{...s,starter_id:id,starter_version:'stomylos_catalog_v1',starter_text:old.en});copyRow(db,'messages',{...t.store.messages(s.id)[0],content:old.en});
  db.prepare("INSERT INTO starter_events VALUES('old-shown',?,'presented',?,'stomylos_catalog_v1',?,'then')").run(s.id,id,old.en);migrateDatabase(db,directory);
  db.transaction(()=>{db.prepare("UPDATE starter_catalog_entries SET eligible=0 WHERE question_id NOT IN (?, 'catalog:joint-v1:Q05912')").run(id);db.prepare("UPDATE starter_questions SET state='retired' WHERE id IN (SELECT question_id FROM starter_catalog_entries WHERE eligible=0)").run();})();

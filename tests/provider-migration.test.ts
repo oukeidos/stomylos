@@ -1,3 +1,4 @@
+import { historicalSchema } from './historical-fixtures';
 import { afterEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
@@ -18,13 +19,13 @@ function fixture(){
  store.submit(s.id,'Keep this exact source.');store.commitRoute(s.id,null,'fixture',null);
  const request=store.prepareChat(s.id,randomUUID());store.dispatch(request.id);store.prepareReply(s.id,request.id);store.failRequest(request.id,'http_429','',{});
  store.close();
- const db=new Database(join(dir,'stomylos.sqlite3'));for(const t of tables)db.exec(`ALTER TABLE ${t} DROP COLUMN provider_request`);db.pragma('user_version = 26');validateSchema(db,old);
+ const db=new Database(join(dir,'stomylos.sqlite3'));historicalSchema(db,26);validateSchema(db,old);
  return{dir,db,session:s,request};
 }
 it('upgrades 26 to 27 additively, preserves old requests and creates truthful linked retry routing',()=>{
  const {dir,db,session,request}=fixture();
  try {
-  migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(27);
+  migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(46);
   const prior=db.prepare('SELECT * FROM model_requests WHERE id=?').get(request.id) as any;
   expect(prior.config).toBe(request.config);expect(prior.config_hash).toBe(request.config_hash);expect(prior.provider_request).toBeNull();
   const backup=readFileSync(join(dir,'stomylos.pre-migration-v26.sqlite3'));migrateDatabase(db,dir);expect(readFileSync(join(dir,'stomylos.pre-migration-v26.sqlite3'))).toEqual(backup);

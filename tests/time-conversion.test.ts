@@ -32,7 +32,7 @@ afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
 it('refuses v5 before recovery, preserves all original rows and reopens converted old sessions without backfill', () => {
   const original = readFileSync(file);
-  expect(() => new Store(directory, native)).toThrow('external_migration_required');
+  expect(() => new Store(directory, native)).toThrow('unsupported_schema_version');
   expect(readFileSync(file)).toEqual(original);
   const report = convertTime(file);
   expect(report.status).toBe('converted'); expect(report.source_version).toBe(5); expect(report.target_version).toBe(6);
@@ -101,16 +101,17 @@ it('preserves historical failed input through the time conversion and requires r
   convertToCurrent(file);
   const store = new Store(directory, native);
   try {
-    const request = store.prepareChat('old-active', 'old-after-conversion');
+    // Historical undated sources use their retained contract; they are not new sends.
+    const request = store.createRequest('old-active','chat',{...JSON.parse(store.session('old-active').chat_config),memory_context:store.freezeMemory('old-active')});
     expect(store.chatBody(request.id).messages[0].content).not.toContain('application_time_context');
     expect(store.chatBody(request.id).messages.at(-1).content).toBe('An undated historical tomorrow.');
     store.failRequest(request.id, 'cancelled', null, {}, true); store.end('old-active');
-    const next = store.createSession(); store.selectManual(next.id, 'model_04'); store.submit(next.id, 'A newly timed tomorrow.'); store.commitRoute(next.id, null, 'fixture', null); store.end(next.id);
+    const next = store.createSession(); store.selectManual(next.id, 'model_03'); store.submit(next.id, 'A newly timed tomorrow.'); store.commitRoute(next.id, null, 'fixture', null); store.end(next.id);
     expect(store.memoryReady([next.id])).toBeNull();
     const historical = (store as any).db.prepare("SELECT input_json FROM memory_attempts WHERE id='failed-before-conversion'").get();
     expect(historical.input_json).toBe(input);
-    for (const id of ['old-active', next.id]) { const a = store.prepareMemory(id, 'memory-' + id); store.dispatchMemory(a.id); store.saveMemory(a.id, '{"operations":[]}', {}); }
-    expect(JSON.parse(store.memoryJob('old-active')!.source).messages.every((m: any) => m.sent_time === null)).toBe(true);
-    expect(JSON.parse(store.memoryJob(next.id)!.source).messages.find((m: any) => m.origin === 'learner').sent_time).not.toBeNull();
+    expect(store.memoryJob('old-active')).toBeNull();expect(store.memoryJob(next.id)).toBeNull();
+    const db=(store as any).db;expect(db.prepare("SELECT COUNT(*) FROM message_times WHERE message_id='active-user'").pluck().get()).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) FROM message_times WHERE message_id IN (SELECT id FROM messages WHERE session_id=?)').pluck().get(next.id)).toBe(1);
   } finally { store.close(); }
 });

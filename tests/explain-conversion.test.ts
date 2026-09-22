@@ -29,7 +29,7 @@ beforeEach(() => {
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
 it('preserves v12 rows, bookmarks, drafts and private backups across two v13 opens', () => {
   const before = readFileSync(file);
-  expect(() => new Store(directory, native)).toThrow('external_migration_required'); expect(readFileSync(file)).toEqual(before);
+  expect(() => new Store(directory, native)).toThrow('unsupported_schema_version'); expect(readFileSync(file)).toEqual(before);
   const report = convertExplain(file);
   expect(report).toMatchObject({ status: 'converted', source_version: 12, target_version: 13 });
   expect(readFileSync(join(report.archive, 'before-v12.sqlite3'))).toEqual(before);

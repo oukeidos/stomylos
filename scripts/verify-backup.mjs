@@ -1,3 +1,4 @@
+import { closeNative } from './native-lifecycle.mjs';
 // Focused native backup acceptance. Only OS file/confirmation dialogs and relaunch
 // are scripted; all backup IPC, workers, files and restart recovery are real.
 import { _electron as electron } from 'playwright-core';
@@ -89,7 +90,7 @@ try {
   assert.equal(previous, newer);
   assert.equal(await application.evaluate(() => globalThis.backupTest.requests), 0);
   report.checks.push('Confirmed restore exits, reopens the exact backed-up draft, and retains the newer draft in recovery');
-  await command('close'); await application.close(); application = null;
+  await closeNative(application); await application.close(); application = null;
   // Startup failure is handled before a renderer exists. Patch only the native
   // dialogs while the initial recovery/DB workers are still starting.
   writeFileSync(join(directory, 'stomylos.sqlite3'), 'corrupt history');
@@ -106,7 +107,7 @@ try {
   const recoveries = readdirSync(directory).filter(name => name.startsWith('restore-recovery-'));
   assert.ok(recoveries.some(name => readFileSync(join(directory, name, 'previous', 'stomylos.sqlite3')).equals(Buffer.from('corrupt history'))));
   report.checks.push('Startup-error restore reopens the backup and preserves the corrupt original bytes');
-  await command('close'); await application.close(); application = null;
+  await closeNative(application); await application.close(); application = null;
   assert.deepEqual(report.errors, []); report.status = 'passed';
 } catch (error) { report.status = 'failed'; report.failure = String(error.stack ?? error); process.exitCode = 1; }
 finally { if (application) await application.close().catch(() => undefined); writeFileSync(join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n'); if (report.status === 'passed') rmSync(root, { recursive: true, force: true }); }

@@ -1,3 +1,4 @@
+import { historicalSession } from './historical-fixtures';
 import { prepareProviderRequest } from '../src/main/provider-policy';
 import sevenRuntime from '../src/main/conversation-v7-config.json';
 import { flat, splitDelta } from './flat-memory-fixtures';
@@ -30,6 +31,7 @@ let routerFails: boolean; let holdStream: boolean; let holdGrammar: boolean;
 let grammarFails: boolean; let renewalFails: boolean; let holdRenewal: boolean; let renewalCalls: Json[]; let keyAvailable: boolean; let renewalContent: string | null;
 let streamReady: (() => void) | null;
 let loseAck: string | null;
+let holdMemoryPoll=false, releaseMemoryPoll:(()=>void)|null=null;
 let holdPrepare: boolean, releasePrepare: (() => void) | null;
 let streamFails: boolean;
 let memoryCalls: Json[], memoryFails: boolean, memoryRelease: (() => void) | null;
@@ -43,20 +45,21 @@ const patternHtml='<!DOCTYPE html><html><head><title>Patterns</title></head><bod
 let holdMemory: boolean, memoryOutput: (packet: Json) => string;
 const waitFor = async (fn: () => boolean) => { await vi.waitFor(() => expect(fn()).toBe(true), { timeout: 3000, interval: 5 }); };
 beforeEach(async () => {
-  holdRouter = false;
+  holdRouter = false;holdMemoryPoll=false;releaseMemoryPoll=null;
   intentionCalls = []; intentionFailures = []; holdIntention = false; intentionRelease = null;
   searchCalls = []; searchPhases = [];
   directory = mkdtempSync(join(tmpdir(), 'stomylos-controller-')); store = new Store(directory, 'isolated' as const);
   patternCalls=[];patternPolicies=[];holdPattern=false;latePattern=false; lateGrammar = false; calls = []; snapshots = []; failMethod = null; loseAck = null; routerFails = false; grammarFails = false; holdStream = false; holdGrammar = false; streamReady = null;
   streamFails = false;
   holdPrepare = false; releasePrepare = null;
-  memoryCalls = []; memoryFails = false; memoryRelease = null; holdMemory = false; memoryOutput = () => '{"add":[],"update":[],"delete":[]}';
+  memoryCalls = []; memoryFails = false; memoryRelease = null; holdMemory = false; memoryOutput = () => '{"add":[]}';
   renewalCalls = []; renewalFails = false; holdRenewal = false; keyAvailable = true; renewalContent = null;
   const database = {
     ready: Promise.resolve(),
     async call(method: StoreMethod, ...args: any[]) {
       if (failMethod === method) throw new AppFailure('operation_failed');
       const value = (store[method] as Function).apply(store, args);
+      if(method==='memoryAddReady' && holdMemoryPoll)await new Promise<void>(resolve=>{releaseMemoryPoll=resolve;});
       if (method === 'prepareChat' && holdPrepare) await new Promise<void>(resolve => { releasePrepare = resolve; });
       if (loseAck === method) { loseAck = null; throw new AppFailure('operation_failed'); }
       return value;
@@ -65,13 +68,14 @@ beforeEach(async () => {
   } as unknown as DatabaseClient;
   const gateway: Gateway = {
     async complete(body, _identity, signal, timeout) {
-      if(body.max_tokens===32768 && body.model==='openai/gpt-6-astra') {
+      if([32768,128000].includes(body.max_tokens) && body.model==='openai/gpt-6-astra') {
         patternCalls.push(body);
         patternPolicies.push({identity:_identity,timeout});
         if(holdPattern) await new Promise<void>((r,j)=>signal.addEventListener('abort',()=>latePattern?r():j(new AppFailure('request_cancelled')),{once:true}));
         return {content:patternHtml,metadata:{usage:{cost:0.25}}};
       }
-      if (['stomylos_memory_delta_v1','experimental_database_records_format'].includes(body.response_format?.json_schema.name)) {
+      if(body.response_format?.json_schema.name==='record_sources'){const input=JSON.parse(body.messages[1].content);return {content:JSON.stringify({sources:input.records.map(([id]:[number])=>({id,ids:[1]}))}),metadata:{}};}
+      if (body.response_format?.json_schema.name==='add_only_v1') {
         memoryCalls.push(body);
         if (holdMemory) await new Promise<void>((resolve, reject) => { memoryRelease = resolve; signal.addEventListener('abort', () => reject(new AppFailure('request_cancelled')), { once: true }); });
         if (memoryFails) throw new AppFailure('request_timeout');
@@ -113,7 +117,9 @@ beforeEach(async () => {
   controller = new Coordinator(database, gateway, { keyPresent: true, keyPath: '/test/key', dataPath: directory, appVersion: 'test', development: true }, event => {
     if (event.type === 'snapshot') snapshots.push(event.snapshot);
   }, () => keyAvailable);
+  (store as any).db.prepare("UPDATE reply_preferences SET mode='standard'").run();
   await controller.initialize();
+
 });
 afterEach(async () => { failMethod = null; store.close(); rmSync(directory, { force: true, recursive: true }); });
 const activeId = () => store.sessions().find(s => s.state !== 'ended')!.id;
@@ -198,22 +204,15 @@ it('enforces the Off control before Send and preserves it through a reply retry'
   await controller.command('close', undefined);
 });
 
-it('fails a maximally escaped bounded memory input before network dispatch and leaves no running attempt', async () => {
-  const id = activeId(); store.searchMode(id, 'off'); store.setOpening(id, 'bounded-direct', 0, 'user'); store.selectManual(id, 'model_04');
-  const document = emptyMemory('shared');
-  document.traits = Array.from({ length: 60 }, (_, i) => ({ id: 'item-' + i, text: String(i).padStart(3, '0') + 'x'.repeat(237) }));
-  const encoded = memoryJson(document);
-  (store as any).db.prepare('UPDATE shared_memory SET document=?,document_hash=? WHERE id=1').run(encoded, memoryHash(encoded));
-  for (let i = 0; i < 24; i++) {
-    store.submit(id, '"'.repeat(250)); if (!i) store.commitRoute(id, null, 'fixture', null);
-    const request = store.prepareChat(id, randomUUID()), message = store.prepareReply(id, request.id);
-    store.dispatch(request.id); store.finishReply(request.id, message.id, '"'.repeat(600), {});
-  }
-  await controller.command('endSession', { sessionId: id });
-  await waitFor(() => store.memoryJob(id)?.state === 'failed');
+it('rejects an oversized retained transcript before memory network dispatch', async () => {
+  const id=activeId(); await send(id); await idle();
+  // A retained/imported transcript can exceed today's UI input cap.
+  (store as any).db.prepare("INSERT INTO messages(id,session_id,sequence,role,origin,delivery,content) VALUES('large-source',?,99,'user','learner','complete',?)").run(id,'x'.repeat(1_048_576));
+  await controller.command('endSession',{sessionId:id});
+  await waitFor(()=>store.view(id).memory.job?.state==='failed');
   expect(memoryCalls).toHaveLength(0);
-  expect(store.view(id).memory.attempts[0]).toMatchObject({ status: 'failed', failure: 'memory_input_too_large', dispatched_at: null });
-  await controller.command('close', undefined);
+  expect(store.view(id).memory.addAttempts![0]).toMatchObject({status:'failed',failure:'memory_add_input_limit'});
+  await controller.command('close',undefined);
 });
 
 it.each(['submit', 'prepareChat'])('replays a lost %s acknowledgement with one timed submission and one chat dispatch', async method => {
@@ -307,22 +306,26 @@ it('rejects stale ASR insertion and keeps unsaved provenance recoverable without
   await controller.command('close', undefined);
 });
 
-it('uses the increased budget for a legacy session and explicit retry while preserving historical records', async () => {
-  const id = activeId(); const legacy = JSON.stringify(goldens.legacy.conversation_snapshot);
+it('retries a transmitted legacy request with its increased budget and unchanged history', async () => {
+  store.end(activeId()); const id = historicalSession(store).id; const legacy = JSON.stringify({...goldens.legacy.conversation_snapshot,version:'stomylos_conversation_v2',max_tokens:8192});
   const raw = new Database(join(directory, 'stomylos.sqlite3'));
   raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(legacy, id); raw.close();
-  streamFails = true; await send(id); await idle();
-  const failed = store.requests(id).find(r => r.role === 'chat')!;
+  store.searchMode(id,'off');store.submit(id,'Legacy source.');store.commitRoute(id,null,'historical',null);
+  // This transmitted request predates the search feature.
+  (store as any).db.prepare('DELETE FROM search_turns WHERE session_id=?').run(id);
+  const initial=store.createRequest(id,'chat',JSON.parse(legacy));store.prepareReply(id,initial.id);store.dispatch(initial.id);store.failRequest(initial.id,'request_timeout');
+  streamFails = true; await controller.command('retryReply',{sessionId:id}); await waitFor(()=>calls.length===1 || !!snapshots.at(-1)?.activity.error);await idle();expect(snapshots.at(-1)?.activity.error).toBe('response_length_limit');
+  const failed = store.requests(id).findLast(r => r.role === 'chat')!;
   expect(failed.failure).toBe('response_length_limit');
   expect(JSON.parse(failed.config)).toMatchObject({ version: 'stomylos_conversation_v2', max_tokens: 8192 });
   expect(JSON.parse(failed.metadata)).toMatchObject({ id: 'public-generation', finish_reason: 'length',
     usage: { completion_tokens: 8192, completion_tokens_details: { reasoning_tokens: 8000 } } });
   expect(store.messages(id).at(-1)).toMatchObject({ content: 'Partial response', delivery: 'interrupted' });
   expect(store.session(id).chat_config).toBe(legacy); expect(snapshots.at(-1)?.activity.error).toBe('response_length_limit');
-  expect(calls).toHaveLength(2);
-  streamFails = false; await controller.command('retryReply', { sessionId: id }); await waitFor(() => calls.length === 3); await idle();
-  expect(calls).toHaveLength(3); expect(calls[2]).toEqual(calls[1]);
-  expect(calls[2].max_tokens).toBe(8192);
+  expect(calls).toHaveLength(1);
+  streamFails = false; await controller.command('retryReply', { sessionId: id }); await waitFor(() => calls.length === 2); await idle();
+  expect(calls).toHaveLength(2); expect(calls[1]).toEqual(calls[0]);
+  expect(calls[1].max_tokens).toBe(8192);
   const retry = store.requests(id).findLast(r => r.role === 'chat')!;
   expect(retry).toMatchObject({ parent_id: failed.id, source_hash: failed.source_hash, config: failed.config, status: 'succeeded' });
   expect(store.requests(id).find(r => r.id === failed.id)).toEqual(failed);
@@ -330,12 +333,13 @@ it('uses the increased budget for a legacy session and explicit retry while pres
   await controller.command('close', undefined);
 });
 
-it('routes once even with a manual override, then saves the ended analysis before another chat', async () => {
+it('routes once with a historical manual override and runs ended analysis explicitly', async () => {
   const id = activeId(); useSeven(id); await controller.command('selectPartner', { sessionId: id, character: 'model_04' });
   await send(id, '  Source\ntext  '); await idle();
   expect(calls).toHaveLength(2); expect(calls[1].model).toBe('openai/gpt-6-astra'); expect(calls[1].reasoning).toEqual({ effort: 'low', exclude: true });
   await send(id, 'Second source.', 2); await idle(); expect(calls).toHaveLength(3);
   await controller.command('endSession', { sessionId: id });
+  await controller.command('retryAnalysis', { sessionId: id });
   await waitFor(() => store.session(id).analysis_state === 'completed');
   expect(store.units(id).map(u => u.text)).toEqual(['  Source\ntext  ', 'Second source.']);
   expect(calls).toHaveLength(4); expect(await controller.command('newSession', undefined)).not.toBe(id);
@@ -349,40 +353,40 @@ it('commits a local route after Luna and Terra fail without same-model retries',
   await send(id, 'Next.', 2); await idle(); expect(calls).toHaveLength(4);
   await controller.command('close', undefined);
 });
-it('retains chat after grammar failure and retries once automatically before manually retrying the identical frozen analysis', async () => {
+it('retains chat after grammar failure and manually retries the identical frozen analysis', async () => {
   const id = activeId(); await send(id); await idle(); grammarFails = true;
-  await controller.command('endSession', { sessionId: id }); await waitFor(() => store.session(id).analysis_state === 'failed');
-  await waitFor(() => store.requests(id).filter(r => r.role === 'grammar').length === 2 && store.session(id).analysis_state === 'failed');
+  await controller.command('endSession', { sessionId: id }); await controller.command('retryAnalysis',{sessionId:id}); await waitFor(() => store.session(id).analysis_state === 'failed');
+  await waitFor(() => store.requests(id).filter(r => r.role === 'grammar').length === 1 && store.session(id).analysis_state === 'failed');
   const original = store.requests(id).findLast(r => r.role === 'grammar')!; const source = store.messages(id);
-  expect(store.units(id)).toEqual([]); await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
-  expect(calls).toHaveLength(4);
+  expect(store.units(id)).toEqual([]); await waitFor(()=>store.endBlocker()===null); expect(await controller.command('newSession',undefined)).not.toBe(id);
+  expect(calls).toHaveLength(3);
   grammarFails = false; await controller.command('retryAnalysis', { sessionId: id });
   await waitFor(() => store.session(id).analysis_state === 'completed');
   const retry = store.requests(id).findLast(r => r.role === 'grammar')!;
   expect(retry).toMatchObject({ parent_id: original.id, source_hash: original.source_hash, config: original.config, config_hash: original.config_hash });
-  expect(store.messages(id)).toEqual(source); expect(store.units(id)).toHaveLength(1); expect(calls).toHaveLength(5);
-  await expect(controller.command('retryAnalysis', { sessionId: id })).rejects.toThrow('analysis_not_retryable');
-  expect(calls).toHaveLength(5); await controller.command('close', undefined);
+  expect(store.messages(id)).toEqual(source); expect(store.units(id)).toHaveLength(1); expect(calls).toHaveLength(4);
+  await expect(controller.command('retryAnalysis', { sessionId: id })).resolves.toBeUndefined();
+  expect(calls).toHaveLength(4); await controller.command('close', undefined);
 });
 it('rejects double send and cancels the reply before freezing its partial text', async () => {
   holdStream = true; const id = activeId(); await send(id);
   await waitFor(() => calls.some(call => call.stream));
   await expect(send(id, 'Double.', 2)).rejects.toThrow('reply_in_progress');
   await controller.command('endSession', { sessionId: id });
-  await waitFor(() => store.session(id).analysis_state === 'completed');
+  await waitFor(() => store.endStatus(id)?.complete===true);
   expect(store.messages(id).at(-1)).toMatchObject({ content: 'Partial response', delivery: 'interrupted' });
   expect(store.requests(id).find(r => r.role === 'chat')).toMatchObject({ status: 'interrupted', response_content: 'Partial response' });
   await controller.command('close', undefined);
 });
 it('treats exact /end as a local cancellation during a reply and never submits the command', async () => {
   holdStream = true; const id = activeId(); await send(id); await waitFor(() => calls.some(c => c.stream));
-  await send(id, '/end', 2); await waitFor(() => store.session(id).analysis_state === 'completed');
+  await send(id, '/end', 2); await waitFor(() => store.endStatus(id)?.complete===true);
   expect(store.messages(id).filter(m => m.origin === 'learner').map(m => m.content)).toEqual(['Exact source.']);
-  expect(store.session(id).draft).toBe(''); expect(calls).toHaveLength(3); await controller.command('close', undefined);
+  expect(store.session(id).draft).toBe(''); expect(calls).toHaveLength(2); await controller.command('close', undefined);
 });
 it.each(['finishReply', 'saveAnalysis'])('recovers a lost %s acknowledgement with no repeated request or evidence', async method => {
   loseAck = method; const id = activeId(); await send(id);
-  if (method === 'saveAnalysis') { await idle(); await controller.command('endSession', { sessionId: id }); }
+  if (method === 'saveAnalysis') { await idle(); await controller.command('endSession', { sessionId: id }); await controller.command('retryAnalysis',{sessionId:id}); }
   await waitFor(() => !!snapshots.at(-1)?.activity.storageError);
   const count = calls.length; await controller.command('retrySaving', undefined);
   await waitFor(() => !snapshots.at(-1)?.activity.storageError);
@@ -420,23 +424,22 @@ it('rejects a stale draft save after send and preserves a newer edit', async () 
   await expect(send(id, 'Stale source.', 4)).rejects.toThrow('draft_changed');
   expect(store.session(id).draft).toBe('New unsent draft.'); await controller.command('close', undefined);
 });
-it.each(['queued', 'dispatched'])('blocks new chats during %s grammar and preserves recovery without replay on close', async status => {
+it.each(['queued', 'dispatched'])('allows new chats during %s grammar and preserves recovery without replay on close', async status => {
   const id = activeId(); await send(id); await idle();
   if (status === 'queued') {
     // A durable request that has not yet reached the coordinator's dispatcher.
-    store.end(id); store.createRequest(id, 'grammar', JSON.parse(store.session(id).grammar_config!));
+    store.end(id); store.cancelEnd(id); store.createRequest(id, 'grammar', grammarSnapshot());
   } else {
-    holdGrammar = true; await controller.command('endSession', { sessionId: id });
+    holdGrammar = true; await controller.command('endSession', { sessionId: id }); await controller.command('retryAnalysis',{sessionId:id});
     await waitFor(() => store.requests(id).some(r => r.role === 'grammar' && r.status === 'dispatched'));
-    await waitFor(() => store.starterJob(id)?.state === 'completed' && store.memoryJob(id)?.state === 'completed');
+    await waitFor(() => store.starterJob(id) === null && store.view(id).memory.job?.state === 'completed');
   }
   expect(store.requests(id).find(r => r.role === 'grammar')?.status).toBe(status);
-  await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
-  expect(store.endBlocker()).toBe(id);
+  expect(store.endBlocker()).toBeNull(); expect(await controller.command('newSession',undefined)).not.toBe(id);
   const requestCount = calls.length; await controller.command('close', undefined);
   store = new Store(directory, 'isolated' as const);
   expect(store.session(id).analysis_state).toBe(status === 'queued' ? 'pending' : 'failed');
-  expect(store.endBlocker()).toBe(id);
+  expect(store.endBlocker()).toBeNull();
   expect(calls).toHaveLength(requestCount);
 });
 it('rejects retired starter retry without a provider call', async () => {
@@ -444,8 +447,8 @@ it('rejects retired starter retry without a provider call', async () => {
   expect(renewalCalls).toHaveLength(0); await controller.command('close',undefined);
 });
 it('gates a new chat while independent background roles run and interrupts them on close', async () => {
-  const first = activeId(); await send(first); await idle(); holdGrammar = true; holdRenewal = true;
-  await controller.command('endSession', { sessionId: first }); await waitFor(() => store.session(first).analysis_state === 'running');
+  const first = activeId(); await send(first); await idle(); holdGrammar = true; holdMemory = true;
+  await controller.command('endSession', { sessionId: first }); await controller.command('retryAnalysis',{sessionId:first}); await waitFor(() => store.session(first).analysis_state === 'running');
   await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
   expect(store.session(first).analysis_state).toBe('running'); expect(store.starterJob(first)).toBeNull();
   await controller.command('close', undefined); store = new Store(directory, 'isolated' as const);
@@ -465,7 +468,7 @@ it('keeps no-key and restarted jobs pending, and key reload or history inspectio
 it('never generates for skipped or untouched drafts', async () => {
   const empty = activeId(); await controller.command('endSession', { sessionId: empty });
   expect(renewalCalls).toHaveLength(0); const id = await controller.command('newSession', undefined);
-  await controller.command('replaceStarter', { sessionId: id, operationId: 'public-skip', expectedQuestionId: store.session(id).starter_id!, expectedRevision: store.session(id).opening_revision });
+  await expect(controller.command('replaceStarter', { sessionId: id, operationId: 'public-skip', expectedQuestionId: 'none', expectedRevision: store.session(id).opening_revision })).rejects.toThrow();
   expect(renewalCalls).toHaveLength(0); await controller.command('endSession', { sessionId: id });
   expect(store.starterJob(id)).toBeNull(); expect(calls).toHaveLength(0); expect(renewalCalls).toHaveLength(0);
   await controller.command('close', undefined);
@@ -473,10 +476,10 @@ it('never generates for skipped or untouched drafts', async () => {
 
 it('runs memory independently within the end gate and preserves chat snapshots across later commits', async () => {
   const first = activeId();
-  await controller.command('selectPartner', { sessionId: first, character: 'model_04' });
+  await controller.command('selectPartner', { sessionId: first, character: 'model_03' });
   await send(first, 'I enjoy botanical gardens.'); await idle();
   holdMemory = true;
-  memoryOutput = packet => splitDelta({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys botanical gardens.', source_message_ids: [packet.messages.find((m: Json) => m.role === 'user' && m.evidence !== false).id] }] });
+  memoryOutput = () => JSON.stringify({add:['Enjoys botanical gardens.']});
   await controller.command('endSession', { sessionId: first });
   await waitFor(() => memoryCalls.length === 1 && memoryRelease !== null);
   await waitFor(() => store.session(first).analysis_state === 'none' && store.starterJob(first) === null);
@@ -484,7 +487,7 @@ it('runs memory independently within the end gate and preserves chat snapshots a
   holdMemory = false; memoryRelease!();
   await waitFor(() => store.endStatus(first)?.complete === true);
   const second = await controller.command('newSession', undefined);
-  await controller.command('selectPartner', { sessionId: second, character: 'model_04' });
+  await controller.command('selectPartner', { sessionId: second, character: 'model_03' });
   await send(second, 'A fresh topic.', 2); await idle();
   const before = store.requests(second).find(r => r.role === 'chat')!;
   const frozenMemory = JSON.parse(before.config).memory_context;
@@ -493,51 +496,51 @@ it('runs memory independently within the end gate and preserves chat snapshots a
   const after = store.requests(second).findLast(r => r.role === 'chat')!;
   expect(JSON.parse(after.config).memory_context).toEqual(frozenMemory);
   expect(memoryCalls).toHaveLength(1);
-  memoryOutput = packet => splitDelta({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet libraries.', source_message_ids: [packet.messages.findLast((m: Json) => m.role === 'user' && m.evidence !== false).id] }] });
+  memoryOutput = () => JSON.stringify({add:['Enjoys quiet libraries.']});
   await controller.command('endSession', { sessionId: second });
   await waitFor(() => store.endStatus(second)?.complete === true);
-  expect(JSON.parse(memoryCalls[1].messages[1].content).database_records).toEqual([{ id: 'm1', text: 'Enjoys botanical gardens.' }]);
+  expect(JSON.stringify(JSON.parse(memoryCalls[1].messages[1].content).conversation)).toContain('I enjoy quiet libraries.');
   expect(store.requests(second).find(r => r.id === before.id)?.config).toBe(before.config);
   expect(store.requests(second).find(r => r.id === after.id)?.config).toBe(after.config);
   expect(flat(store.view(second).memory.current).database_records.map(t => t.text)).toContain('Enjoys quiet libraries.');
   const third = await controller.command('newSession', undefined);
-  await controller.command('selectPartner', { sessionId: third, character: 'model_04' });
+  await controller.command('selectPartner', { sessionId: third, character: 'model_03' });
   await send(third, 'Do you remember my interests?', 4); await idle();
   const prompt = calls.filter(c => c.stream).at(-1)!.messages[0].content;
   expect(prompt).toContain('Enjoys botanical gardens.'); expect(prompt).toContain('Enjoys quiet libraries.');
   await controller.command('close', undefined);
 });
 
-it.each(['saveMemory', 'dispatchMemory', 'prepareMemory'])('recovers a lost %s acknowledgement without a second memory request', async method => {
+it.each(['acceptMemoryAdd', 'dispatchMemoryAdd', 'prepareMemoryAdd'])('recovers a lost %s acknowledgement without a second memory request', async method => {
   const id = activeId(); await send(id); await idle();
   loseAck = method; const ending = controller.command('endSession', { sessionId: id });
   await waitFor(() => !!snapshots.at(-1)?.activity.storageError);
   await controller.command('retrySaving', undefined);
-  await waitFor(() => store.memoryJob(id)?.state === 'completed');
-  await ending; expect(memoryCalls).toHaveLength(1); expect(store.view(id).memory.attempts).toHaveLength(1);
+  await waitFor(() => store.view(id).memory.job?.state === 'completed');
+  await ending; expect(memoryCalls).toHaveLength(1); expect(store.view(id).memory.addAttempts!).toHaveLength(1);
   await controller.command('close', undefined);
 });
 
 it('retains a received memory response during a save failure and retries only local persistence', async () => {
   const id = activeId(); await send(id); await idle();
-  failMethod = 'saveMemory'; const ending = controller.command('endSession', { sessionId: id });
+  failMethod = 'acceptMemoryAdd'; const ending = controller.command('endSession', { sessionId: id });
   await waitFor(() => !!snapshots.at(-1)?.activity.storageError);
-  expect(memoryCalls).toHaveLength(1); expect(store.memoryJob(id)?.state).toBe('running');
+  expect(memoryCalls).toHaveLength(1); expect(store.view(id).memory.job?.state).toBe('running');
   failMethod = null; await controller.command('retrySaving', undefined); await ending;
-  await waitFor(() => store.memoryJob(id)?.state === 'completed');
+  await waitFor(() => store.view(id).memory.job?.state === 'completed');
   expect(memoryCalls).toHaveLength(1);
   await controller.command('close', undefined);
 });
 
 it('keeps a failed memory job gated and explicit retry reuses the exact request', async () => {
-  const id = activeId(); await controller.command('selectPartner', { sessionId: id, character: 'model_04' });
+  const id = activeId(); await controller.command('selectPartner', { sessionId: id, character: 'model_03' });
   await send(id); await idle(); memoryFails = true;
-  await controller.command('endSession', { sessionId: id }); await waitFor(() => store.memoryJob(id)?.state === 'failed');
+  await controller.command('endSession', { sessionId: id }); await waitFor(() => store.view(id).memory.job?.state === 'failed');
   await expect(controller.command('newSession', undefined)).rejects.toThrow('end_processing_pending');
   const count = memoryCalls.length;
   await controller.command('snapshot', undefined); expect(memoryCalls).toHaveLength(count);
   memoryFails = false; await controller.command('retryMemory', { sessionId: id });
-  await waitFor(() => store.memoryJob(id)?.state === 'completed');
+  await waitFor(() => store.view(id).memory.job?.state === 'completed');
   expect(memoryCalls).toHaveLength(count + 1); expect(memoryCalls.at(-1)).toEqual(memoryCalls[0]);
   await controller.command('close', undefined);
 });
@@ -547,21 +550,22 @@ it('cancels active memory on close and requires explicit recovery after restart'
   await controller.command('endSession', { sessionId: id }); await waitFor(() => memoryRelease !== null);
   await controller.command('close', undefined);
   store = new Store(directory, 'isolated' as const);
-  expect(store.memoryJob(id)?.state).toBe('interrupted');
-  const complete = vi.fn(async (body: Json) => ({ content: body.model === 'google/gemini-3.8-flash' ? '{"add":[],"update":[],"delete":[]}' : 'What is next?\nWhat feels different?', metadata: {} }));
+  expect(store.view(id).memory.job?.state).toBe('interrupted');
+  const complete = vi.fn(async (body: Json) => ({ content: '{"add":[]}', metadata: {} }));
   const db = { ready: Promise.resolve(), call: async (method: StoreMethod, ...args: any[]) => (store[method] as Function).apply(store, args), close: async () => store.close() } as unknown as DatabaseClient;
   const reopened = new Coordinator(db, { complete, stream: vi.fn() }, { keyPresent: true, keyPath: '/test/key', dataPath: directory, appVersion: 'test', development: true }, () => undefined, () => true);
   await reopened.initialize(); await reopened.command('snapshot', undefined);
   expect(complete).not.toHaveBeenCalled();
   await reopened.command('retryMemory', { sessionId: id });
-  await waitFor(() => store.memoryJob(id)?.state === 'completed');
-  expect(complete.mock.calls.filter(([body]) => body.model === 'google/gemini-3.8-flash')).toHaveLength(1); await reopened.command('close', undefined);
+  await waitFor(() => store.view(id).memory.job?.state === 'completed');
+  expect(complete.mock.calls.filter(([body]) => body.response_format?.json_schema.name === 'add_only_v1')).toHaveLength(1); await reopened.command('close', undefined);
 });
 
 it('deletes an ended chat while cancelling its active background jobs and preserving the next draft', async () => {
   const id = activeId(); await send(id); await idle(); holdGrammar = holdRenewal = holdMemory = true;
-  await controller.command('endSession', { sessionId: id });
+  await controller.command('endSession', { sessionId: id }); await controller.command('retryAnalysis',{sessionId:id});
   await waitFor(() => calls.length === 3 && memoryCalls.length === 1);
+  await controller.command('cancelEnd',{sessionId:id});
   expect(renewalCalls).toHaveLength(0); expect(store.starterJob(id)).toBeNull();
   const next = await controller.command('newSession', undefined);
   await controller.command('saveDraft', { sessionId: next, text: 'Keep this draft.', revision: 2 });
@@ -596,7 +600,7 @@ it('keeps file cleanup durable after failure and retries without restoring the d
 
 it('rejects a successful analysis response that arrives after deletion cancellation', async () => {
   const id = activeId(); await send(id); await idle(); holdGrammar = true; lateGrammar = true;
-  await controller.command('endSession', { sessionId: id }); await waitFor(() => calls.length === 3);
+  await controller.command('endSession', { sessionId: id }); await controller.command('retryAnalysis',{sessionId:id}); await waitFor(() => calls.length === 3);
   const save = vi.spyOn(store, 'saveAnalysis');
   await controller.command('deleteSession', { sessionId: id });
   expect(save).not.toHaveBeenCalled(); expect(() => store.session(id)).toThrow('session_not_found');
@@ -634,8 +638,8 @@ it('recovers a lost opening acknowledgement without changing the preserved draft
   loseAck = 'setOpening';
   const operation = controller.command('setOpening', { sessionId: id, operationId: 'lost-opening', expectedRevision: 0, kind: 'user' });
   await waitFor(() => !!snapshots.at(-1)?.activity.storageError);
-  await controller.command('retrySaving', undefined); expect(await operation).toEqual({ revision: 1 });
-  expect(store.session(id)).toMatchObject({ opening_kind: 'user', opening_revision: 1, draft: '  Keep this draft.\n' });
+  await controller.command('retrySaving', undefined); expect(await operation).toEqual({ revision: 0 });
+  expect(store.session(id)).toMatchObject({ opening_kind: 'user', opening_revision: 0, draft: '  Keep this draft.\n' });
   expect(calls).toEqual([]); expect(renewalCalls).toEqual([]);
   await controller.command('close', undefined);
 });
@@ -663,12 +667,12 @@ it('dispatches a historical retry with its frozen request and policy through the
   expect(store.patternHtml(r.id).html).toBe(patternHtml);
   await controller.command('close', undefined);
 });
-it('discards a v2 late completion after cancellation without committing HTML', async () => {
+it('discards a current late completion after cancellation without committing HTML', async () => {
   seedPatternEvidence(); holdPattern = true; latePattern = true;
   const p = store.patternPreview();
   const r = await controller.command('patternCreate', { fingerprint: p.fingerprint, operationId: randomUUID() });
   await waitFor(() => patternCalls.length === 1);
-  expect(patternCalls[0].messages[0].content).toContain('calm editorial field-guide');
+  expect(patternCalls[0].messages[0].content).toContain('warm paper colors');
   await controller.command('patternCancel', { id: r.id });
   expect(store.patternDetail(r.id)).toMatchObject({ status: 'cancelled', selected_attempt_id: null });
   expect(() => store.patternHtml(r.id)).toThrow('pattern_not_ready');
@@ -859,7 +863,7 @@ it.each([false, true])('does not dispatch starter generation (skip-only: %s)', a
   const id = activeId();
   if (skipOnly) {
     const session = store.session(id);
-    store.replaceQuestion(id, randomUUID(), session.starter_id!, session.opening_revision);
+    expect(()=>store.replaceQuestion(id, randomUUID(), 'none', session.opening_revision)).toThrow();
   } else store.submit(id, 'A real user message.');
   await controller.command('endSession', {sessionId:id});
   expect(store.starterJob(id)).toBeNull(); expect(renewalCalls).toHaveLength(0);
@@ -869,7 +873,7 @@ it.each([false, true])('does not dispatch starter generation (skip-only: %s)', a
 it('manual memory edit recovers a lost commit acknowledgement once without a provider call', async () => {
   const inspect = new Database(join(directory,'stomylos.sqlite3'));
   const doc = memoryJson({character_id:'shared',revision:0,database_records:[{id:'manual',text:'Before.'}]});
-  inspect.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(doc,memoryHash(doc));inspect.close();
+  inspect.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(doc,memoryHash(doc));inspect.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,origin) VALUES('manual',0,0,'legacy')").run();inspect.close();
   const current = await controller.command('memoryManagement',undefined);
   loseAck = 'commitMemoryEdit';
   const pending = controller.command('editMemory',{id:'manual',text:'After.',revision:current.document.revision,hash:current.hash});
@@ -882,8 +886,8 @@ it('manual memory edit recovers a lost commit acknowledgement once without a pro
 it.each(['edit-first','send-first'])('manual memory serializes %s against the first Send', async order => {
   const inspect = new Database(join(directory,'stomylos.sqlite3'));
   const doc = memoryJson({character_id:'shared',revision:0,database_records:[{id:'manual',text:'Before.'}]});
-  inspect.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(doc,memoryHash(doc));inspect.close();
-  const session = store.createSession();store.searchMode(session.id,'off');store.selectManual(session.id,'model_04');holdStream=true;
+  inspect.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(doc,memoryHash(doc));inspect.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,origin) VALUES('manual',0,0,'legacy')").run();inspect.close();
+  const session = store.createSession();store.searchMode(session.id,'off');store.selectManual(session.id,'model_03');holdStream=true;
   const current=await controller.command('memoryManagement',undefined);
   const edit=()=>controller.command('editMemory',{id:'manual',text:'After.',revision:current.document.revision,hash:current.hash});
   const send=()=>controller.command('sendMessage',{sessionId:session.id,text:'A new conversation.',revision:1});
@@ -927,4 +931,25 @@ it('cancelled exit preparation cannot close storage after a delayed save recover
   await controller.command('saveDraft', { sessionId: id, text: 'Still usable', revision: 21 });
   expect(calls).toHaveLength(0);
   await controller.command('close', undefined);
+});
+
+it.each([false,true])('backup drains a pending poll and defers any discovered job until export ends (job: %s)',async ready=>{
+ const id=activeId();if(ready){await send(id);await idle();}
+ await waitFor(()=>!(controller as any).memory);
+ if(ready)store.end(id);
+ holdMemoryPoll=true;(controller as any).pumpMemory();await waitFor(()=>releaseMemoryPoll!==null);
+ let entered=false,finish!:()=>void;
+ const backup=controller.withBackup(async()=>{entered=true;expect(memoryCalls).toHaveLength(0);await new Promise<void>(resolve=>{finish=resolve;});});
+ await Promise.resolve();expect(entered).toBe(false);
+ holdMemoryPoll=false;releaseMemoryPoll!();await waitFor(()=>entered);
+ expect(memoryCalls).toHaveLength(0);finish();await backup;
+ if(ready)await waitFor(()=>store.view(id).memory.job?.state==='completed');
+ expect(memoryCalls).toHaveLength(ready?1:0);await controller.command('close',undefined);
+});
+it('backup rejects admitted memory inference without cancelling it',async()=>{
+ const id=activeId();await send(id);await idle();holdMemory=true;
+ await controller.command('endSession',{sessionId:id});await waitFor(()=>memoryRelease!==null);
+ await expect(controller.withBackup(async()=>undefined)).rejects.toThrow('backup_busy');
+ expect(memoryCalls).toHaveLength(1);holdMemory=false;memoryRelease!();
+ await waitFor(()=>store.view(id).memory.job?.state==='completed');await controller.command('close',undefined);
 });

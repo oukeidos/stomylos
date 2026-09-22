@@ -160,9 +160,10 @@ export class Coordinator {
   private backupLocked = false;
   private backupReject?: (error: Error) => void;
   private commandsInFlight = new Set<Promise<unknown>>();
-  private assertBackupIdle() {
+  private assertBackupIdle(allowMemoryPoll = false) {
     if (this.activity.storageError || this.pendingSave || this.dictation?.needsSave) throw new AppFailure('save_required');
-    if (this.activity.closing || this.interactive || this.grammar || this.renewal || this.memory ||
+    if (this.activity.closing || this.interactive || this.grammar || this.renewal ||
+        (this.memory && (!allowMemoryPoll || this.memory.sessionId !== null)) ||
         this.grammarQueue.length || this.renewalQueue.length || this.deleting.size || this.genie.locked ||
         this.explain.backupBusy || this.patterns.backupBusy ||
         this.speech?.backupBusy || this.dictation?.locked) throw new AppFailure('backup_busy');
@@ -171,12 +172,15 @@ export class Coordinator {
     if (this.backupLocked) throw new AppFailure('backup_busy');
     this.dadouchos.dispose();
     if (this.dadouchos.busy) throw new AppFailure('backup_busy');
-    this.assertBackupIdle(); this.backupLocked = true;
+    this.assertBackupIdle(true); this.backupLocked = true;
     let active = true;
     const failed = new Promise<never>((_, reject) => { this.backupReject = reject; });
     try {
       await Promise.race([failed, (async () => {
         await Promise.all([...this.commandsInFlight]);
+        // A poll is not admitted inference. Close admission first, then drain it
+        // so the backup never overlaps even an empty database probe.
+        await this.memory?.promise;
         if (!active) return;
         this.assertBackupIdle(); await this.saveTail;
         if (!active) return;
@@ -847,9 +851,9 @@ export class Coordinator {
     if (this.backupLocked || this.deleting.size || this.memory || this.activity.closing) return;
     const abort = new AbortController(), wake=this.memoryWake;
     const promise=Promise.resolve().then(async()=>{
-      while(!abort.signal.aborted&&!this.activity.closing&&!this.deleting.size) {
+      while(!abort.signal.aborted&&!this.activity.closing&&!this.deleting.size&&!this.backupLocked) {
         const job=await this.write('memoryAddReady');
-        if(!job || (job.state!=='received'&&!this.settings.keyPresent))break;
+        if(this.backupLocked || !job || (job.state!=='received'&&!this.settings.keyPresent))break;
         const sessionId=job.session_id; this.memory!.sessionId=sessionId;
         const attempt=await this.write('prepareMemoryAdd',job.ordinal,randomUUID());
         const config=attempt.phase==='link'?JSON.parse(job.config).linker:JSON.parse(job.config);

@@ -94,10 +94,10 @@ it('validates selection and send revision IPC arguments', () => {
   expect(()=>validateCommand('sendMessage',{sessionId:'test',text:'hi',revision:0,expectedReplyContextRevision:2})).not.toThrow();
 });
 it('keeps one seed through later turns, a model change and memory preference changes', () => {
-  const id=direct(); store.selectManual(id,'model_04'); send(id); const first=prepare(id);
+  const id=direct(); store.selectManual(id,'model_03'); send(id); const first=prepare(id);
   const firstBody=store.chatBody(first.id), bubble=store.prepareReply(id,first.id);
   store.dispatch(first.id);store.finishReply(first.id,bubble.id,'A familiar song can be comforting.',{});
-  store.changePartner(id,'model_03',randomUUID(),store.view(id).partner.revision);
+  store.changePartner(id,'model_01',randomUUID(),store.view(id).partner.revision);
   send(id,'Why do familiar things feel comforting?');const second=store.prepareChat(id,randomUUID());
   const body=store.chatBody(second.id); expect(body.model).not.toBe(firstBody.model);
   expect(body.messages.slice(1,5)).toEqual(firstBody.messages.slice(1,5));
@@ -111,7 +111,7 @@ it('retains explicitly selected context when first preparation rebuilds an old m
   const { v5Snapshot }=await import('./time-fixtures');
   const id=direct(), legacy=v5Snapshot('user');
   db.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(legacy),id);
-  choose(id,'one_point');store.selectManual(id,'model_04');send(id);const request=prepare(id);
+  choose(id,'one_point');store.selectManual(id,'model_03');send(id);const request=prepare(id);
   expect(JSON.parse(request.config).reply_context).toEqual(replyContext('one_point'));
   expect(JSON.parse(store.session(id).chat_config).reply_context).toEqual(replyContext('one_point'));
   expect(store.chatBody(request.id).messages.slice(1,5)).toEqual(replyPrefix({reply_context:replyContext('one_point')}));

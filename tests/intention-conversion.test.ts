@@ -1,3 +1,4 @@
+import {currentSchema} from '../src/main/database-migrations';
 import { convertToCurrent, currentTestSchema } from './conversion-chain';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -28,6 +29,6 @@ it('preserves the exact v9-to-v10 conversion before opening the current schema w
   converted.close(); convertToCurrent(path);
   writeFileSync(join(directory, 'stomylos.sqlite3'), readFileSync(path));
   store = new Store(directory, native); const raw = (store as unknown as { db: Database.Database }).db;
-  expect(raw.pragma('user_version', { simple: true })).toBe(currentTestSchema); expect(raw.prepare('SELECT COUNT(*) n FROM intention_question_jobs').get()).toEqual({ n: 0 });
+  expect(raw.pragma('user_version', { simple: true })).toBe(currentSchema); expect(raw.prepare('SELECT COUNT(*) n FROM intention_question_jobs').get()).toEqual({ n: 0 });
   expect(store.integrity().foreignKeys).toEqual([]);
 });

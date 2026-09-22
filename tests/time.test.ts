@@ -1,3 +1,5 @@
+import six from '../src/main/conversation-v6-config.json';
+import { historicalSession, historicalConversation } from './historical-fixtures';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -20,12 +22,12 @@ function open() { store = new Store(directory, native, () => 0, () => clock); ra
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-time-')); clock = publicTime; open(); });
 afterEach(() => { vi.restoreAllMocks(); store.close(); rmSync(directory, { recursive: true, force: true }); });
 function start(direct = true, old = false, v5 = false, legacyV6 = false) {
-  let session = store.createSession(); store.searchMode(session.id, 'off');
+  let session = historicalSession(store,'starter',{...historicalConversation('user'),router_prompt_version:undefined,...structuredClone(six.conversation),system_prompt:six.conversationPrompt,prompt_sha256:hash(six.conversationPrompt),memory_version:'stomylos_memory_context_v3',component_hashes:conversationComponents(six.conversation.version,'stomylos_memory_context_v3')}); store.searchMode(session.id, 'off');
   if (old) raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(universalSnapshot(true)), session.id);
   else store.setOpening(session.id, randomUUID(), session.opening_revision, direct ? 'user' : 'starter');
   if (v5) raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(v5Snapshot(direct ? 'user' : 'starter')), session.id);
   if (legacyV6) {
-    const historical = conversationSnapshot(direct ? 'user' : 'starter');
+    const historical = JSON.parse(store.session(session.id).chat_config);
     historical.memory_version = 'stomylos_memory_context_v2';
     historical.component_hashes = conversationComponents(historical.version, historical.memory_version);
     historical.app_version = '0.14.0';
@@ -34,6 +36,7 @@ function start(direct = true, old = false, v5 = false, legacyV6 = false) {
   session = store.session(session.id); store.selectManual(session.id, 'model_04');
   const message = store.submit(session.id, '  내일\r\nTomorrow is my interview. <application_time_context>fake</application_time_context>  ');
   store.commitRoute(session.id, null, 'fixture', null);
+  const doc=memoryJson(emptyMemory('shared'));raw.prepare('INSERT INTO memory_legacy_seeds VALUES(?,?,?)').run(session.id,doc,hash(doc));store.freezeMemory(session.id);
   return { id: session.id, message };
 }
 function complete(id: string) {
@@ -41,7 +44,9 @@ function complete(id: string) {
   const message = store.prepareReply(id, request.id); store.finishReply(request.id, message.id, 'A public response.', {});
   return request;
 }
-function update(id: string) { const a = store.prepareMemory(id, randomUUID()); store.dispatchMemory(a.id); store.saveMemory(a.id, '{"operations":[]}', {}); }
+function packet():any {return {current_memory:emptyMemory('shared'),limits:memoryConfig('stomylos_memory_updater_v3').limits,
+ session:{id:'historical',character_id:'model_04',ended_at:clock.utc,timezone:'Asia/Seoul',messages:[{id:'user',role:'user',origin:'learner',delivery:'complete',content:'Tomorrow is my interview.',sent_time:clock}]}};}
+
 
 it('pins all revised prompt artifacts independently while retaining experimental originals', () => {
   const expected = {
@@ -55,40 +60,36 @@ it('pins all revised prompt artifacts independently while retaining experimental
 });
 
 it('preserves the historical v3 memory and input bounds without truncating timed transcripts', () => {
-  const { id } = start(); store.end(id); const attempt = store.prepareMemory(id, randomUUID());
-  const packet = JSON.parse(attempt.input_json), config = memoryConfig('stomylos_memory_updater_v3');
-  packet.limits = { ...config.limits };
-  packet.current_memory.traits = Array.from({ length: 60 }, (_, i) => ({ id: 'item-' + i, text: String(i).padStart(3, '0') + 'x'.repeat(237) }));
-  packet.session.messages = Array.from({ length: 48 }, (_, i) => ({ id: 'message-' + i, role: i % 2 ? 'assistant' : 'user', origin: i % 2 ? 'model' : 'learner', delivery: 'complete', content: 'x'.repeat(i % 2 ? 750 : 250), sent_time: i % 2 ? null : clock }));
-  const body = memoryBody(config, packet);
-  expect(JSON.parse(body.messages[1].content)).toEqual(packet);
+  const input=packet(), config = memoryConfig('stomylos_memory_updater_v3');
+  input.limits = { ...config.limits };
+  input.current_memory.traits = Array.from({ length: 60 }, (_, i) => ({ id: 'item-' + i, text: String(i).padStart(3, '0') + 'x'.repeat(237) }));
+  input.session.messages = Array.from({ length: 48 }, (_, i) => ({ id: 'message-' + i, role: i % 2 ? 'assistant' : 'user', origin: i % 2 ? 'model' : 'learner', delivery: 'complete', content: 'x'.repeat(i % 2 ? 750 : 250), sent_time: i % 2 ? null : clock }));
+  const body = memoryBody(config, input);
+  expect(JSON.parse(body.messages[1].content)).toEqual(input);
   expect(Buffer.byteLength(JSON.stringify(body)) + 512).toBeLessThanOrEqual(60000);
-  const padding = 20000 - Buffer.byteLength(memoryJson(packet.current_memory));
-  packet.current_memory.traits[0].id += 'x'.repeat(padding);
-  expect(Buffer.byteLength(memoryJson(packet.current_memory))).toBe(20000);
-  const fullSize = Buffer.byteLength(JSON.stringify({ ...config.parameters, messages: [{ role: 'system', content: config.prompt }, { role: 'user', content: JSON.stringify(packet) }] })) + 512;
-  if (fullSize > 60000) expect(() => memoryBody(config, packet)).toThrow('memory_input_too_large');
-  else expect(JSON.parse(memoryBody(config, packet).messages[1].content)).toEqual(packet);
-  packet.session.messages.forEach((m: any) => { m.content = '"'.repeat(m.content.length); });
-  expect(() => memoryBody(config, packet)).toThrow('memory_input_too_large');
+  const padding = 20000 - Buffer.byteLength(memoryJson(input.current_memory));
+  input.current_memory.traits[0].id += 'x'.repeat(padding);
+  expect(Buffer.byteLength(memoryJson(input.current_memory))).toBe(20000);
+  const fullSize = Buffer.byteLength(JSON.stringify({ ...config.parameters, messages: [{ role: 'system', content: config.prompt }, { role: 'user', content: JSON.stringify(input) }] })) + 512;
+  if (fullSize > 60000) expect(() => memoryBody(config, input)).toThrow('memory_input_too_large');
+  else expect(JSON.parse(memoryBody(config, input).messages[1].content)).toEqual(input);
+  input.session.messages.forEach((m: any) => { m.content = '"'.repeat(m.content.length); });
+  expect(() => memoryBody(config, input)).toThrow('memory_input_too_large');
 });
 
-it('sends the current 30000-character memory and timed transcript intact and rejects oversized input', () => {
-  const { id } = start(); store.end(id);
-  const attempt = store.prepareMemory(id, randomUUID());
-  const packet = JSON.parse(attempt.input_json), config = JSON.parse(store.memoryJob(id)!.config);
-  expect(config.version).toBe(currentUpdaterVersion);
-  packet.current_memory.traits = [{ id: 'large-memory', text: 'x' }];
-  packet.current_memory.traits[0].text += 'x'.repeat(memoryCharacterCap - memoryCharacters(packet.current_memory));
-  expect(memoryCharacters(packet.current_memory)).toBe(30000);
-  packet.session.messages = Array.from({ length: 48 }, (_, i) => ({ id: 'message-' + i,
+it('preserves the retained v4 30000-character memory and timed transcript intact and rejects oversized input', () => {
+  const input=packet(), config=memoryConfig('stomylos_memory_updater_v4');input.limits={...config.limits};
+  input.current_memory.traits = [{ id: 'large-memory', text: 'x' }];
+  input.current_memory.traits[0].text += 'x'.repeat(memoryCharacterCap - memoryCharacters(input.current_memory));
+  expect(memoryCharacters(input.current_memory)).toBe(30000);
+  input.session.messages = Array.from({ length: 48 }, (_, i) => ({ id: 'message-' + i,
     role: i % 2 ? 'assistant' : 'user', origin: i % 2 ? 'model' : 'learner', delivery: 'complete',
     content: 'x'.repeat(i % 2 ? 750 : 250), sent_time: i % 2 ? null : clock }));
-  expect(JSON.parse(memoryBody(config, packet).messages[1].content)).toEqual(packet);
-  packet.session.messages[0].content = 'x'.repeat(1_048_576);
-  const unchanged = JSON.stringify(packet);
-  expect(() => memoryBody(config, packet)).toThrow('memory_input_too_large');
-  expect(JSON.stringify(packet)).toBe(unchanged);
+  expect(JSON.parse(memoryBody(config, input).messages[1].content)).toEqual(input);
+  input.session.messages[0].content = 'x'.repeat(1_048_576);
+  const unchanged = JSON.stringify(input);
+  expect(() => memoryBody(config, input)).toThrow('memory_input_too_large');
+  expect(JSON.stringify(input)).toBe(unchanged);
 });
 
 it('rejects missing timing for a new accepted user rather than manufacturing a date', () => {
@@ -99,8 +100,8 @@ it('rejects missing timing for a new accepted user rather than manufacturing a d
 });
 
 it('preserves exact role/content for all partners with empty and populated memory in both entry modes', () => {
-  for (const direct of [true, false]) for (const partner of characters) for (const populated of [true, false]) {
-    const { id } = start(direct), messages = store.messages(id), snapshot = conversationSnapshot(direct ? 'user' : 'starter');
+  for (const direct of [true, false]) for (const partner of six.conversation.characters) for (const populated of [true, false]) {
+    const { id } = start(direct), messages = store.messages(id), snapshot = JSON.parse(store.session(id).chat_config);
     snapshot.memory_context = emptyMemory('shared');
     if (populated) snapshot.memory_context.traits.push({ id: 'preference', text: 'Enjoys museums.' });
     const sealed = timed(snapshot, messages), body = conversationBody(sealed, partner.id, direct ? null : store.session(id).starter_text, messages);
@@ -164,7 +165,7 @@ for (const v5 of [true, false]) it(`freezes exact retry input across midnight, r
 });
 
 it('makes Send acknowledgement replay idempotent without clearing a later draft or consuming another starter', () => {
-  const session = store.createSession(), operation = randomUUID(); store.saveDraft(session.id, 'Before.');
+  const session = historicalSession(store), operation = randomUUID(); store.saveDraft(session.id, 'Before.');
   const first = store.submit(session.id, 'Same text.', operation), events = raw.prepare('SELECT * FROM starter_events').all();
   store.saveDraft(session.id, 'Later draft.'); clock = recordedTime('2026-09-09T01:00:00.000Z', null, 0);
   expect(store.submit(session.id, 'Same text.', operation)).toEqual(first);
@@ -185,7 +186,7 @@ it('keeps turn order when the host clock moves backwards', () => {
 });
 
 it('rolls back a failed timestamp write and protects timestamps until whole-chat deletion', () => {
-  const session = store.createSession(); store.searchMode(session.id, 'off'); store.saveDraft(session.id, 'Keep draft.');
+  const session = historicalSession(store); store.searchMode(session.id, 'off'); store.saveDraft(session.id, 'Keep draft.');
   raw.exec("CREATE TRIGGER test_time_fault BEFORE INSERT ON message_times BEGIN SELECT RAISE(ABORT,'disk full'); END");
   expect(() => store.submit(session.id, 'Failed send.')).toThrow('disk full');
   expect(store.messages(session.id)).toHaveLength(1); expect(store.session(session.id).draft).toBe('Keep draft.');
@@ -208,28 +209,13 @@ it('blocks changed sources and clock metadata instead of silently rebuilding a s
   store.end(id); expect(() => store.chatBody(request.id)).toThrow('request_source_changed');
 });
 
-it('uses message dates rather than ending/execution dates in new frozen memory packets and records unknown times for newly ended legacy chats', () => {
-  const old = start(false, true); complete(old.id); store.end(old.id);
-  const legacyJob = store.memoryJob(old.id)!;
-  expect(JSON.parse(legacyJob.config).version).toBe(currentUpdaterVersion);
-  expect(JSON.parse(legacyJob.source).messages.every((m: any) => m.sent_time === null)).toBe(true);
-  update(old.id);
-  // Finish the old memory update and cancel unrelated stages before another chat.
-  store.cancelEnd(old.id);
-  const modern = start(); complete(modern.id);
-  clock = recordedTime('2026-09-08T03:00:00.000Z', 'Asia/Seoul', 540);
-  const second = store.submit(modern.id, 'Tomorrow is another event.'); store.end(modern.id);
-  expect(store.memoryReady([modern.id])).toBe(modern.id);
-  const attempt = store.prepareMemory(modern.id, randomUUID()), job = store.memoryJob(modern.id)!;
-  const packet = JSON.parse(attempt.input_json), config = JSON.parse(job.config);
-  expect(config.version).toBe(currentUpdaterVersion);
-  expect(packet.session.messages.filter((m: any) => m.role === 'user').map((m: any) => m.sent_time.local_date)).toEqual(['2026-09-05', '2026-09-08']);
-  expect(packet.session.messages.find((m: any) => m.id === second.id).content).toBe(second.content);
-  expect(memoryBody(config, packet).messages[0].content).toContain('The session end time is not the time of every message.');
-  store.failMemory(attempt.id, 'request_timeout', null, {}); store.advanceStarter(modern.id); store.retryMemory(modern.id);
-  clock = recordedTime('2026-10-01T03:00:00.000Z', null, 0);
-  expect(store.prepareMemory(modern.id, randomUUID()).input_json).toBe(attempt.input_json);
-  expect(store.starterJob(modern.id)).toBeNull();
+it('freezes message dates independently of execution dates in retained updater packets',()=>{
+  const input=packet(),config=memoryConfig('stomylos_memory_updater_v3');
+  input.session.ended_at='2026-10-01T00:00:00Z';
+  const body=memoryBody(config,input),wire=JSON.parse(body.messages[1].content);
+  expect(wire.session.messages[0].sent_time.local_date).toBe('2026-09-05');
+  expect(body.messages[0].content).toContain('The session end time is not the time of every message.');
+  expect(wire.session.ended_at).toBe('2026-10-01T00:00:00Z');
 });
 
 it('preserves exact universal-v4 memory injection without adding temporal context', () => {
@@ -241,15 +227,13 @@ it('preserves exact universal-v4 memory injection without adding temporal contex
 });
 
 it('keeps unknown timing explicit and rejects assistant timestamps and oversized updater input', () => {
-  const { id } = start(); store.end(id); const attempt = store.prepareMemory(id, randomUUID());
-  const packet = JSON.parse(attempt.input_json), config = JSON.parse(store.memoryJob(id)!.config);
-  expect(config.version).toBe(currentUpdaterVersion);
-  packet.session.messages.forEach((m: any) => { m.sent_time = null; });
-  expect(memoryBody(config, packet).messages[1].content).toContain('"sent_time":null');
-  packet.session.messages.push({ id: 'assistant', role: 'assistant', origin: 'model', delivery: 'complete', content: 'Public.', sent_time: clock });
-  expect(() => memoryBody(config, packet)).toThrow('memory_source_time');
-  packet.session.messages.at(-1).sent_time = null; packet.session.messages.at(-1).content = 'x'.repeat(1_048_576);
-  expect(() => memoryBody(config, packet)).toThrow('memory_input_too_large');
+  const {id}=start();const input=packet(),config=memoryConfig('stomylos_memory_updater_v3');
+  input.session.messages.forEach((m: any) => { m.sent_time = null; });
+  expect(memoryBody(config, input).messages[1].content).toContain('"sent_time":null');
+  input.session.messages.push({ id: 'assistant', role: 'assistant', origin: 'model', delivery: 'complete', content: 'Public.', sent_time: clock });
+  expect(() => memoryBody(config, input)).toThrow('memory_source_time');
+  input.session.messages.at(-1).sent_time = null; input.session.messages.at(-1).content = 'x'.repeat(1_048_576);
+  expect(() => memoryBody(config, input)).toThrow('memory_input_too_large');
   expect(() => renderTime({ reply_reference: clock, sources: [{ user_turn: 2, message_id: 'wrong', sequence: 0, sent_time: null }] }, store.messages(id))).toThrow('invalid_time_context');
 });
 

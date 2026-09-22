@@ -123,7 +123,7 @@ try {
   await button('Close Hyphantes').click(); assert.equal(await composer().inputValue(), 'This wording works.');
   const beforeClose = count(); await close(); await launch();
   assert.equal(await composer().inputValue(), 'This wording works.'); assert.equal((await cmd('genieSnapshot')).episode, null); assert.equal(count(), beforeClose);
-  await button('Start with your own topic').click(); await composer().fill('I want say this better.'); await button('Hyphantes').click(); await ready();
+  await composer().fill('I want say this better.'); await button('Hyphantes').click(); await ready();
   assert.deepEqual(JSON.parse(mock.requests.at(-1).messages[1].content).main_chat, []);
   await button('Use in draft').click(); await button('Undo replacement').waitFor(); await close(); await launch();
   assert.equal(await composer().inputValue(), 'caught off guard'); assert.equal((await cmd('loadSession', { sessionId })).messages.length, 0);

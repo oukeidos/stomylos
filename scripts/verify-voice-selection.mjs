@@ -1,3 +1,4 @@
+import { ensureSpeechSource } from './native-lifecycle.mjs';
 // Bounded isolated Settings/player check. No provider calls or normal data.
 import { _electron as electron } from 'playwright-core';
 import { createRequire } from 'node:module';
@@ -25,7 +26,7 @@ async function launch() {
   app = await electron.launch({ executablePath: require('electron'), args: ['.'], env, chromiumSandbox: true });
   page = await app.firstWindow(); page.setDefaultTimeout(10000); page.on('pageerror', e => errors.push(e.message));
   await page.getByRole('button', { name: 'Settings', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Listen', exact: true }).first().waitFor();
+  await ensureSpeechSource(page);
 }
 async function close() {
   if (!app) return;

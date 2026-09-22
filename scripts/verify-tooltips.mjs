@@ -15,10 +15,11 @@ try {
   page.on('pageerror', error => report.errors.push(error.message));
   const button = name => page.getByRole('button', { name, exact: true });
   async function check(name) {
-    await button(name).hover();
+    await button(name).scrollIntoViewIfNeeded();await page.waitForTimeout(100);await page.screenshot({path:output+'/before-hover.png'});await page.mouse.move(2,2);await page.waitForTimeout(50);await button(name).hover();
     const id = await button(name).getAttribute('aria-describedby');
     const tip = page.locator(`[id="${id}"]`);
-    await tip.waitFor({ state: 'visible' });
+    if(await button(name).isDisabled()){await tip.waitFor({state:'hidden'});return tip;}
+    await tip.waitFor({ state: 'visible' }).catch(async error=>{report.trace=await page.evaluate(()=>window.tooltipTrace.slice(-30));throw error;});
     const result = await tip.evaluate(node => {
       const r = node.getBoundingClientRect();
       // Temporarily include the tooltip in hit-testing to detect occlusion.
@@ -32,19 +33,20 @@ try {
     await page.keyboard.press('Escape'); await tip.waitFor({ state: 'hidden' });
     return tip;
   }
-  await button('Settings').waitFor();
+  await button('Settings').waitFor();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].focus());await page.waitForFunction(()=>document.hasFocus());
+  await page.evaluate(()=>{window.tooltipTrace=[];for(const type of ['pointerenter','pointerleave','focusin','blur','scroll'])window.addEventListener(type,e=>window.tooltipTrace.push({type,target:e.target?.getAttribute?.('aria-label')??e.target?.tagName,at:performance.now()}),true);});
   if (await button('Show history').count()) await button('Show history').click();
   for (const width of [1180, 760]) {
     await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setContentSize(width, 720), width);
     for (const name of ['New chat', 'Settings', 'Conversation details', 'End chat', 'Chats', 'Reports']) await check(name);
-    await button('Reports').click(); await check('Reports options');
-    await button('Reports options').click(); await page.getByRole('menu').waitFor(); await page.keyboard.press('Escape');
+    await button('Reports').click(); await check('Chats');await button('Chats').click();await check('Conversation details');
+    await button('Conversation details').click(); await page.getByRole('dialog').waitFor(); await page.keyboard.press('Escape');
     await button('Settings').click(); await button('Close settings').waitFor();
     await button('Close settings').hover();
     await page.screenshot({ path: `${output}/settings-${width}.png` });
-    await check('Close settings');
+    await check('Close settings');await page.getByRole('dialog',{name:'Settings',exact:true}).waitFor({state:'hidden'});
     await button('Chats').click();
-    report.checks.push(`Visible navigation, Reports options and Settings tooltip bounds/occlusion at ${width}px; menu and dialog composition`);
+    report.checks.push(`Visible navigation, Conversation details and Settings tooltip bounds/occlusion at ${width}px; menu and dialog composition`);
   }
   // Exercise clipping and all viewport edges on the real shared component.
   await button('Settings').evaluate(node => {
@@ -57,10 +59,10 @@ try {
   await button('Settings').focus();
   await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Tab');
   const id = await button('Settings').getAttribute('aria-describedby'); const tip = page.locator(`[id="${id}"]`);
-  await tip.waitFor({ state: 'visible' });
-  await page.mouse.move(400, 300); await tip.waitFor({ state: 'visible' });
+  await tip.waitFor({ state: 'visible' }).catch(async error=>{report.trace=await page.evaluate(()=>window.tooltipTrace.slice(-30));throw error;});
+  await page.mouse.move(400, 300); await tip.waitFor({ state: 'visible' }).catch(async error=>{report.trace=await page.evaluate(()=>window.tooltipTrace.slice(-30));throw error;});
   await page.keyboard.press('Escape'); await tip.waitFor({ state: 'hidden' });
-  await button('Settings').blur(); await button('Settings').hover(); await tip.waitFor({ state: 'visible' });
+  await button('Settings').blur(); await button('Settings').hover(); await tip.waitFor({ state: 'visible' }).catch(async error=>{report.trace=await page.evaluate(()=>window.tooltipTrace.slice(-30));throw error;});
   await page.evaluate(() => window.dispatchEvent(new Event('scroll'))); await tip.waitFor({ state: 'hidden' });
   report.checks.push('Clipped parent, bottom-left/right flip and clamp; keyboard focus persists after pointer leave; Escape and scrolling dismiss');
   assert.deepEqual(report.errors, []); report.status = 'passed';

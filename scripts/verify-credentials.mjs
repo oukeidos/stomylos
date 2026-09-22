@@ -24,7 +24,7 @@ mkdirSync(output, { recursive: true });
 const daemon = spawn('gnome-keyring-daemon', ['--foreground', '--unlock', '--components=secrets', '--control-directory', join(root, 'keyring')], { stdio: ['pipe', 'ignore', 'ignore'] });
 daemon.stdin.end('isolated-credential-test-password');
 const modulePath = join(root, 'credentials.cjs');
-await build({ entryPoints: ['src/main/credentials.ts'], outfile: modulePath, bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent' });
+await build({ entryPoints: ['src/main/credentials.ts'], outfile: modulePath, bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent', plugins: [{ name: 'raw-text', setup(build) { build.onResolve({filter:/\?raw$/}, args => ({path:resolve(args.resolveDir,args.path.slice(0,-4)),namespace:'raw-text'})); build.onLoad({filter:/.*/,namespace:'raw-text'}, ({path}) => ({contents:readFileSync(path,'utf8'),loader:'text'})); } }] });
 const keyFile = join(root, 'api-credentials.json'), envFile = join(root, '.env');
 writeFileSync(envFile, 'OPENROUTER_API_KEY=public-ui-legacy-key\n', { mode: 0o600 });
 const env = { ...process.env, STOMYLOS_DATA_DIR: join(root, 'app-data') };

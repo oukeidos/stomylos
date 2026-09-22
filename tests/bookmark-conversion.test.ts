@@ -28,7 +28,7 @@ beforeEach(() => {
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
 it('preserves all original rows and private backup artifacts, then persists new marks across two opens', () => {
   const before = readFileSync(file);
-  expect(() => new Store(directory, native)).toThrow('external_migration_required'); expect(readFileSync(file)).toEqual(before);
+  expect(() => new Store(directory, native)).toThrow('unsupported_schema_version'); expect(readFileSync(file)).toEqual(before);
   const report = convertBookmarks(file);
   expect(report).toMatchObject({ status: 'converted', source_version: 10, target_version: 11 });
   expect(readFileSync(join(report.archive, 'before-v10.sqlite3'))).toEqual(before);

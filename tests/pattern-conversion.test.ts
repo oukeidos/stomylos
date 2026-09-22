@@ -25,10 +25,10 @@ beforeEach(()=>{
 });
 afterEach(()=>rmSync(directory,{recursive:true,force:true}));
 it('refuses v6 without writes, backs up exact bytes, retains temporal data and reopens the current app without backfill',()=>{
-  const original=readFileSync(file); expect(()=>new Store(directory,native)).toThrow('external_migration_required'); expect(readFileSync(file)).toEqual(original);
+  const original=readFileSync(file); expect(()=>new Store(directory,native)).toThrow('unsupported_schema_version'); expect(readFileSync(file)).toEqual(original);
   const result=convertPatterns(file); expect(result).toMatchObject({status:'converted',source_version:6,target_version:7});
   expect(readFileSync(join(result.archive,'before-v6.sqlite3'))).toEqual(original);
-  expect(()=>new Store(directory,native)).toThrow('external_migration_required'); convertToCurrent(file);
+  expect(()=>new Store(directory,native)).toThrow('unsupported_schema_version'); convertToCurrent(file);
   for(let n=0;n<2;n++){const store=new Store(directory,native); expect(store.session('old').draft).toBe('Exact Unicode 한글 👩🏽‍💻\r\n'); expect(store.patternList(0).reports).toEqual([]); store.close();}
   const db=new Database(file,{readonly:true});
   expect(db.prepare('SELECT * FROM message_times').all()).toEqual([{message_id:'sent',sent_at_utc:'2026-09-05T00:00:00.123Z',timezone:'Asia/Seoul',utc_offset_minutes:540}]);

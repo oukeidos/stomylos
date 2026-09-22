@@ -32,7 +32,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
 it('merges exact duplicates with stable unique IDs, preserves different claims and every original row', () => {
-  const before = readFileSync(file); expect(() => new Store(directory, native)).toThrow('external_migration_required'); expect(readFileSync(file)).toEqual(before);
+  const before = readFileSync(file); expect(() => new Store(directory, native)).toThrow('unsupported_schema_version'); expect(readFileSync(file)).toEqual(before);
   const report = convertSharedMemory(file); expect(report.merge).toEqual({ sourceItems: 4, sharedItems: 3, exactDuplicates: 1 });
   expect(readFileSync(join(report.archive, 'before-v8.sqlite3'))).toEqual(before);
   convertToCurrent(file);

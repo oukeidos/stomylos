@@ -1,4 +1,4 @@
-import {createElement} from 'react';
+import {Children, isValidElement, createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {expect,it,vi} from 'vitest';
 import {MemoryInputRecovery, memoryInputProgress} from '../src/renderer/memory-input-recovery';
@@ -8,7 +8,8 @@ it('offers exact-input actions for failed work only and locks both during saving
  expect(html).toContain('Memory input 3');expect(html).not.toContain('Memory input 4');expect(html).not.toContain('Memory input 5');expect(html).toContain('Retry input');expect(html).toContain('Skip input');expect(html.match(/disabled=""/g)).toHaveLength(2);expect(html).toContain('may already have been billed');
  // Exercise the same callbacks passed to both End and Settings, including the exact job object.
  const element=MemoryInputRecovery({jobs,disabled:false,onAction});
- const section=element.props.children[0];const buttons=section.props.children[2].props.children;
+ const descendants=(node: any): any[] => Children.toArray(node).flatMap(child => isValidElement<{children?: any}>(child) ? [child, ...descendants(child.props.children)] : []);
+ const buttons=descendants(element).filter(child => child.type==='button');
  buttons[0].props.onClick();buttons[1].props.onClick();expect(onAction.mock.calls).toEqual([['retryMemoryAdd',jobs[0]],['skipMemoryAdd',jobs[0]]]);
 });
 

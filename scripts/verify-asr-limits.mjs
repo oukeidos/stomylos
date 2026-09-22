@@ -1,3 +1,4 @@
+import { closeNative } from './native-lifecycle.mjs';
 import { _electron as electron } from 'playwright-core';
 import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
@@ -28,22 +29,40 @@ const report = { directory, kind, packaged, checks: [], fixtureSha256: createHas
 const { server, endpoint, requests } = await startMockGateway();
 const env = { ...process.env, STOMYLOS_DATA_DIR: join(directory, 'app-data'), STOMYLOS_TEST_ENDPOINT: endpoint,
   ...(packaged ? { STOMYLOS_PACKAGED_TEST: '1' } : {}) }; delete env.ELECTRON_RUN_AS_NODE;
-let app, page; const captured = createHash('sha256'); let capturedSamples = 0, sequence = 0;
+let app, page; let capturedSamples = 0;
 try {
   app = await electron.launch({ executablePath: packaged ? resolve('release/linux-unpacked/stomylos') : require('electron'),
     args: [...(packaged ? [] : ['.']), '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`], env, chromiumSandbox: true });
   page = await app.firstWindow(); page.setDefaultTimeout(30000);
-  await page.exposeFunction('auditCapturedPcm', (seq, values) => {
-    assert.equal(seq, sequence++); const array = new Int16Array(values); captured.update(Buffer.from(array.buffer)); capturedSamples += array.length;
+  await page.bringToFront();
+  await app.evaluate(({BrowserWindow,powerMonitor,powerSaveBlocker})=>{
+    globalThis.captureEvents=[]; const trace=(type)=>globalThis.captureEvents.push({at:Date.now(),type});
+    for(const name of ['minimize','hide','show','restore','blur','focus','close'])BrowserWindow.getAllWindows()[0].on(name,()=>trace(name));
+    for(const name of ['suspend','resume','lock-screen','unlock-screen'])powerMonitor.on(name,()=>trace(name));
+    // Keep this unattended real-time test awake; production interruption handling stays enabled.
+    globalThis.captureAwake=powerSaveBlocker.start('prevent-display-sleep');
   });
   await page.evaluate(() => {
     const Original = window.AudioWorkletNode;
-    window.captureAudits = [];
+    window.capturePcm = []; window.captureTrace = []; window.captureAck = { pending: 0, maxPending: 0, maxMs: 0 };
+    const trace = event => { window.captureTrace.push({at:performance.now(),...event}); if(window.captureTrace.length>40)window.captureTrace.shift(); };
+    document.addEventListener('visibilitychange',()=>trace({type:'visibility',hidden:document.hidden}));
+    const media=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia=async(...args)=>{const stream=await media(...args);for(const track of stream.getTracks())for(const type of ['ended','mute','unmute'])track.addEventListener(type,()=>trace({type:'track-'+type}));return stream;};
+    window.stomylos.subscribe(event=>{if(event.type==='dictation-interrupt')trace({type:'main-interrupt'});});
+    const Context=window.AudioContext;
+    window.AudioContext=class extends Context { constructor(...args){super(...args);this.addEventListener('statechange',()=>trace({type:'context',state:this.state}));} };
     window.AudioWorkletNode = class extends Original {
       constructor(...args) {
-        super(...args);
+        super(...args); const sent=[];let sequence=0;
+        const post=this.port.postMessage.bind(this.port);
+        this.port.postMessage=(data,...rest)=>{if(data==='ack'){window.captureAck.pending--;window.captureAck.maxMs=Math.max(window.captureAck.maxMs,performance.now()-sent.shift());}else trace({type:'command',data});return post(data,...rest);};
         this.port.addEventListener('message', ({ data }) => {
-          if (data.type === 'chunk') window.captureAudits.push(window.auditCapturedPcm(data.sequence, [...data.pcm]));
+          if (data.type === 'chunk') {
+            if(data.sequence!==sequence++)throw Error('Capture sequence gap');
+            window.capturePcm.push(data.pcm.slice());sent.push(performance.now());window.captureAck.pending++;
+            window.captureAck.maxPending=Math.max(window.captureAck.maxPending,window.captureAck.pending);
+          } else trace(data);
         });
       }
     };
@@ -65,6 +84,8 @@ try {
   while (Date.now() - started < 660000) {
     await new Promise(done => setTimeout(done, 1000));
     const state = await page.evaluate(() => window.stomylos.command('asrSnapshot'));
+    report.captureTrace=await page.evaluate(()=>({events:window.captureTrace,ack:window.captureAck,hidden:document.hidden}));
+    report.mainEvents=await app.evaluate(()=>globalThis.captureEvents);report.lastState=state;mkdirSync('test-results',{recursive:true});writeFileSync(`test-results/asr-${kind}-progress.json`,JSON.stringify(report,null,2));
     const record = state.records.find(r => r.id === state.activeId);
     assert.equal(requests.length, 0, 'Capture/automatic stop must not upload');
     const seconds = (state.progress?.samples ?? 0) / 16000;
@@ -81,7 +102,11 @@ try {
   assert.equal(finished.record.stopReason, kind === 'time' ? 'time' : 'size');
   assert.equal(sawWarning, true);
   assert.equal(await page.getByRole('textbox', { name: 'Your message', exact: true }).inputValue(), 'Preserve this draft.');
-  await page.evaluate(() => Promise.all(window.captureAudits));
+  const capturedAudit=await page.evaluate(async()=>{
+    const chunks=window.capturePcm,length=chunks.reduce((sum,c)=>sum+c.byteLength,0),bytes=new Uint8Array(length);let offset=0;
+    for(const c of chunks){bytes.set(new Uint8Array(c.buffer,c.byteOffset,c.byteLength),offset);offset+=c.byteLength;}
+    const digest=await crypto.subtle.digest('SHA-256',bytes);return {samples:length/2,hash:[...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('')};
+  }); capturedSamples=capturedAudit.samples;
   assert.equal(capturedSamples, finished.state.progress.samples);
   if (kind === 'time') { assert.equal(capturedSamples, 9600000); assert.ok(Date.now() - started >= 599000); }
   else assert.ok(capturedSamples < 9600000);
@@ -91,7 +116,7 @@ try {
   assert.ok(encoded.length <= 14 * 1024 * 1024);
   const decoded = spawnSync('ffmpeg', ['-v', 'error', '-i', 'pipe:0', '-f', 's16le', '-acodec', 'pcm_s16le', 'pipe:1'], { input: encoded, maxBuffer: 25 * 1024 * 1024 });
   assert.equal(decoded.status, 0, decoded.stderr.toString()); assert.equal(decoded.stdout.length, capturedSamples * 2);
-  report.capturedSha256 = captured.digest('hex'); report.decodedSha256 = createHash('sha256').update(decoded.stdout).digest('hex');
+  report.capturedSha256 = capturedAudit.hash; report.decodedSha256 = createHash('sha256').update(decoded.stdout).digest('hex');
   assert.equal(report.decodedSha256, report.capturedSha256);
   report.memory = { initialWorkingSetKiB, peakWorkingSetKiB };
   report.frames = await page.evaluate(() => { const audit = window.frameAudit; cancelAnimationFrame(audit.id);
@@ -112,7 +137,7 @@ try {
   report.bodyBytes = Buffer.byteLength(JSON.stringify(requests[0])); assert.ok(report.bodyBytes <= 19 * 1024 * 1024);
   assert.deepEqual(failures, []); report.checks.push('Only fresh Transcribe sends one eligible mock request; no chat submission');
   mkdirSync('test-results', { recursive: true }); await page.screenshot({ path: `test-results/asr-${kind}-limit.png` });
-  const exited = new Promise(done => app.process().once('exit', done)); await page.evaluate(() => window.stomylos.command('close')); await exited; app = null;
+  const exited = new Promise(done => app.process().once('exit', done)); await closeNative(app); await exited; app = null;
   report.status = 'passed';
 } catch (error) { report.failure = String(error.stack ?? error); throw error; }
 finally {
@@ -120,7 +145,8 @@ finally {
     report.lastState = await page.evaluate(() => window.stomylos.command('asrSnapshot')).catch(() => null);
     if (report.lastState?.activeId) await page.evaluate(id => window.stomylos.command('asrCancel', { id, discard: true }), report.lastState.activeId).catch(() => undefined);
   }
-  await app?.close().catch(() => undefined); await new Promise(done => server.close(done));
+  mkdirSync('test-results',{recursive:true});writeFileSync(`test-results/asr-${kind}-limit${packaged ? '-package' : ''}.json`,JSON.stringify(report,null,2));
+  if(app)await closeNative(app).catch(()=>app.process().kill('SIGKILL'));server.closeAllConnections();await new Promise(done => server.close(done));
   mkdirSync('test-results', { recursive: true }); writeFileSync(`test-results/asr-${kind}-limit${packaged ? '-package' : ''}.json`, JSON.stringify(report, null, 2));
 }
 console.log(JSON.stringify(report, null, 2));

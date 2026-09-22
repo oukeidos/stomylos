@@ -44,7 +44,7 @@ async function close() { const exited = new Promise(done => app.process().once('
 async function choose(id, keyboard = false) {
   const saved = JSON.parse((await view()).session.chat_config), label = id === null ? 'Automatic' : saved.characters.find(c => c.id === id).label;
   await page.locator('.partner').click();
-  const option = page.getByRole('menuitemradio').filter({ has: page.locator('strong', { hasText: new RegExp('^' + label + '$') }) });
+  const option = page.getByRole('menuitemradio').filter({ has: page.locator('strong', { hasText: new RegExp('^' + label + '(?: ·|$)') }) });
   if (keyboard) { await option.focus(); await page.keyboard.press('Enter'); } else await option.click();
   await wait(async () => (await view()).partner.pending?.choice === id);
   await page.getByText('Next reply', { exact: true }).waitFor();
@@ -90,16 +90,14 @@ try {
   assert.equal((await view()).partner.pending, null);
   report.checks.push('Pending Auto survives restart without dispatch, uses the three recent user turns and excludes the effective model');
 
-  await choose(null); routerFails = true; await send('Let us consider another angle.');
-  await button('Retry selection').waitFor(); assert.equal(chats.length, 3);
-  await page.getByText('Selection incomplete', { exact: true }).waitFor();
-  const failed = (await view()).requests.filter(r => r.role === 'router').at(-1);
-  await close(); await launch(); await button('Retry selection').waitFor(); assert.equal(chats.length, 3);
-  routerFails = false; await button('Retry selection').click(); await wait(async () => chats.length === 4); await idle();
-  assert.notEqual(chats[3].model, originalModel);
-  const retry = (await view()).requests.filter(r => r.role === 'router').at(-1);
-  assert.equal(retry.parent_id, failed.id); assert.equal(retry.config, failed.config);
-  report.checks.push('Failed Auto and restart send no chat; explicit Retry selection retains frozen source/config and still excludes the old model');
+  const routesBeforeFailure=routes.length;
+  await choose(null);routerFails=true;await send('Let us consider another angle.');
+  assert.equal(chats.length,4);assert.equal(routes.length,routesBeforeFailure+2);
+  assert.notEqual(chats[3].model,originalModel);assert.equal((await view()).partner.pending,null);
+  const recovery=(await view()).requests.filter(r=>r.role==='router').at(-1);
+  assert.equal(recovery.status,'failed');assert.equal(recovery.failure,'http_503');
+  await close();await launch();assert.equal(chats.length,4);routerFails=false;
+  report.checks.push('Luna and Terra each fail once; local fallback excludes the current model and restart does not replay selection');
 
   chatFails = true; await send('I would like to continue this thought.'); await button('Retry reply').waitFor();
   const failedBody = chats.at(-1); await choose(original);
@@ -121,12 +119,12 @@ try {
   await page.locator('.composer textarea').fill('A final unsent draft.'); await close(); const stopped = mock.requests.length; await launch();
   assert.equal(mock.requests.length, stopped); assert.equal(await page.locator('.composer textarea').inputValue(), 'A final unsent draft.');
   assert.equal((await view()).partner.currentModel, originalModel);
-  await button('End chat').click(); await page.locator('.ended-footer').waitFor();
+  await button('End chat').click();await cmd('retryAnalysis',{sessionId}); await page.locator('.ended-footer').waitFor();
   await wait(async () => (await view()).session.analysis_state === 'completed' && (await view()).memory.job.state === 'completed');
   const ended = await view(); assert.equal(ended.units.length, 5);
   assert.deepEqual(ended.units.map(u => u.source_message_id), ended.messages.filter(m => m.origin === 'learner').map(m => m.id));
   assert.equal(await page.locator('.partner').count(), 0);
-  report.checks.push('Restart preserves effective target and unsent draft; End creates exactly five grammar sources once and removes partner editing');
+  report.checks.push('Restart preserves effective target and unsent draft; explicit analysis creates exactly five grammar sources once and removes partner editing');
   await button('New chat').click(); await page.locator('.composer textarea').waitFor(); sessionId = (await cmd('snapshot')).unfinished.id;
   if ((await view()).session.opening_kind === 'starter') await button('Start with your own topic').click();
   await send('A direct opening about something new.'); await choose('model_01'); await send('Continue my own topic.');

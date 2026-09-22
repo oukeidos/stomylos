@@ -1,3 +1,4 @@
+import { closeNative } from './native-lifecycle.mjs';
 // Isolated native Explain acceptance, local mocked model only.
 import { _electron as electron } from 'playwright-core';
 import { createRequire } from 'node:module';
@@ -41,7 +42,7 @@ async function launch() {
   page = await app.firstWindow(); page.setDefaultTimeout(10000); page.on('pageerror', e => errors.push(e.message));
   await button('Settings').waitFor(); await page.locator('.composer textarea').waitFor();
 }
-async function close() { const exited = new Promise(done => app.process().once('exit', done)); await command('close'); await exited; app = null; }
+async function close() { const exited = new Promise(done => app.process().once('exit', done)); await closeNative(app); await exited; app = null; }
 function inject(flag) {
   const result=spawnSync(require('electron'),[resolve('scripts/verify-explain.mjs'),flag,directory],{env:{...process.env,ELECTRON_RUN_AS_NODE:'1'},encoding:'utf8'});assert.equal(result.status,0,result.stderr);
 }

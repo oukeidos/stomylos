@@ -1,3 +1,4 @@
+import { historicalSession } from './historical-fixtures';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -13,7 +14,7 @@ beforeEach(() => {
 });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
 function source() {
-  const session = store.createSession(); store.submit(session.id, 'I enjoy a walk.');
+  const session = historicalSession(store); store.submit(session.id, 'I enjoy a walk.');
   store.commitRoute(session.id, null, 'public_fixture', null);
   const reply = store.createRequest(session.id, 'chat', conversationSnapshot()); store.dispatch(reply.id);
   const bubble = store.prepareReply(session.id, reply.id); store.finishReply(reply.id, bubble.id, 'A walk changes the pace of the day.', {});
@@ -32,7 +33,7 @@ it('rolls back all units and selection when insertion fails halfway through', ()
   expect(store.units(input.id)).toHaveLength(2);
 });
 it('survives SQLITE_FULL without partial draft loss and saves the same text after space becomes available', () => {
-  const session = store.createSession(); store.saveDraft(session.id, 'Previous draft');
+  const session = historicalSession(store); store.saveDraft(session.id, 'Previous draft');
   const limit = raw.pragma('page_count', { simple: true }); raw.pragma(`max_page_count=${limit}`);
   const text = 'Exact unsaved draft. '.repeat(4000);
   expect(() => store.saveDraft(session.id, text)).toThrow(/full/);
@@ -51,7 +52,7 @@ it('does not accept analysis when SQLite is read-only and makes the exact commit
   expect(store.units(input.id)).toHaveLength(2); expect(store.requests(input.id)).toHaveLength(requestCount);
 });
 it('rolls back catalog answer evidence and counters on a storage failure', () => {
-  const session=store.createSession();
+  const session=historicalSession(store);
   const before=raw.prepare('SELECT * FROM starter_catalog_entries WHERE question_id=?').get(session.starter_id);
   raw.exec("CREATE TEMP TRIGGER fail_answer BEFORE INSERT ON starter_events WHEN NEW.kind='answered' BEGIN SELECT RAISE(ABORT, 'injected answer failure'); END");
   expect(()=>store.submit(session.id,'A thought.','atomic-answer')).toThrow('injected answer failure');

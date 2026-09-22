@@ -21,7 +21,7 @@ it('honors Off after preparation but before gateway handoff, then On does not en
  const gateway:Gateway={async complete(){throw new Error('unexpected call');},async stream(body,_signal,chunk){packets.push(body);await reply.promise;chunk('Hello.');return {content:'Hello.',metadata:{}};}};
  const coordinator=new Coordinator(client,gateway,{keyPresent:true,keyPath:'',dataPath:dir,appVersion:'test',development:true},()=>{},()=>true);
  cleanup.push(async()=>{release.resolve();reply.resolve();await coordinator.command('close',undefined);rmSync(dir,{recursive:true,force:true});});
- const s=store.createSession();store.searchMode(s.id,'off');store.selectManual(s.id,'model_04');
+ const s=store.createSession();store.searchMode(s.id,'off');store.selectManual(s.id,'model_03');
  await coordinator.command('sendMessage',{sessionId:s.id,text:'I like museums.',revision:0});await prepared.promise;
  // The setting write waits behind prepareChat's acknowledged write, but still
  // precedes the separate handoff admission. Do not wait for it before release.

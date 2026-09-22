@@ -38,7 +38,7 @@ export function convertExplain(file, options = {}) {
     for (const suffix of ['-wal', '-shm', '-journal']) if (existsSync(file + suffix) && lstatSync(file + suffix).size) throw new Error('unclean_sidecar');
     const frozen = existsSync(join(scriptDirectory, 'schema-v12.sql'));
     const oldSchema = readFileSync(frozen ? join(scriptDirectory, 'schema-v12.sql') : join(root, 'tests/fixtures/schema-v12-before-explain.sql'), 'utf8');
-    const newSchema = readFileSync(frozen ? join(scriptDirectory, 'schema-v13.sql') : join(root, 'src/main/schema.sql'), 'utf8');
+    const newSchema = readFileSync(frozen ? join(scriptDirectory, 'schema-v13.sql') : join(root, 'src/main/migrations/schema-v13.sql'), 'utf8');
     expectedOld = new Database(':memory:'); expectedOld.exec(oldSchema);
     expectedNew = new Database(':memory:'); expectedNew.exec(newSchema);
     const originalHash = digest(file), originalStat = lstatSync(file);

@@ -1,3 +1,5 @@
+import { ensureSpeechSource } from './native-lifecycle.mjs';
+import { closeNative } from './native-lifecycle.mjs';
 import { _electron as electron } from 'playwright-core';
 import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
@@ -26,11 +28,11 @@ async function waitForState(predicate) {
 async function launch() {
   application = await electron.launch({ executablePath: packaged ? resolve(process.env.STOMYLOS_VERIFY_BUNDLE ?? 'release/linux-unpacked/stomylos') : require('electron'), args: [...(packaged ? [] : ['.']), ...(!live ? ['--use-fake-device-for-media-stream'] : [])], env, chromiumSandbox: true });
   page = await application.firstWindow(); page.setDefaultTimeout(live ? 190000 : 30000); page.on('pageerror', e => errors.push(e.message));
-  await page.getByRole('button', { name: 'Listen', exact: true }).first().waitFor();
+  await ensureSpeechSource(page);
 }
 async function close() {
   const exited = new Promise(resolve => application.process().once('exit', resolve));
-  await page.evaluate(() => window.stomylos.command('close')); await exited; application = null;
+  await closeNative(application); await exited; application = null;
 }
 try {
   await launch();

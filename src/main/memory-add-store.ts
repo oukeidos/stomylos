@@ -136,7 +136,10 @@ export class MemoryAddStore {
   dispatch(id:string) {
     return this.db.transaction(()=>{
       const a=this.row('SELECT a.*,j.session_id FROM memory_add_attempts a JOIN memory_add_jobs j ON j.ordinal=a.job_id WHERE a.id=?',id);
-      if(!a||a.status!=='queued'||!memoryWriteAllowed(this.db,a.session_id)||!this.canExtract(a.session_id)||memoryHash(a.body)!==a.body_hash)throw new AppFailure('memory_add_not_ready');
+      if(!a||!['queued','dispatched'].includes(a.status)||!memoryWriteAllowed(this.db,a.session_id)||!this.canExtract(a.session_id)||memoryHash(a.body)!==a.body_hash)throw new AppFailure('memory_add_not_ready');
+      // The worker may commit admission before its acknowledgement is lost.
+      // Save-only retry must confirm that same admission, not repeat inference.
+      if(a.status==='dispatched')return;
       this.run("UPDATE memory_add_attempts SET status='dispatched' WHERE id=?",id);
     })();
   }

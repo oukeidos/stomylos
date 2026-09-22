@@ -1,4 +1,4 @@
-// Public, invented stress data. This script is never included in the release.
+// Frozen schema-13 history exercises the supported startup upgrade with invented data. This script is never included in the release.
 import Database from 'better-sqlite3';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 const directory = process.argv[2]; if (!directory) throw new Error('A temporary data directory is required');
 mkdirSync(directory, { recursive: true, mode: 0o700 });
 const db = new Database(join(directory, 'stomylos.sqlite3'));
-db.exec(readFileSync('src/main/schema.sql', 'utf8')); db.pragma('user_version = 13'); db.pragma('foreign_keys = ON');
+db.exec(readFileSync('src/main/migrations/schema-v13.sql', 'utf8')); db.pragma('user_version = 13'); db.pragma('foreign_keys = ON');
 const runtime = JSON.parse(readFileSync('src/main/universal-v1-config.json', 'utf8'));
 const initialized = new Date().toISOString();
 for (const [index, question] of runtime.starters.entries()) {

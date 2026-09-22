@@ -154,7 +154,8 @@ it('does not silently reset an invalid ledger or block generation when accountin
   store = new UsageStore(directory); expect(() => store.snapshot()).toThrow('usage_unavailable');
   const before = readFileSync(path);
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(response(.1))));
-  await new OpenRouter(() => 'synthetic', undefined, store).complete({ model: 'test' }, identity, signal(), 1000);
+  const prepared = prepareProviderRequest({ model: 'test' }, identity);
+  await new OpenRouter(() => 'synthetic', undefined, store).complete(prepared.body, prepared.identity!, signal(), 1000);
   expect(readFileSync(path)).toEqual(before);
 });
 

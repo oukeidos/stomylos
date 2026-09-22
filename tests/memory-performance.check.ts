@@ -5,7 +5,7 @@ import { coldFixture } from './cold-memory-fixtures';
 import { ColdMemoryStore,coldHash } from '../src/main/cold-memory-store';
 import { MemoryClusters } from '../src/main/memory-clusters';
 import { MemoryRecallStore } from '../src/main/memory-recall-store';
-import { coldRecallPolicy,codePoints,renderColdItem } from '../src/main/memory-recall';
+import { coldRecallPolicy,coldItemLimit,codePoints,renderColdItem } from '../src/main/memory-recall';
 import { encodeVector } from '../src/main/memory-vectors';
 const stats=(times:number[])=>{times.sort((a,b)=>a-b);return{n:times.length,p50:times[Math.floor(times.length/2)],p95:times[Math.ceil(times.length*0.95)-1],max:times.at(-1)};};
 it('measures exact stored recall and online assignment on bounded 10000-item fixtures',()=>{
@@ -29,7 +29,7 @@ it('measures exact stored recall and online assignment on bounded 10000-item fix
    const sampling:number[]=[],assignment:number[]=[];
    for(let n=0;n<40;n++){
     const id='selection'+n;f.db.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind) VALUES(?,'ended','2026-09-11','{}','user')").run(id);
-    const start=performance.now(),result=recall.snapshot(id,{character_id:'shared',revision:0,database_records:[]});sampling.push(performance.now()-start);expect(result.items).toHaveLength(3);
+    const start=performance.now(),result=recall.snapshot(id,{character_id:'shared',revision:0,database_records:[]});sampling.push(performance.now()-start);expect(result.items).toHaveLength(coldItemLimit);
    }
    for(let n=0;n<20;n++){
     const id='new'+n;f.db.transaction(()=>{f.db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,origin) VALUES(?,?,0,'legacy')").run(id,10000+n);raw.archive([{id,text:'Another prior observation '+n}]);f.db.prepare('DELETE FROM memory_item_metadata WHERE id=?').run(id);})();

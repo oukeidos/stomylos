@@ -5,6 +5,7 @@ export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay
   const requests = [];
   let streams = 0;
   const server = createServer(async (request, response) => {
+    try {
     let body = ''; for await (const bytes of request) body += bytes;
     const input = JSON.parse(body); requests.push(input);
     if (input.response_format?.json_schema?.name.startsWith('stomylos_character_scores_v') && routerHandler) { await routerHandler(input, response); return; }
@@ -14,7 +15,7 @@ export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay
       response.end(`data: ${JSON.stringify({ model: input.model, provider: 'Public mock', choices: [{ delta: { content: '{"search":false}' }, finish_reason: 'stop' }], usage: { total_tokens: 50, cost: 0 } })}\n\ndata: [DONE]\n\n`); return;
     }
     if (input.model === 'qwen/qwen3.8-2.4t-a95b' && !input.stream && cleanupHandler) { await cleanupHandler(input, response); return; }
-    if (['stomylos_memory_delta_v1','experimental_database_records_format'].includes(input.response_format?.json_schema?.name) && memoryHandler) { await memoryHandler(input, response); return; }
+    if (['stomylos_memory_delta_v1','experimental_database_records_format','add_only_v1'].includes(input.response_format?.json_schema?.name) && memoryHandler) { await memoryHandler(input, response); return; }
     if (input.messages?.[0]?.content?.startsWith('Advise the user on a thoughtful direction')) {
       response.writeHead(200, {'content-type':'application/json'});
       response.end(JSON.stringify({model:input.model,provider:'Public mock',choices:[{message:{content:'Consider the space between those two feelings.'},finish_reason:'stop'}],usage:{cost:0}})); return;
@@ -24,7 +25,7 @@ export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay
     if (!input.stream && input.messages?.[0]?.content.startsWith('Generate one English conversation-opening question')) {
       if (intentionHandler) { await intentionHandler(input, response); return; }
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ model: input.model, provider: { openai: 'OpenAI', mistral: 'Mistral', 'deepinfra/turbo': 'DeepInfra' }[input.provider.only[0]],
+      response.end(JSON.stringify({ model: input.model, provider: 'Public mock',
         choices: [{ finish_reason: 'stop', message: { content: `What would you like to explore about this plan ${requests.length}?` } }], usage: { cost: 0 } })); return;
     }
     if (input.model === 'openai/gpt-5.6-luna' && !input.stream && input.messages?.[0]?.content.startsWith('Restate the possible meanings')) {
@@ -59,16 +60,23 @@ export async function startMockGateway({ repeat = 1, delay = 30, backgroundDelay
       let content; let provider = 'OpenAI';
       if (!input.response_format) {
         content = `Which small invention would help on day ${requests.length}?\nWhat would courage sound like at hour ${requests.length}?`;
-        provider = { 'google-ai-studio': 'Google AI Studio', 'novita/fp8': 'Novita', anthropic: 'Anthropic' }[input.provider.only[0]];
+        provider = 'Public mock';
       } else if (input.response_format.json_schema.name === 'stomylos_memory_delta_v1') { content = '{"operations":[]}'; provider = 'Google AI Studio'; }
       else if (input.response_format.json_schema.name === 'experimental_database_records_format') { content = '{"add":[],"update":[],"delete":[]}'; provider = 'Google AI Studio'; }
       else if (input.response_format.json_schema.name.startsWith('stomylos_character_scores_v')) content = JSON.stringify(Object.fromEntries(input.response_format.json_schema.schema.required.map(id => [id, ['informative_generalist', 'model_03'].includes(id) ? 2 : 1])));
       else if (input.response_format.json_schema.name === 'genie_expression_v1') content = JSON.stringify({ reply: 'This wording keeps your meaning.', suggested_text: 'I enjoy quiet mornings.' });
-      else content = JSON.stringify({ units: JSON.parse(input.messages[1].content).filter(m => m.role === 'user').map(m => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) });
+      else if (input.response_format.json_schema.name === 'add_only_v1') content = '{"add":[]}';
+      else if (input.response_format.json_schema.name === 'record_sources') content = JSON.stringify({sources:JSON.parse(input.messages[1].content).records.map(([id])=>({id,ids:[1]}))});
+      else if (input.response_format.json_schema.schema.properties?.units) content = JSON.stringify({ units: JSON.parse(input.messages[1].content).filter(m => m.role === 'user').map(m => ({ ...(m.index === undefined ? { text: m.content } : { index: m.index }), corrected_text: m.content, explanation: '' })) });
+      else throw new Error('Unsupported mock response schema: ' + input.response_format.json_schema.name);
       if (!input.response_format?.json_schema.name.startsWith('stomylos_character_scores_v') && backgroundDelay) await new Promise(resolve => setTimeout(resolve, backgroundDelay));
       if (response.destroyed) return;
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ model: input.model, provider, choices: [{ message: { content }, finish_reason: 'stop' }], usage: { total_tokens: 100, cost: 0 } }));
+    }
+    } catch (error) {
+      response.writeHead(500, {'content-type':'application/json'});
+      response.end(JSON.stringify({error:{code:500,message:String(error.message)}}));
     }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

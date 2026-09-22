@@ -55,11 +55,11 @@ it('shows additions and historical removals but hides capacity moves to Older ev
  const html=renderToStaticMarkup(createElement(MemoryChangeHistory,{ended:false,memory:{current:null,snapshot:null,changes:null,job:null,blockedBy:null,attempts:[],addJobs:[
    {ordinal:7,input_number:1,archived_ids:['b'],state:'completed',changes:JSON.stringify({added:[{id:'a',text:'New <note>'}],evicted:[{id:'b',text:'Older note'},{id:'c',text:'Historical removal'}]})},
    {ordinal:8,input_number:2,state:'interrupted',changes:null,failure:'interrupted_unknown_outcome'}]}}));
- expect(html).toContain('Input 1');expect(html).toContain('Input 2');expect(html).not.toContain('Input 7');expect(html).not.toContain('Moved to Older by capacity limit');expect(html).toContain('Historical removal');expect(html).toContain('New &lt;note&gt;');expect(html).not.toContain('Older note');expect(html).toContain('Removed by capacity limit');expect(html).toContain('Earlier additions remain');expect(html).toContain('interrupted_unknown_outcome');
+ expect(html).toContain('Input 1');expect(html).toContain('Input 2');expect(html).not.toContain('Input 7');expect(html).not.toContain('Moved to Older by capacity limit');expect(html).toContain('Historical removal');expect(html).toContain('New &lt;note&gt;');expect(html).not.toContain('Older note');expect(html).toContain('Removed by capacity limit');expect(html).toContain('Memory changes are shown for each saved source.');expect(html).toContain('interrupted_unknown_outcome');
 });
 
 it('does not describe a skipped ADD input as waiting', () => {
  const html=renderToStaticMarkup(createElement(MemoryChangeHistory,{ended:true,memory:{current:null,snapshot:null,changes:null,job:null,blockedBy:null,attempts:[],addJobs:[{ordinal:1,state:'skipped',changes:null,failure:null}]}}));
- expect(html).toContain('This input was skipped.');
+ expect(html).toContain('This source was skipped.');
  expect(html).not.toContain('Waiting for memory processing.');
 });

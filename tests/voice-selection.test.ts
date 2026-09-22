@@ -1,3 +1,4 @@
+import { prepareProviderRequest } from '../src/main/provider-policy';
 import { describe, it, expect, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,11 +23,11 @@ const listen = async (c: SpeechController) => { await c.listen(message.session_i
 describe('voice selection', () => {
   it('preserves the frozen legacy Ara body/hash and validates IPC voice and operation identities', () => {
     const legacy = { model: 'x-ai/grok-voice-tts-1.0', voice: 'ara', speed: 1, response_format: 'mp3', provider: { only: ['xai'], order: ['xai'], allow_fallbacks: false, data_collection: 'deny' }, input: '[long-pause]Hello.' };
-    expect(speechBody(message, makeSpeechConfig('ara'))).toEqual(legacy);
+    expect(speechBody(message, makeSpeechConfig('ara'))).toEqual(prepareProviderRequest(legacy, null, 'speech').body);
     expect(hashConfig(makeSpeechConfig('ara'))).toBe('023dc3ca85a225ad146d974ca907d664d695ff1345781a48a7cdd93c8cb5824c');
     expect(speechKey(message)).toBe('6bfd090557e8b8ce4d0027b0b481b25147a04cdfd30a1d983b0be36fb7b555c4');
     for (const voice of voices) {
-      expect(speechBody(message, makeSpeechConfig(voice))).toEqual({ ...legacy, voice });
+      expect(speechBody(message, makeSpeechConfig(voice))).toEqual(prepareProviderRequest({ ...legacy, voice }, null, 'speech').body);
       validateCommand('speechVoice', { voice });
     }
     expect(() => validateCommand('speechVoice', { voice: 'unknown' })).toThrow();

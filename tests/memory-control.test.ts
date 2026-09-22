@@ -1,3 +1,6 @@
+import {memoryAttempt} from './current-memory-fixtures';
+import { historicalSchema } from './historical-fixtures';
+import { historicalSession } from './historical-fixtures';
 import { universalSnapshot } from './time-fixtures';
 import { afterEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
@@ -18,7 +21,7 @@ function fixture() {
  db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,origin) VALUES('a',0,0,'legacy')").run();return f;
 }
 function toggle(store:Store, enabled:boolean) {return store.setMemoryPreference(enabled,store.memoryPreference().revision);}
-function send(store:Store,id:string,text='I enjoy museums.') {store.searchMode(id,'off');store.selectManual(id,'model_04');store.submit(id,text);store.commitRoute(id,null,'fixture',null);}
+function send(store:Store,id:string,text='I enjoy museums.') {store.searchMode(id,'off');store.selectManual(id,'model_03');store.submit(id,text);store.commitRoute(id,null,'fixture',null);}
 function complete(store:Store,start:ReturnType<Store['startChat']>) {store.finishReply(start.request.id,start.bubble.id,'Tell me about the museum.',{});}
 it.each(['starter','user'] as const)('Off before the first %s handoff replaces only an undispatched request and preserves the learner source',kind=>{
  const {store,db}=fixture(),s=store.createSession();if(kind==='user')store.setOpening(s.id,'opening',s.opening_revision,kind);
@@ -45,11 +48,11 @@ it('On chat revokes writes after Off, blocks exact memory retries, and never rew
 });
 it('settings stays locked by end work; existing cancellation stays terminal after Off/On and restart',()=>{
  const f=fixture(),s=f.store.createSession();send(f.store,s.id);complete(f.store,f.store.startChat(f.store.prepareChat(s.id,'first').id));f.store.end(s.id);
- const a=f.store.prepareMemory(s.id,'update');f.store.dispatchMemory(a.id);
+ const a=memoryAttempt(f.store);
  expect(()=>toggle(f.store,false)).toThrow('end_processing_pending');expect(f.store.memoryPreference().enabled).toBe(true);
  f.store.cancelEnd(s.id);toggle(f.store,false);toggle(f.store,true);
- expect(()=>f.store.saveMemory(a.id,'{"add":[],"update":[],"delete":[]}',{})).toThrow();expect(()=>f.store.retryMemory(s.id)).toThrow('end_processing_cancelled');
- f.store.close();f.store=new Store(f.dir,'isolated' as const);expect(f.store.memoryJob(s.id)?.state).toBe('skipped');expect(f.store.endBlocker()).toBeNull();expect(f.store.memoryPreference().enabled).toBe(true);
+ f.store.receiveMemoryAdd(a.id,'{"add":["Late"]}',{});f.store.acceptMemoryAdd(a.id);expect(()=>f.store.retryMemory(s.id)).toThrow('memory_add_not_retryable');
+ f.store.close();f.store=new Store(f.dir,'isolated' as const);expect(f.store.view(s.id).memory.addJobs![0].state).toBe('skipped');expect(f.store.endBlocker()).toBeNull();expect(f.store.memoryPreference().enabled).toBe(true);
 });
 it('persists Off and unbound drafts, rejects stale/conflicting commands and applies no backfill at End',()=>{
  const f=fixture(),s=f.store.createSession();const before=f.store.memoryPreference();toggle(f.store,false);
@@ -63,7 +66,7 @@ it('upgrades schema 25 with exact history preservation, dispatch-only defaults a
  const f=fixture(),s=f.store.createSession();send(f.store,s.id);const first=f.store.startChat(f.store.prepareChat(s.id,'first').id);complete(f.store,first);f.store.end(s.id);f.store.cancelEnd(s.id);
  const draft=f.store.createSession();send(f.store,draft.id);f.store.prepareChat(draft.id,'unsent');
  const history=f.db.prepare('SELECT * FROM model_requests ORDER BY id').all(),snapshots=f.db.prepare('SELECT * FROM session_memories ORDER BY session_id').all();
- f.store.close();f.db.exec('DROP TABLE session_memory_policy; DROP TABLE memory_preferences; PRAGMA user_version=25;');
+ f.store.close();historicalSchema(f.db,25);
  migrateDatabase(f.db,f.dir);validateSchema(f.db,schema);expect(f.db.pragma('user_version',{simple:true})).toBe(currentSchema);
  expect(f.db.prepare('SELECT * FROM session_memory_policy').all()).toEqual([{session_id:s.id,first_enabled:1,updates_disabled:0}]);
  expect(f.db.prepare('SELECT * FROM model_requests ORDER BY id').all()).toEqual(history);expect(f.db.prepare('SELECT * FROM session_memories ORDER BY session_id').all()).toEqual(snapshots);
@@ -72,7 +75,7 @@ it('upgrades schema 25 with exact history preservation, dispatch-only defaults a
 });
 
 it('rolls back a failed v26 step and preserves its backup on retry',()=>{
- const f=fixture();f.store.close();f.db.exec('DROP TABLE session_memory_policy; DROP TABLE memory_preferences; PRAGMA user_version=25;');
+ const f=fixture();f.store.close();historicalSchema(f.db,25);
  const execute=f.db.exec.bind(f.db);
  f.db.exec=((sql:string)=>{const result=execute(sql);if(sql.includes('CREATE TABLE memory_preferences'))throw new Error('injected-v26');return result;}) as typeof f.db.exec;
  expect(()=>migrateDatabase(f.db,f.dir)).toThrow('injected-v26');f.db.exec=execute;
@@ -81,9 +84,9 @@ it('rolls back a failed v26 step and preserves its backup on retry',()=>{
  f.store=new Store(f.dir,'isolated' as const);
 });
 
-it('keeps an older no-memory conversation contract dispatchable without inventing a snapshot',()=>{
- const {store,db}=fixture(),s=store.createSession();db.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(universalSnapshot()),s.id);
- send(store,s.id);const started=store.startChat(store.prepareChat(s.id,'legacy').id);expect(JSON.stringify(started.body)).not.toContain('MEMORY_SENTINEL');
+it('upgrades an unsent older no-memory draft at its first handoff',()=>{
+ const {store,db}=fixture(),s=historicalSession(store);db.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(universalSnapshot()),s.id);
+ send(store,s.id);const started=store.startChat(store.prepareChat(s.id,'legacy').id);expect(JSON.stringify(started.body)).toContain('MEMORY_SENTINEL');expect(store.view(s.id).memory.snapshot).not.toBeNull();
  complete(store,started);store.end(s.id);expect(store.memoryJob(s.id)).toBeNull();
 });
 

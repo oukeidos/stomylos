@@ -1,3 +1,4 @@
+import { historicalSession } from './historical-fixtures';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -32,6 +33,7 @@ const open = async (text = 'I enjoys walking.', r = range) => {
 };
 const saving = async () => vi.waitFor(() => expect(events.some(e => e.snapshot?.activity?.storageError)).toBe(true));
 it.each(['starter', 'user'] as const)('uses actual %s context and preserves all non-draft database rows through apply/undo', async kind => {
+  if(kind==='starter') {store.end(id);id=historicalSession(store).id;}
   if (kind === 'user') await c.command('setOpening', { sessionId: id, kind, operationId: 'opening', expectedRevision: 0 });
   const before = store.view(id); const e = await open();
   const packet = JSON.parse(complete.mock.calls[0][0].messages[1].content);

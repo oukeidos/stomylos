@@ -115,7 +115,7 @@ it.each([['send', true], ['send', false], ['retry', true], ['retry', false]] as 
     expect(complete).not.toHaveBeenCalled();
     expect(query).toHaveBeenCalledTimes(enabled ? 1 : 0);
     expect(calls.mock.calls.some(([method]) => method === 'associativeInput')).toBe(true);
-    expect(calls.mock.calls.some(([method]) => method === 'associativeFromInput')).toBe(enabled);
+    expect(calls.mock.calls.some(([method]) => method === 'jevBegin')).toBe(enabled);
     // Even Off must admit the second operation before its eligibility check.
     if (!enabled) expect(await db.call('associativeFromInput', session.id, 'missing', [])).toBeNull();
     if (enabled) {
@@ -140,7 +140,7 @@ it.each([['send', true], ['send', false], ['retry', true], ['retry', false]] as 
   }
 });
 
-it.each([['associativeInput', 'reject'], ['associativeFromInput', 'reject'], ['associativeInput', 'stall'], ['associativeFromInput', 'stall']] as const)(
+it.each([['associativeInput', 'reject'], ['jevBegin', 'reject'], ['associativeInput', 'stall'], ['jevBegin', 'stall']] as const)(
   'continues reply when %s experiences %s', async (failing, failure) => {
   const directory = mkdtempSync(join(tmpdir(), 'stomylos-recall-failure-'));
   const db = new DatabaseClient(join(bundle, 'worker.cjs'), directory, 'isolated' as const, () => {});

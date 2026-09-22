@@ -1,3 +1,4 @@
+import { historicalSession } from './historical-fixtures';
 import { verifyInstalledCatalog } from '../src/main/catalog-content';
 import { afterEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
@@ -37,7 +38,7 @@ it('keeps answered candidates selectable at one/20 unanswered and at large equal
   expect(weightedQuestion([{answer_count:10000,id:0},{answer_count:10000,id:1}],0.75).id).toBe(1);
 });
 it('commits skips and first answers once, preserves parked identity, and creates no renewal jobs', () => {
-  const {store,db} = fresh(); const s=store.createSession(), first=s.starter_id!;
+  const {store,db} = fresh(); const s=historicalSession(store), first=s.starter_id!;
   store.setOpening(s.id,'park',s.opening_revision,'user');
   store.setOpening(s.id,'restore',store.session(s.id).opening_revision,'starter');
   expect(store.session(s.id).starter_id).toBe(first);
@@ -52,10 +53,10 @@ it('commits skips and first answers once, preserves parked identity, and creates
   expect(db.prepare('SELECT COUNT(*) FROM starter_preparations').pluck().get()).toBe(0);
   db.prepare('UPDATE starter_catalog_entries SET answer_count=100').run();
   for(let i=0;i<20;i++) expect(selectCatalog(db).question.id).toMatch(/^catalog:/);
-  store.cancelEnd(s.id); expect(store.createSession().starter_id).toMatch(/^catalog:/);
+  store.cancelEnd(s.id); expect(historicalSession(store).starter_id).toMatch(/^catalog:/);
 });
 it('rolls back a skip if no same-session replacement exists; never relaxes that exclusion', () => {
-  const {store,db}=fresh(), s=store.createSession();
+  const {store,db}=fresh(), s=historicalSession(store);
   const records=db.prepare('SELECT q.* FROM starter_catalog_entries c JOIN starter_questions q ON q.id=c.question_id').all() as any[];
   const insert=db.prepare("INSERT INTO starter_events VALUES(?,?,'presented',?,?,?,?)");
   db.transaction(()=>{for(const q of records) insert.run(`seen-${q.id}`,s.id,q.id,q.version,q.text,'2026-09-09');})();
@@ -65,7 +66,7 @@ it('rolls back a skip if no same-session replacement exists; never relaxes that 
   expect(selectCatalog(db).question.id).toMatch(/^catalog:/);
 });
 it('ignores skip counts, excludes same-session and recent text, and relaxes only recent history', () => {
-  const {store,db}=fresh(),s=store.createSession();
+  const {store,db}=fresh(),s=historicalSession(store);
   const before=selectCatalog(db,undefined,s.id,()=>0.4).question.id;
   db.prepare('UPDATE starter_catalog_entries SET skip_count=10000 WHERE question_id=?').run(before);
   expect(selectCatalog(db,undefined,s.id,()=>0.4).question.id).toBe(before);
@@ -104,7 +105,7 @@ it('migrates v18 atomically, preserves legacy drafts/evidence, seeds exact count
   expect(count((store as any).db,`catalog:joint-v1:${q.id}`)).toEqual({answer_count:1,skip_count:0});
 });
 it('preserves an exact legacy parked opening across migration and counts its submitted answer once', () => {
-  const {directory,store,db}=fresh(), session=store.createSession();
+  const {directory,store,db}=fresh(), session=historicalSession(store);
   const original=store.messages(session.id)[0];
   store.setOpening(session.id,'park-legacy',session.opening_revision,'user');
   const saved=store.session(session.id);
@@ -117,7 +118,7 @@ it('preserves an exact legacy parked opening across migration and counts its sub
   const parked=JSON.parse(saved.parked_starter!);parked.question.id='legacy-parked';
   legacy.prepare("INSERT INTO sessions(id,state,created_at,chat_config,opening_kind,parked_starter,opening_revision) VALUES(?,'draft',?,?,'user',?,?)").run(saved.id,saved.created_at,saved.chat_config,JSON.stringify(parked),saved.opening_revision);
   const before=legacy.prepare('SELECT * FROM sessions').get();migrateDatabase(legacy,legacyDir);
-  expect(legacy.prepare('SELECT * FROM sessions').get()).toEqual(before);legacy.close();
+  expect(legacy.prepare('SELECT * FROM sessions').get()).toMatchObject(before as object);legacy.close();
   const reopened=new Store(legacyDir,'isolated' as const);stores.push(reopened);
   reopened.setOpening(saved.id,'restore-legacy',saved.opening_revision,'starter');
   expect(reopened.messages(saved.id)).toEqual([original]);

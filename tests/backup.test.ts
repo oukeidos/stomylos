@@ -54,7 +54,9 @@ it('round-trips byte-identical DB, audio, ASR and preferences while excluding ke
   expect(readdirSync(join(target, asset))).toHaveLength(2);
   expect(readFileSync(join(target, 'preferences.json'), 'utf8')).toBe('{"version":2}');
   expect(existsSync(join(target, 'backup-restore.json'))).toBe(false);
-  const reopened = new Store(target, native); expect(reopened.unfinished()).not.toBeNull(); reopened.close();
+  const isolated = join(root, 'restored-inspection'); mkdirSync(isolated);
+  writeFileSync(join(isolated, 'stomylos.sqlite3'), bytes(target));
+  const reopened = new Store(isolated, native); expect(reopened.unfinished()).not.toBeNull(); reopened.close();
 }, 30_000);
 
 
@@ -168,7 +170,7 @@ it('rejects a same-version schema change and foreign-key corruption with valid f
     else { db.pragma('foreign_keys = OFF'); db.prepare('INSERT INTO session_bookmarks(session_id) VALUES(?)').run('missing-session'); }
     db.close(); const replacement = readFileSync(dbFile);
     manifestFile(file, m => { m.files[0].size = replacement.length; m.files[0].sha256 = createHash('sha256').update(replacement).digest('hex'); return replacement; });
-    await expect(prepareBackup(target, file)).rejects.toThrow(mode === 'schema' ? 'unsupported_schema_structure' : 'backup_database_invalid');
+    await expect(prepareBackup(target, file)).rejects.toThrow(mode === 'schema' ? 'unsupported_schema_structure' : 'migration_integrity_failed');
     expect(bytes(target)).toEqual(saved);
   }
 });

@@ -1,3 +1,4 @@
+import { historicalSession } from './historical-fixtures';
 import { emptyMemory, memoryJson, memoryHash } from '../src/main/memory-updater';
 import { grammarSnapshot } from '../src/main/contracts';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -22,7 +23,7 @@ function seedLegacy(id: string) {
   raw.prepare('INSERT INTO memory_legacy_seeds VALUES(?,?,?)').run(id,doc,memoryHash(doc));
 }
 function start(snapshot?: Json) {
-  const s = store.createSession();
+  const s = historicalSession(store);
   if (snapshot) { raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(snapshot), s.id); seedLegacy(s.id); }
   store.searchMode(s.id, 'off'); store.selectManual(s.id, 'model_01'); store.submit(s.id, 'An original user turn.');
   store.commitRoute(s.id, null, 'public-fixture', null); return s.id;
@@ -41,11 +42,11 @@ function failChat(id: string) {
 it('keeps A→B→A in one transcript with immutable originals, source IDs and memory', () => {
   const id = start(), a = complete(id), original = store.session(id).chat_config, initialRoute = raw.prepare('SELECT * FROM route_decisions').all();
   const memory = store.view(id).memory.snapshot, first = store.messages(id);
-  store.saveDraft(id, 'Preserved draft'); select(id, 'model_04');
+  store.saveDraft(id, 'Preserved draft'); select(id, 'model_03');
   expect(store.requests(id)).toHaveLength(1); expect(store.session(id).draft).toBe('Preserved draft');
   expect(store.view(id).partner.currentCharacter).toBe('model_01');
   store.submit(id, 'Another user turn.'); const b = complete(id);
-  expect(b.body.model).toBe(character('model_04').model);
+  expect(b.body.model).toBe(character('model_03').model);
   expect(b.body.messages.slice(-3)).toEqual([{role:'user',content:'An original user turn.'},{role:'assistant',content:'An ordinary answer.'},{role:'user',content:'Another user turn.'}]);
   expect(b.body.messages[0].content.split('<application_time_context>')[0]).toBe(a.body.messages[0].content.split('<application_time_context>')[0]);
   select(id, 'model_01'); store.submit(id, 'An original user turn.'); const again = complete(id);
@@ -64,24 +65,24 @@ it('keeps A→B→A in one transcript with immutable originals, source IDs and m
 });
 
 it('retries the original failed model despite a pending choice, then creates a distinct replacement root', () => {
-  const id = start(), a = failChat(id); select(id, 'model_04');
+  const id = start(), a = failChat(id); select(id, 'model_03');
   const retry = store.prepareChat(id, randomUUID(), 'retry'); expect(store.chatBody(retry.id)).toEqual(a.body);
   expect(retry.parent_id).toBe(a.request.id); expect(retry.config).toBe(a.request.config);
   store.prepareReply(id,retry.id); store.dispatch(retry.id); store.failRequest(retry.id,'request_timeout','Second partial',{});
   store.preparePartner(id,'different_model',randomUUID());
   const b=store.prepareChat(id,randomUUID(),'different_model'), body=store.chatBody(b.id);
   expect(b.parent_id).toBeNull(); expect(JSON.parse(b.config).request_partner.supersedes_request_id).toBe(retry.id);
-  expect(body.model).toBe(character('model_04').model); expect(body.messages.slice(1)).toEqual(a.body.messages.slice(1));
+  expect(body.model).toBe(character('model_03').model); expect(body.messages.slice(1)).toEqual(a.body.messages.slice(1));
   expect(store.messages(id).filter(m=>m.role==='user')).toHaveLength(1);
   expect(store.request(a.request.id).response_content).toBe('Failed partial');
   expect(raw.prepare('SELECT count(*) n FROM message_times').get()).toEqual({n:1});
   expect(raw.prepare('SELECT count(*) n FROM search_turns').get()).toEqual({n:1});
   expect(JSON.parse(b.config).memory_context).toEqual(JSON.parse(a.request.config).memory_context);
   const bubble=store.prepareReply(id,b.id);store.dispatch(b.id);store.failRequest(b.id,'request_timeout','',{});
-  expect(store.view(id).partner.currentCharacter).toBe('model_04');
+  expect(store.view(id).partner.currentCharacter).toBe('model_03');
   const next=select(id,null);expect(next.revision).toBeGreaterThan(0);
   const route=store.preparePartner(id,'different_model',randomUUID())!;
-  expect(JSON.parse(route.config).excluded_model).toBe(character('model_04').model);
+  expect(JSON.parse(route.config).excluded_model).toBe(character('model_03').model);
   expect(bubble.request_id).toBe(b.id);
 });
 
@@ -96,7 +97,7 @@ it('freezes recent Auto input once, excludes the current model and preserves the
   expect(JSON.parse(snapshot.input).at(-1).content).toBe('Actually, explain this new question.');
   expect(store.preparePartner(id,'send',randomUUID())!.id).toBe(route.id);
   store.dispatch(route.id);
-  const scores=Object.fromEntries(conversationSnapshot().characters.map((c:Json)=>[c.id,c.id==='model_01'?2:1]));
+  const scores=Object.fromEntries(JSON.parse(store.session(id).chat_config).characters.map((c:Json)=>[c.id,c.id==='model_01'?2:1]));
   store.finishPartnerRoute(route.id,JSON.stringify(scores),{});
   expect(store.preparePartner(id,'send',randomUUID())).toBeNull();
   const request=store.prepareChat(id,randomUUID(),'send');expect(store.chatBody(request.id).model).not.toBe(character('model_01').model);
@@ -120,9 +121,9 @@ it('restores pending local choices and interrupted Auto without dispatch or orig
 });
 
 it.each([v5Snapshot(),universalSnapshot(true),universalSnapshot(false)])('retains historical memory ownership and exact prompt while switching saved rosters', snapshot=>{
-  const id=start(snapshot);const a=complete(id);select(id,'model_04');store.submit(id,'Continue.');const b=complete(id);
+  const id=start(snapshot);const a=complete(id);select(id,'model_03');store.submit(id,'Continue.');const b=complete(id);
   expect(a.body.messages[0].content.split('<application_time_context>')[0]).toBe(b.body.messages[0].content.split('<application_time_context>')[0]);
-  expect(b.body.model).toBe(character('model_04',snapshot).model);
+  expect(b.body.model).toBe(character('model_03',snapshot).model);
   expect(()=>select(id,'model_08')).toThrow('invalid_character');
   expect(()=>partnerRouterSnapshot(snapshot,store.messages(id),b.body.model)).not.toThrow();
 });
@@ -131,13 +132,13 @@ it('keeps legacy request configs without a binding reconstructable after a switc
   const id=start(); const a=failChat(id);const old=JSON.parse(a.request.config);delete old.request_partner;
   // Simulate an existing immutable historical row, without weakening production triggers.
   raw.exec('DROP TRIGGER immutable_request_source');raw.prepare('UPDATE model_requests SET config=?,config_hash=? WHERE id=?').run(JSON.stringify(old),hash(JSON.stringify(old)),a.request.id);
-  select(id,'model_04');const retry=store.prepareChat(id,randomUUID(),'retry');
+  select(id,'model_03');const retry=store.prepareChat(id,randomUUID(),'retry');
   expect(store.chatBody(retry.id)).toEqual(a.body);expect(JSON.parse(retry.config).request_partner).toBeUndefined();
 });
 
 it('rejects stale selections, live request changes, completed-answer regeneration and target tampering',()=>{
-  const id=start();const a=complete(id);const frozen=store.request(a.request.id);const choice=select(id,'model_04');
-  store.changePartner(id,'model_04',choice.operationId,choice.revision);
+  const id=start();const a=complete(id);const frozen=store.request(a.request.id);const choice=select(id,'model_03');
+  store.changePartner(id,'model_03',choice.operationId,choice.revision);
   expect(()=>store.changePartner(id,'model_03',randomUUID(),choice.revision)).toThrow('partner_selection_changed');
   expect(()=>store.preparePartner(id,'different_model',randomUUID())).toThrow('reply_not_retryable');
   store.submit(id,'Another.');const r=store.prepareChat(id,randomUUID(),'send');
@@ -168,7 +169,7 @@ it.each(['failed', 'ready'])('carries an unused %s Auto choice to the next Send 
   const id = start(); const a = failChat(id); select(id, null);
   const route = store.preparePartner(id, 'different_model', randomUUID())!; store.dispatch(route.id);
   if (state === 'failed') store.failRequest(route.id, 'request_timeout');
-  else store.finishPartnerRoute(route.id, JSON.stringify(Object.fromEntries(conversationSnapshot().characters.map((c: Json) => [c.id, 2]))), {});
+  else store.finishPartnerRoute(route.id, JSON.stringify(Object.fromEntries(JSON.parse(store.session(id).chat_config).characters.map((c: Json) => [c.id, 2]))), {});
   expect(store.view(id).partner.canRetryReply).toBe(true);
   const op = store.view(id).partner.pending!.id;
   const retry = complete(id, 'retry'); expect(retry.body).toEqual(a.body);
@@ -192,9 +193,10 @@ it.each(['conversation-v7-config', 'conversation-v6-config', 'c-conversation-con
     component_hashes: conversationComponents(snapshot.version, 'stomylos_memory_context_v2'),
     opening: { version: 'stomylos_opening_v1', kind: 'starter' }
   });
-  const s = store.createSession(); raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(snapshot), s.id); seedLegacy(s.id);
+  const s = historicalSession(store); raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(snapshot), s.id); seedLegacy(s.id);
   store.searchMode(s.id, 'off'); store.selectManual(s.id, snapshot.characters[0].id);
-  store.submit(s.id, 'An original user source.'); store.commitRoute(s.id, null, 'public-fixture', null); complete(s.id);
+  store.submit(s.id, 'An original user source.'); store.commitRoute(s.id, null, 'public-fixture', null); if(snapshot.memory_version) store.freezeMemory(s.id);
+  const original=store.createRequest(s.id,'chat',snapshot);const bubble=store.prepareReply(s.id,original.id);store.dispatch(original.id);store.finishReply(original.id,bubble.id,'Historical answer.',{});
   select(s.id, null); store.submit(s.id, 'A new direction.');
   const route = store.preparePartner(s.id, 'send', randomUUID())!; store.dispatch(route.id);
   store.finishPartnerRoute(route.id, JSON.stringify(Object.fromEntries(snapshot.characters.map((c: Json) => [c.id, 2]))), {});

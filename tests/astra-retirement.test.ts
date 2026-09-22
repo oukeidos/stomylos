@@ -1,3 +1,4 @@
+import { historicalSchema } from './historical-fixtures';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -50,7 +51,7 @@ it('preserves v8 Astra history and exact failed request through admission, reope
   const request=store.prepareChat(session.id,randomUUID(),'send'), body=store.chatBody(request.id);
   expect(body.model).toBe('openai/gpt-6-astra');store.prepareReply(session.id,request.id);store.dispatch(request.id);store.failRequest(request.id,'request_timeout','Saved partial',{});
   const before=raw.prepare('SELECT * FROM model_requests').all(),history=store.messages(session.id);
-  raw.pragma('user_version=40');raw.close();store.close();stores.pop();
+  historicalSchema(raw,40);raw.close();store.close();stores.pop();
   store=new Store(dir,'isolated' as const);stores.push(store);
   expect(store.session(session.id).chat_config).toBe(JSON.stringify(saved));expect(store.messages(session.id)).toEqual(history);
   const inspect=new Database(join(dir,'stomylos.sqlite3'),{readonly:true});expect(inspect.prepare('SELECT * FROM model_requests').all()).toEqual(before);expect(inspect.pragma('user_version',{simple:true})).toBe(currentSchema);inspect.close();

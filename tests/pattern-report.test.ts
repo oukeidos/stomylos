@@ -22,7 +22,7 @@ function seed(n = 5, changed = false, mixed = false) {
   const ids: string[] = [];
   for (let i = 0; i < n; i++) {
     const s = store.createSession(); ids.push(s.id);
-    if(mixed){if(i%2)store.setOpening(s.id,randomUUID(),0,'user');store.selectManual(s.id,`model_0${i%4+1}`);}
+    if(mixed){if(i%2)store.setOpening(s.id,randomUUID(),0,'user');store.selectManual(s.id,['model_01','model_02','model_03','model_09'][i%4]);}
     const text = 'Yesterday I ' + (changed ? 'go' : 'went') + ' to the park.';
     store.submit(s.id, text); store.end(s.id);
     const a = store.createRequest(s.id, 'grammar', grammarSnapshot()); store.dispatch(a.id);

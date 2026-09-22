@@ -119,8 +119,8 @@ it('routes visible openers as assistant openings while retaining direct and lega
   expect(JSON.parse(old.messages[1].content)).toEqual({starter_question:'An old question?',learner_answer:'An answer.'});
   const direct=conversationSnapshot('user');
   expect(routerBody(null,'Hello',{...direct,opener_version:openerVersion})).toEqual(routerBody(null,'Hello',direct));
-  expect(routerSnapshot(saved).version).toBe('stomylos_compact_router_v2_opener');
-  expect(routerSnapshot(legacy).version).toBe('stomylos_compact_router_v2_starter');
+  expect(routerSnapshot(saved).version).toBe('stomylos_compact_router_v4_opener');
+  expect(routerSnapshot(legacy).version).toBe('stomylos_compact_router_v4_starter');
   validateRecovery(routerSnapshot(saved));validateRecovery(recoverySnapshot(routerSnapshot(saved)));
   const {messages:_,...settings}=body, {messages:__,...oldSettings}=old;
   expect(settings).toEqual(oldSettings);

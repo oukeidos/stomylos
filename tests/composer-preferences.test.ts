@@ -27,7 +27,7 @@ it('rolls back both session and preference when either preference save fails',()
  expect(store.session(s.id)).toEqual(snapshot);expect(pref()).toEqual({search:'auto',reply:'one_point'});
 });
 it('remembers Web search changes during a chat while Lighter stays locked and frozen turns stay unchanged',()=>{
- const s=store.createSession();store.searchMode(s.id,'off');store.selectManual(s.id,'model_04');
+ const s=store.createSession();store.searchMode(s.id,'off');store.selectManual(s.id,'model_03');
  store.submit(s.id,'First user message.');store.commitRoute(s.id,null,'fixture',null);
  const r=store.prepareChat(s.id,randomUUID()),bubble=store.prepareReply(s.id,r.id);store.dispatch(r.id);store.finishReply(r.id,bubble.id,'A short answer.',{});
  const history=store.searchView(s.id);store.searchMode(s.id,'auto');expect(store.searchView(s.id)).toEqual(history);

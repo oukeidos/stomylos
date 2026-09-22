@@ -29,7 +29,7 @@ let app;
 const report = { directory, packaged, paidRequests: 0, checks: [], measurements: {}, errors: [] };
 try {
   app = await electron.launch({ executablePath: packaged ? resolve(process.env.STOMYLOS_VERIFY_BUNDLE ?? 'release/linux-unpacked/stomylos') : require('electron'), args: packaged ? [] : ['.'], env, chromiumSandbox: true });
-  let page = await app.firstWindow(); page.setDefaultTimeout(15000);
+  let page = await app.firstWindow();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].focus());await page.waitForFunction(()=>document.hasFocus()); page.setDefaultTimeout(15000);
   page.on('pageerror', error => report.errors.push(error.message));
   const button = name => page.getByRole('button', { name, exact: true });
   await button('Partner: Automatic').waitFor();
@@ -61,9 +61,12 @@ try {
     await page.getByText('Writing…', { exact:true }).waitFor();
   };
   const pageUp = async () => {
-    await main.focus();
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].focus());await page.waitForFunction(()=>document.hasFocus());await main.focus();
     const start = await main.evaluate(n => { window.scrollObservation = { top: n.scrollTop, at: performance.now() }; return n.scrollTop; });
+    await page.screenshot({path:output+'/before-page-up.png',scale:'css'});
+    report.pageUpTrace=[];await main.evaluate(n=>{window.keyTrace=[];n.addEventListener('keydown',e=>window.keyTrace.push({key:e.key,target:e.target.tagName,active:document.activeElement?.tagName,prevented:e.defaultPrevented,top:n.scrollTop}));});
     await page.keyboard.press('PageUp');
+    await page.waitForTimeout(300);report.pageUpTrace=await page.evaluate(()=>({events:window.keyTrace,active:document.activeElement?.outerHTML.slice(0,300),focus:document.hasFocus(),top:document.querySelector('main').scrollTop,inert:document.querySelector('main').inert}));
     await page.waitForFunction(start => {
       const n = document.querySelector('main'), now = performance.now();
       if (window.scrollObservation.top !== n.scrollTop) window.scrollObservation = { top: n.scrollTop, at: now };
@@ -121,7 +124,9 @@ try {
   const paused = (await measure('before_paused_resize')).top;
   await resize(900,720); assert.equal((await measure('paused_resize')).top,paused);
   const thumb = await main.evaluate(n => { const r=n.getBoundingClientRect(), track=n.clientHeight-32, size=Math.max(20,track*n.clientHeight/n.scrollHeight); return { x:r.left+n.clientWidth+(n.offsetWidth-n.clientWidth)/2, y:r.top+16+(track-size)*n.scrollTop/(n.scrollHeight-n.clientHeight)+size/2, bottom:r.bottom-2 }; });
-  await page.mouse.move(thumb.x,thumb.y); await page.mouse.down(); await page.mouse.move(thumb.x,thumb.bottom,{steps:12}); await page.mouse.up();
+  // Capture the painted native control after resize before injecting its pointer sequence.
+  report.thumb=thumb;await page.screenshot({path:output+'/before-thumb.png',scale:'css'});
+  await page.mouse.move(thumb.x,thumb.y); await page.mouse.down(); await measure('thumb_down');await page.mouse.move(thumb.x,thumb.bottom,{steps:12}); await page.mouse.up();await measure('thumb_up');
   await atBottom('native_drag_reaches_bottom');
   await page.locator('.page').evaluate(n => { const probe=document.createElement('div'); probe.id='scroll-layout-probe'; probe.style.height='220px'; n.append(probe); });
   await atBottom('scrollbar_bottom_resumes');
@@ -147,9 +152,11 @@ try {
   report.checks.push('Reopened history starts at latest; a rejected no-key Send preserves reading and draft without a request');
   const beforeEnd=(await measure('before_end')).top;
   await input.fill('/end'); await input.press('Enter');
+  await page.getByRole('dialog',{name:'Finishing your chat',exact:true}).waitFor();
+  await button('Cancel remaining').click();await page.getByRole('dialog',{name:'Finishing your chat',exact:true}).waitFor({state:'hidden'});
   await button('New chat').waitFor(); await page.waitForTimeout(150);
   assert.equal((await measure('after_end')).top,beforeEnd);
-  await page.getByRole('button',{name:/^Analysis details/}).click();
+  await button('Conversation details').click();await page.getByRole('button',{name:/^Grammar analysis/}).click();
   await page.waitForTimeout(300);
   assert.ok((await measure('feedback')).gap > 2);
   report.checks.push('Native scrollbar pauses; paused viewport resize, reduced motion, /end and feedback preserve intended reading');

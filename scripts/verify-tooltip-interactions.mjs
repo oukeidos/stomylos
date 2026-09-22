@@ -37,6 +37,8 @@ try {
     exact: true
   });
   await button('Settings').waitFor();
+  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].focus());await page.waitForFunction(()=>document.hasFocus());
+  await page.evaluate(()=>{window.tooltipTrace=[];for(const type of ['pointerenter','pointerleave','focusin','blur','scroll'])window.addEventListener(type,e=>window.tooltipTrace.push({type,target:e.target?.getAttribute?.('aria-label')??e.target?.tagName,at:performance.now()}),true);});
   const record = async name => {
     await page.waitForTimeout(250);
     const state = await page.evaluate(() => ({
@@ -49,6 +51,7 @@ try {
         })()
       }))
     }));
+    report.tooltipTrace=await page.evaluate(()=>window.tooltipTrace.slice(-30));
     report.cases.push({
       name,
       ...state
@@ -58,7 +61,7 @@ try {
   };
   const reset = async () => {
     await page.keyboard.press('Escape');
-    await page.mouse.move(650, 400);
+    await page.mouse.move(2, 2);await page.waitForTimeout(50);
     await page.locator('textarea[aria-label="Your message"]').focus();
   };
   await reset();
@@ -72,7 +75,7 @@ try {
   });
   await toggle.hover();
   await toggle.click();
-  await page.mouse.move(650, 400);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await record('trace pointer click');
   report.eventOrder = await page.evaluate(() => window.auditEvents);
   if (await page.locator('#conversation-sidebar').isHidden()) await toggle.click();
@@ -81,7 +84,7 @@ try {
     name: 'Show bookmarked chats only',
     exact: true
   }).click();
-  await page.mouse.move(650, 400);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await record('bookmarked-only switch pointer click');
   await reset();
   await button('Settings').click();
@@ -92,7 +95,7 @@ try {
   }).click();
   await button('About memory').waitFor();
   await button('About memory').click();
-  await page.mouse.move(650, 500);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await record('About memory pointer click while popover open');
   await page.keyboard.press('Escape');
   await record('About memory popover Escape');
@@ -128,10 +131,10 @@ try {
   }).click();
   await button('Edit').waitFor();
   await button('Delete').click();
-  await page.mouse.move(650, 500);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await record('Recent memory Delete inline confirmation');
   await button('Cancel').click();
-  await page.mouse.move(650, 500);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await record('Recent memory Delete Cancel focus return');
   await button('Edit').click();
   await page.getByRole('textbox', {
@@ -139,14 +142,14 @@ try {
   }).waitFor();
   await record('Recent memory Edit focuses textarea');
   await button('Cancel').click();
-  await page.mouse.move(650, 500);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await record('Recent memory Edit Cancel focus return');
   await button('About memory').focus();
   await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Tab');
   await page.locator('[role=tooltip]:visible').waitFor();
-  await page.mouse.move(1100, 680);
-  await button('Close settings').hover();
+  await button('Close settings').scrollIntoViewIfNeeded();await page.waitForTimeout(100);
+  await page.screenshot({path:output+'/before-close-hover.png'});await page.mouse.move(2,2);await page.waitForTimeout(50);await button('Close settings').hover();
   await page.waitForTimeout(750);
   await record('two icons focus About memory and hover Close settings');
   await page.getByRole('tab', {
@@ -183,7 +186,7 @@ try {
   }).waitFor({
     state: 'hidden'
   });
-  await page.mouse.move(650, 400);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await record('Conversation details close return');
 
   // Keyboard discovery and activation, plus the formerly native-title controls.
@@ -199,14 +202,17 @@ try {
   await page.keyboard.press('Space');
   await record('Space dismisses');
   await button('Reports').click();
-  await button('Reports options').click();
-  await page.getByRole('menu').waitFor();
+  await button('Chats').click();
+  await button('Conversation details').click();
+  await page.getByRole('dialog').waitFor();
+  // Move off the underlying trigger before closing: a new hover is not focus return.
+  await page.mouse.move(2,2);await page.waitForTimeout(50);
   await page.keyboard.press('Escape');
-  await page.getByRole('menu').waitFor({
+  await page.getByRole('dialog').waitFor({
     state: 'hidden'
   });
   await page.waitForTimeout(350);
-  await record('Reports menu focus return');
+  await record('Conversation details focus return');
   await button('Chats').click();
   assert.equal(await page.locator('button[title]').count(), 0, 'No competing native button titles');
   await button('Settings').hover();
@@ -220,14 +226,14 @@ try {
     exact: true,
     includeHidden: true
   }).evaluate(node => node.hidden = false);
-  await page.mouse.move(650, 400);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await button('Settings').hover();
   await visibleTips.waitFor();
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await visibleTips.waitFor({
     state: 'hidden'
   });
-  await page.mouse.move(650, 400);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await button('Settings').hover();
   await visibleTips.waitFor();
   await button('Settings').evaluate(node => node.disabled = true);
@@ -246,7 +252,7 @@ try {
     exact: true
   }).click();
   await button('About memory').click();
-  await page.mouse.move(650, 500);
+  await page.mouse.move(2, 2);await page.waitForTimeout(50);
   await button('About memory').hover();
   await visibleTips.waitFor();
   await page.keyboard.press('Escape');

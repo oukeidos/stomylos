@@ -1,3 +1,4 @@
+import { historicalSession } from './historical-fixtures';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -27,7 +28,7 @@ function newSession() {
     raw.prepare("UPDATE sessions SET analysis_state='skipped' WHERE id=?").run(blocker);
     if (store.endBlocker()) store.cancelEnd(blocker);
   }
-  return store.createSession();
+  return historicalSession(store);
 }
 it('copies the selected prompt and all three serving contracts without sampling or formatting additions', () => {
   verifyStarterRuntime(); expect(hash(starterPrompt)).toBe(starterPromptHash); expect(starterPrompt.endsWith('\n')).toBe(true);

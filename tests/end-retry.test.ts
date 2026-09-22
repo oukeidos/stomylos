@@ -1,3 +1,4 @@
+import { prepareProviderRequest } from '../src/main/provider-policy';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppFailure, HttpFailure } from '../src/main/errors';
 import { endRetryDelay, waitEndRetry } from '../src/main/end-retry';
@@ -24,7 +25,8 @@ it('retains HTTP retry timing and rejects embedded permanent provider errors', a
   const fetcher = vi.fn().mockResolvedValueOnce(new Response('', { status: 429, headers: { 'Retry-After':'31' } }))
     .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 402, message: 'balance' } })));
   vi.stubGlobal('fetch', fetcher);
+  const {body,identity} = prepareProviderRequest({}, {});
   const gateway = new OpenRouter(() => 'fake'); const signal = new AbortController().signal;
-  await expect(gateway.complete({}, {}, signal, 1000)).rejects.toMatchObject({ code: 'http_429', retryAfterMs: 31000 });
-  await expect(gateway.complete({}, {}, signal, 1000)).rejects.toMatchObject({ code: 'http_402' });
+  await expect(gateway.complete(body, identity!, signal, 1000)).rejects.toMatchObject({ code: 'http_429', retryAfterMs: 31000 });
+  await expect(gateway.complete(body, identity!, signal, 1000)).rejects.toMatchObject({ code: 'http_402' });
 });

@@ -29,7 +29,7 @@ for (const key of ['ELECTRON_RUN_AS_NODE', 'ELECTRON_RENDERER_URL', 'STOMYLOS_LI
 let app, page;
 const errors = [], checks = [], sessions = [];
 const cmd = (name, args) => page.evaluate(([name, args]) => window.stomylos.command(name, args), [name, args]);
-const button = name => page.getByRole('button', { name, exact: true });
+const button = name => page.getByRole('button', { name:name.startsWith('Partner: ')?new RegExp('^'+name+'(?: ·|$)'):name, exact: true });
 const input = () => page.getByRole('textbox', { name: 'Your message', exact: true });
 async function poll(fn) { const deadline = Date.now() + 20000; while (Date.now() < deadline) { if (await fn()) return; await new Promise(r => setTimeout(r, 50)); } throw new Error('Native state did not settle'); }
 async function launch() {
@@ -47,7 +47,8 @@ try {
   await input().fill('An exact unsent draft.\n한국어');
   await button('Partner: Automatic').click();
   assert.equal(await page.getByRole('menuitemradio').count(), selected.length + 1);
-  assert.deepEqual(await page.getByRole('menuitemradio').locator('strong').allTextContents(), ['Automatic', ...selected.map(partner => partner.label)]);
+  const labels=await page.getByRole('menuitemradio').locator('strong').allTextContents();
+  assert.equal(labels[0],'Automatic');for(const partner of selected)assert.ok(labels.some(label=>label.startsWith(partner.label+' · ')));
   await page.keyboard.press('End');
   await poll(() => page.evaluate(label => document.activeElement.textContent.includes(label), selected.at(-1).label));
   const item = await page.getByRole('menuitemradio').last().boundingBox();
@@ -64,7 +65,7 @@ try {
     const snapshot = await cmd('snapshot'); let id = snapshot.unfinished?.id;
     if (!id) id = await cmd('newSession');
     const before = await cmd('loadSession', { sessionId: id });
-    await cmd('setOpening', { sessionId: id, operationId: crypto.randomUUID(), expectedRevision: before.session.opening_revision, kind });
+    if(kind==='starter'){await button('Give me something').click();await button('Hide opener').waitFor();}
     await button('Partner: Automatic').click(); await page.getByRole('menuitemradio', { name: new RegExp('^' + partner.label + '\\b') }).click();
     await button(`Partner: ${partner.label}`).waitFor();
     const mode = kind === 'starter' ? 'auto' : 'off';
@@ -79,14 +80,14 @@ try {
     const body = mock.requests.findLast(r => r.stream && r.model === partner.model && !r.response_format);
     assert.deepEqual(body.reasoning, partner.reasoning); assert.equal(!!body.tools, mode === 'auto');
     assert.equal(body.messages.at(-1).content, text);
-    assert.equal(body.messages.length, kind === 'starter' ? 4 : 2);
+    const visible=view.messages.slice(0,-1).map(({role,content})=>({role,content}));assert.deepEqual(body.messages.slice(-visible.length),visible);
     if (mode === 'auto') {
       await page.locator('.bubble details summary').click();
       await page.getByRole('link', { name: /Public source/ }).waitFor();
     }
     sessions.push({ id, character: partner.id, kind, mode });
     await button('End chat').click();
-    await poll(async () => { const v = await cmd('loadSession', { sessionId: id }); return v.session.analysis_state === 'completed' && v.memory.job?.state === 'completed' && v.renewal?.state === 'completed'; });
+    await poll(async () => { const v = await cmd('loadSession', { sessionId: id }); return v.endProcessing?.complete && v.memory.addJobs?.every(j=>j.state==='completed'); });
     await button('New chat').click();
     await button('Partner: Automatic').waitFor();
   }
@@ -96,7 +97,7 @@ try {
     assert.equal(view.session.character, saved.character); assert.equal(view.session.opening_kind, saved.kind);
     assert.equal(view.session.state, 'ended'); assert.equal(view.messages.at(-1).origin, 'model');
   }
-  checks.push('All current manual selections in both entries; exact model/reasoning; Auto retrieval evidence/Off omission; stored replies, grammar, memory and renewal; reopen without replay');
+  checks.push('All current manual selections in both entries; exact model/reasoning; Auto retrieval evidence/Off omission; stored replies and session memory; no automatic grammar or starter renewal; reopen without replay');
   assert.deepEqual(errors, []);
   writeFileSync(`${output}/report.json`, JSON.stringify({ status: 'passed', packaged, directory, checks, sessions, errors, paidRequests: 0 }, null, 2));
   console.log(JSON.stringify({ output, checks, errors }));

@@ -12,7 +12,7 @@ for(const key of ['ELECTRON_RUN_AS_NODE','ELECTRON_RENDERER_URL','STOMYLOS_LIVE_
 const report={status:'running',directory,checks:[],errors:[],paidRequests:0};let app,page;
 const button=name=>page.getByRole('button',{name,exact:true});
 const command=(name,args)=>page.evaluate(([name,args])=>window.stomylos.command(name,args),[name,args]);
-const settle=()=>page.evaluate(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>undefined))));
+const settle=()=>page.evaluate(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>undefined))));
 const capture=async name=>{await settle();await page.screenshot({path:`${output}/${name}.png`});};
 try {
  app=await electron.launch({executablePath:createRequire(import.meta.url)('electron'),args:['.'],env,chromiumSandbox:true,timeout:20000});
@@ -21,7 +21,9 @@ try {
    const require=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');
    const {createHash}=require('node:crypto'),Database=require('better-sqlite3');const db=new Database(directory+'/stomylos.sqlite3');
    const document=JSON.stringify({character_id:'shared',database_records:[{id:'a',text:'Coffee in the morning. Café 한글'},{id:'b',text:'Lives in Seoul.'},{id:'c',text:'Reading in quiet libraries.'}],revision:0});
-   db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(document,createHash('sha256').update(document).digest('hex'));db.close();
+   db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(document,createHash('sha256').update(document).digest('hex'));
+   for(const [i,item] of JSON.parse(document).database_records.entries()) db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,origin) VALUES(?,0,?,'legacy')").run(item.id,i);
+   db.close();
  },directory);
  const session=(await command('snapshot')).unfinished.id;
  const composer=page.getByRole('textbox',{name:'Your message',exact:true});await composer.fill('Keep my unsent draft. 한글');await page.getByText('Draft saved',{exact:true}).waitFor();
@@ -35,7 +37,7 @@ try {
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].close());await button('Keep editing').click();
  await editor.press('Enter');assert.equal(await editor.isVisible(),true);
  await editor.evaluate(n=>n.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,isComposing:true,bubbles:true})));assert.equal(await editor.isVisible(),true);
- await editor.fill('Tea in the evening. 한글');await editor.press('Control+Enter');await page.getByText('Memory updated',{exact:true}).waitFor();assert.equal(await editor.count(),0);assert.equal(await button('Edit').count(),1);assert.equal(await button('Edit').evaluate(n=>n===document.activeElement),true);
+ await editor.fill('Tea in the evening. 한글');await editor.press('Control+Enter');await page.getByText('Memory updated',{exact:true}).waitFor();assert.equal(await editor.count(),0);assert.equal(await button('Edit').count(),1);await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Search memories');
  assert.equal((await command('memoryManagement')).document.database_records[0].text,'Tea in the evening. 한글');
  await button('Clear search').click();
  report.checks.push('Untouched session/draft editing; case/multi-term search; pinned editor; dirty tab/close guard; Enter/IME/Ctrl+Enter; saved filter/focus');
@@ -60,9 +62,9 @@ try {
  report.checks.push('Wide/narrow textarea and confirmation; draft preserved on failure; explicit discard; deletion cancel/commit and final-item deletion');
  await button('Close settings').click();
  // First Send uses the local test gateway only.
- await command('searchMode',{sessionId:session,mode:'off'});await command('selectPartner',{sessionId:session,character:'model_04'});
+ await command('searchMode',{sessionId:session,mode:'off'});await command('selectPartner',{sessionId:session,character:'model_03'});
  await composer.fill('Testing the first memory snapshot.');await button('Send').click();
- await button('Settings').click();await page.getByRole('tab',{name:'Memory',exact:true}).click();await page.getByText('Memory is in use by your current chat. Finish the chat to edit it.',{exact:true}).waitFor();
+ await button('Settings').click();await page.getByRole('tab',{name:'Memory',exact:true}).click();await page.getByText('Finish the chat to edit memories.',{exact:true}).waitFor();
  await button('Back to chat').click();await page.getByRole('dialog',{name:'Settings',exact:true}).waitFor({state:'hidden'});
  assert.equal((await command('memoryManagement')).blocker.sessionId,session);
  report.checks.push('Accepted Send locks memory and Back to chat targets the actual blocker');

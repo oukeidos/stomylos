@@ -1,3 +1,4 @@
+import { historicalSchema } from './historical-fixtures';
 import { afterEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
@@ -67,7 +68,7 @@ it.each([false,true])('coordinator dispatches the saved grammar deadline (legacy
  expect(f.store.session(id).analysis_state).toBe('completed');
 });
 it('v41 admission preserves frozen rows, rolls back failure, restarts and becomes a no-op',()=>{
- const f=fixture(),id=start(f);f.store.end(id);const old=JSON.stringify(oldSnapshot());f.db.prepare('UPDATE sessions SET grammar_config=? WHERE id=?').run(old,id);f.db.pragma('user_version=41');
+ const f=fixture(),id=start(f);f.store.end(id);const old=JSON.stringify(oldSnapshot());f.db.prepare('UPDATE sessions SET grammar_config=? WHERE id=?').run(old,id);historicalSchema(f.db,41);
  const exec=f.db.exec.bind(f.db);const fault=vi.spyOn(f.db,'exec').mockImplementation(sql=>{const result=exec(sql);if(sql.includes('Admit grammar v3'))throw Error('injected admission fault');return result;});
  expect(()=>migrateDatabase(f.db,f.dir)).toThrow('injected admission fault');fault.mockRestore();expect(f.db.pragma('user_version',{simple:true})).toBe(41);
  const path=join(f.dir,'stomylos.pre-migration-v41.sqlite3'),backup=readFileSync(path);migrateDatabase(f.db,f.dir);expect(f.db.pragma('user_version',{simple:true})).toBe(currentSchema);

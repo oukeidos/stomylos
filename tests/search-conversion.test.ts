@@ -25,8 +25,8 @@ beforeEach(() => {
   db.close();
 });
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
-it('requires external conversion, preserves all original columns and defaults only future chats to Auto', () => {
-  const original = readFileSync(file); expect(() => new Store(directory, native)).toThrow('external_migration_required');
+it('requires external conversion, preserves all original columns and preserves the converted Off preference for future chats', () => {
+  const original = readFileSync(file); expect(() => new Store(directory, native)).toThrow('unsupported_schema_version');
   expect(readFileSync(file)).toEqual(original);
   const report = convertSearch(file); expect(report).toMatchObject({ status: 'converted', source_version: 7, target_version: 8 });
   expect(readFileSync(join(report.archive, 'before-v7.sqlite3'))).toEqual(original);
@@ -36,7 +36,7 @@ it('requires external conversion, preserves all original columns and defaults on
     expect(store.session('old')).toMatchObject({ draft: 'An exact draft.\r\n', search_mode: 'off' });
     expect(store.searchView('old')).toBeNull(); expect(store.integrity().foreignKeys).toEqual([]); store.close();
   }
-  const store = new Store(directory, native); store.end('old'); expect(store.createSession().search_mode).toBe('auto'); store.close();
+  const store = new Store(directory, native); store.end('old'); expect(store.createSession().search_mode).toBe('off'); store.close();
 });
 it('preserves the source through preparation, failed cutover and stale accepted hash', () => {
   const original = readFileSync(file);
@@ -74,7 +74,7 @@ it.each(['active-complete', 'active-interrupted', 'ended'])('preserves a v7 %s t
   const frozen = { ...conversationRequestSnapshot(snapshot), app_version: '0.12.2' }, encoded = JSON.stringify(frozen);
   const question = source[0].content, expected = conversationBody(frozen, partner.id, question, source);
   const interrupted = state === 'active-interrupted';
-  db.prepare("INSERT INTO model_requests(id,session_id,role,status,created_at,source_sequence,source_hash,config,config_hash,response_content) VALUES('reply','old','chat',?,'2026-09-05T00:00:01Z',1,?,?,?,'A saved reply.')")
+  db.prepare("INSERT INTO model_requests(id,session_id,role,status,created_at,source_sequence,source_hash,config,config_hash,dispatched_at,response_content) VALUES('reply','old','chat',?,'2026-09-05T00:00:01Z',1,?,?,?,'2026-09-05T00:00:01Z','A saved reply.')")
     .run(interrupted ? 'interrupted' : 'succeeded', hash(transcriptJson(source)), encoded, hash(encoded));
   db.prepare("INSERT INTO messages(id,session_id,sequence,role,content,origin,delivery,request_id) VALUES('answer','old',2,'assistant','A saved reply.','model',?,'reply')")
     .run(interrupted ? 'interrupted' : 'complete');

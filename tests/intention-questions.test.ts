@@ -1,3 +1,4 @@
+import {memorySession,acceptNotes} from './current-memory-fixtures';
 import { flat, splitDelta } from './flat-memory-fixtures';
 import selectedIntention from './fixtures/intention-selected.json';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -15,19 +16,6 @@ let directory: string, store: Store, raw: Database.Database;
 const native = 'isolated' as const;
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'stomylos-intentions-')); store = new Store(directory, native); raw = (store as unknown as { db: Database.Database }).db; });
 afterEach(() => { vi.useRealTimers(); store.close(); rmSync(directory, { recursive: true, force: true }); });
-function ended() {
-  const s = store.createSession(); store.searchMode(s.id, 'off'); store.selectManual(s.id, 'model_04');
-  const message = store.submit(s.id, 'I am considering a trip.'); store.commitRoute(s.id, null, 'fixture', null); store.end(s.id);
-  const attempt = store.prepareMemory(s.id, randomUUID()); store.dispatchMemory(attempt.id);
-  return { id: s.id, message, attempt };
-}
-function memory(operations: any[]) {
-  const s = ended(), content = JSON.stringify({ operations: operations.map(op => ({ ...op, source_message_ids: ['u1'] })) });
-  const doc = store.saveMemory(s.attempt.id, content, {}); return { ...s, doc, content, jobs: store.intentionJobs(s.id) };
-}
-const add = (text = 'Wants to plan a trip.') => ({ op: 'add', id: null, category: 'intentions', text });
-const update = (id: string, text: string) => ({ op: 'update', id, category: 'intentions', text });
-const remove = (id: string) => ({ op: 'delete', id, category: null, text: null });
 it('pins all tested inputs, prompt bytes, routes and reasoning without adding context', () => {
   const config = intentionConfig(), saved = selectedIntention.routes;
   expect(hash(config.prompt)).toBe(selectedIntention.prompt_sha256);
@@ -57,9 +45,9 @@ it('diffs category membership and exact text, not global document revisions', ()
 });
 
 it('keeps Intention memory without any question generation and no dedicated jobs are created', () => {
-  const s = ended();
+  const s=memorySession(store,'I am considering a trip.');store.end(s.id);
   expect(store.starterJob(s.id)).toBeNull();
-  store.saveMemory(s.attempt.id, splitDelta({operations:[{...add(),source_message_ids:['u1']}]}), {});
+  acceptNotes(store,['Wants to plan a trip.']);
   expect(flat(store.currentMemory()).database_records).toHaveLength(1);
   expect(store.intentionJobs(s.id)).toEqual([]);
   expect(store.starterJob(s.id)).toBeNull();

@@ -1,3 +1,4 @@
+import { closeNative } from './native-lifecycle.mjs';
 import { _electron as electron } from 'playwright-core';
 import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';
@@ -37,7 +38,7 @@ async function launch() {
 }
 async function close() {
   const exited = new Promise(done => application.process().once('exit', done));
-  await page.evaluate(() => window.stomylos.command('close')); await exited; application = null;
+  await closeNative(application); await exited; application = null;
 }
 async function poll(check, timeout = 30000) {
   const deadline = Date.now() + timeout;
@@ -60,7 +61,7 @@ try {
   await page.getByRole('button', { name: 'Record', exact: true }).click();
   await recordedSecond();
   assert.equal(await composer.getAttribute('readonly'), '');
-  assert.equal(await page.getByRole('button', { name: 'Listen', exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: 'Listen', exact: true }).count(), 0); // New unsent chat has no assistant speech source.
   assert.equal(requests.length, 0);
   await composer.dispatchEvent('compositionstart');
   await composer.dispatchEvent('keydown', { key: 'Enter', keyCode: 229, isComposing: true, bubbles: true });
@@ -134,7 +135,7 @@ try {
   if (await page.getByRole('button', { name: 'Show history', exact: true }).count()) await page.getByRole('button', { name: 'Show history', exact: true }).click();
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
   await page.getByRole('button', { name: 'Discard and continue', exact: true }).click();
-  await page.getByRole('heading', { name: 'Recent conversations', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Reports', exact: true }).last().waitFor();
   await page.getByRole('button', { name: 'Chats', exact: true }).click();
   assert.equal(await composer.inputValue(), original); assert.equal(requests.length, 0);
   await poll(async()=>await composer.evaluate(n => n === document.activeElement));

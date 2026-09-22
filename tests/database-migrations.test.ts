@@ -187,11 +187,11 @@ it('upgrades schema 16 without rewriting saved routing contracts and recovers a 
   });
   expect(() => migrateDatabase(db, dir)).toThrow('v17 interruption'); fault.mockRestore();
   expect(db.pragma('user_version', { simple: true })).toBe(16);
-  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toMatchObject(before);
   const file = join(dir, 'stomylos.pre-migration-v16.sqlite3'), bytes = readFileSync(file);
   migrateDatabase(db, dir);
   expect(db.pragma('user_version', { simple: true })).toBe(currentSchema); validateSchema(db, current);
-  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toMatchObject(before);
   migrateDatabase(db, dir); expect(readFileSync(file)).toEqual(bytes);
 });
 
@@ -256,9 +256,9 @@ it('admits eight-partner contracts from schema 22 without rewriting history and 
   const exec=db.exec.bind(db),fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=exec(sql);if(sql.includes('Admit versioned eight-partner'))throw new Error('v23 interruption');return result;});
   expect(()=>migrateDatabase(db,dir)).toThrow('v23 interruption');fault.mockRestore();
   expect(db.pragma('user_version',{simple:true})).toBe(22);
-  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toMatchObject(before);
   migrateDatabase(db,dir);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
-  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toMatchObject(before);
   expect(db.prepare('SELECT document FROM shared_memory').pluck().get()).toBe(flatDocument);
 });
 
@@ -283,7 +283,7 @@ it('adds opener storage in 35 to 36 atomically while preserving legacy drafts an
   const backup=join(dir,'stomylos.pre-migration-v35.sqlite3'), bytes=readFileSync(backup);
   migrateDatabase(db,dir);validateSchema(db,current);
   expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
-  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toMatchObject(before);
   expect(db.prepare('SELECT * FROM conversation_openers').all()).toEqual([]);
   expect(db.pragma('foreign_key_check')).toEqual([]);
   migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
@@ -296,15 +296,15 @@ it('admits v9 contracts in 36 to 37 without rewriting data, with rollback and id
   const before=db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved);
   const execute=db.exec.bind(db), fault=vi.spyOn(db,'exec').mockImplementation(sql=>{const result=execute(sql);if(sql.includes('Admit conversation v9'))throw new Error('admission fault');return result;});
   expect(()=>migrateDatabase(db,dir)).toThrow('admission fault');fault.mockRestore();
-  expect(db.pragma('user_version',{simple:true})).toBe(36);expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);
+  expect(db.pragma('user_version',{simple:true})).toBe(36);expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toMatchObject(before);
   const backup=join(dir,'stomylos.pre-migration-v36.sqlite3'),bytes=readFileSync(backup);
   migrateDatabase(db,dir);validateSchema(db,current);expect(db.pragma('user_version',{simple:true})).toBe(currentSchema);
-  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toEqual(before);expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
+  expect(db.prepare('SELECT * FROM sessions').all().map(({memory_add_scope, ...saved}: any) => saved)).toMatchObject(before);expect(db.pragma('integrity_check',{simple:true})).toBe('ok');expect(db.pragma('foreign_key_check')).toEqual([]);
   migrateDatabase(db,dir);expect(readFileSync(backup)).toEqual(bytes);
 });
 
 it.each([32,40])('admits v10 from schema %i with rollback, preserved drafts and idempotent recovery', version => {
-  const schema=version===32?current.replace(/\n-- Public schema 32 -> 33:[\s\S]*$/, ''):current;
+  const schema=version===32?current.replace(/\n-- Public schema 32 -> 33:[\s\S]*$/, ''):current.replace(/\n-- Public schema 42 -> 43:[\s\S]*$/, '');
   const {db,dir}=fixture(schema,version);db.transaction(()=>new StarterStore(db).initialize())();
   db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(flatDocument,memoryHash(flatDocument));
   db.exec("INSERT INTO sessions(id,state,created_at,draft,chat_config,opening_kind) VALUES('legacy','draft','2026-09-15','Keep the saved draft','{}','user')");

@@ -27,9 +27,9 @@ try{
     })();db.close();`,join(directory,'stomylos.sqlite3')],{cwd:process.cwd(),env:{...env,ELECTRON_RUN_AS_NODE:'1'},encoding:'utf8'});
   if(seed.status!==0)throw new Error(seed.stderr||seed.stdout);
   await launch();await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('tab',{name:'Memory',exact:true}).click();
-  await page.getByRole('button',{name:'Older',exact:true}).click();const section=page.getByRole('region',{name:'Older memories'});
+  await page.getByRole('button',{name:/^Older \d+$/}).click();const section=page.getByRole('region',{name:'Older memories'});
   await waitFor(async()=>await section.locator('.memory-items > li').count()===50);
-  await section.getByRole('button',{name:'Next',exact:true}).click();await waitFor(async()=>await section.locator('.memory-items > li').count()===5);
+  await section.getByRole('button',{name:'Next page',exact:true}).click();await waitFor(async()=>await section.locator('.memory-items > li').count()===5);
   const search=section.getByRole('searchbox',{name:'Search older memories'});await search.fill('100%_');await waitFor(async()=>await section.locator('.memory-items > li').count()===1);
   assert.match(await section.locator('.memory-text').innerText(),/한글 😃/);
   const trigger=section.getByRole('button',{name:'Delete older memory',exact:true});await trigger.focus();await page.keyboard.press('Enter');

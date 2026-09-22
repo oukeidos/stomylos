@@ -12,7 +12,7 @@ const env={...process.env,STOMYLOS_DATA_DIR:directory,STOMYLOS_TEST_ENDPOINT:moc
 for(const key of ['ELECTRON_RUN_AS_NODE','ELECTRON_RENDERER_URL','STOMYLOS_LIVE_VERIFY'])delete env[key];
 const report={status:'running',baseline,geometry:[],errors:[]};let app,page;
 const button=name=>page.getByRole('button',{name,exact:true});
-const settle=()=>page.evaluate(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>undefined))));
+const settle=()=>page.evaluate(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>undefined))));
 try {
  app=await electron.launch({executablePath:createRequire(import.meta.url)('electron'),args:['.'],env,chromiumSandbox:true,timeout:20000});
  page=await app.firstWindow();page.setDefaultTimeout(8000);page.on('pageerror',e=>report.errors.push(e.message));await button('Settings').waitFor();
@@ -21,7 +21,9 @@ try {
    const Database=require('better-sqlite3'),{createHash}=require('node:crypto'),db=new Database(directory+'/stomylos.sqlite3');
    const texts=['Prefers coffee in the morning.','Lives in Seoul.','Enjoys long conversations about books, especially in quiet libraries. Prefers small groups where everyone has enough time to explain their ideas without interruption.','Practices English most evenings.','Likes walking by the river.','Works from home on Fridays.','Usually cooks dinner at home.','Has a weekly reading group.','Prefers messages to phone calls.','Enjoys photography on trips.'];
    const document=JSON.stringify({character_id:'shared',revision:0,database_records:Array.from({length:24},(_,i)=>({id:'m'+i,text:texts[i%texts.length]}))});
-   db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(document,createHash('sha256').update(document).digest('hex'));db.close();
+   db.prepare('UPDATE shared_memory SET document=?,document_hash=?').run(document,createHash('sha256').update(document).digest('hex'));
+   for(const [i,item] of JSON.parse(document).database_records.entries()) db.prepare("INSERT INTO memory_item_metadata(id,source_order,item_index,origin) VALUES(?,0,?,'legacy')").run(item.id,i);
+   db.close();
  },directory);
  await button('Settings').click();await page.getByRole('tab',{name:'Memory',exact:true}).click();await button('Edit').first().waitFor();
  for(const [width,height] of [[1180,860],[760,620]]) {
@@ -38,15 +40,15 @@ try {
      assert.equal(geometry.fontSize,old.fontSize);assert.ok(geometry.visible>old.visible);assert.ok(geometry.rowHeight<old.rowHeight);
      const edit=button('Edit').first(),del=button('Delete').first();
      const e=await edit.boundingBox(),d=await del.boundingBox();assert.equal(e.y,d.y);assert.ok(e.width>=36&&e.height>=36);
-     await edit.focus();await page.getByRole('tooltip',{name:'Edit',exact:true}).waitFor();await page.keyboard.press('Enter');await page.getByRole('textbox',{name:'Edit memory'}).waitFor();await button('Cancel').click();
+     await edit.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');await page.getByRole('tooltip',{name:'Edit',exact:true}).waitFor();await page.keyboard.press('Enter');await page.getByRole('textbox',{name:'Edit memory'}).waitFor();await button('Cancel').click();
      await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Edit');assert.equal(await edit.evaluate(n=>n===document.activeElement),true);
      await del.click();await page.getByText('Delete this memory?',{exact:true}).waitFor();await button('Cancel').click();
    }
    await page.mouse.move(2,2);await settle();await page.screenshot({path:`${output}/${baseline?'before':'after'}-${width}.png`});
  }
  if(!baseline) {
-   await button('About memory').click();await page.getByText('An untouched new chat uses your changes',{exact:false}).waitFor();assert.equal(await button('About memory').getAttribute('aria-expanded'),'true');await button('About memory').click();
-   const search=page.getByRole('searchbox',{name:'Search memories'});await search.fill('Seoul');assert.equal(await button('Edit').count(),3);assert.equal(await page.locator('.memory-count').innerText(),'3 / 24');await button('Clear search').click();assert.equal(await button('Edit').count(),24);
+   await button('About memory').click();await page.getByRole('region',{name:'About memory',exact:true}).waitFor();assert.equal(await button('About memory').getAttribute('aria-expanded'),'true');await button('About memory').click();
+   const search=page.getByRole('searchbox',{name:'Search memories'});await search.fill('Seoul');assert.equal(await button('Edit').count(),3);assert.equal(await page.getByRole('status',{name:'3 of 24 memories',exact:true}).innerText(),'3 / 24');await button('Clear search').click();assert.equal(await button('Edit').count(),24);
    assert.equal(await page.locator('.memory-items').getByText('Enjoys long conversations about books, especially in quiet libraries. Prefers small groups where everyone has enough time to explain their ideas without interruption.',{exact:true}).count(),3);
  }
  assert.equal(mock.requests.length,0);assert.deepEqual(report.errors,[]);report.status='passed';

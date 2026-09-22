@@ -1,3 +1,5 @@
+import {memorySession,memoryAttempt,acceptNotes} from './current-memory-fixtures';
+import { historicalSession } from './historical-fixtures';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,22 +15,14 @@ beforeEach(() => {
   raw = (store as unknown as { db: Database.Database }).db;
 });
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
-function end(text = 'I enjoy quiet museums.') {
-  const id = store.createSession().id; store.submit(id, text);
-  store.commitRoute(id, null, 'public', null); store.freezeMemory(id);
-  const request = store.createRequest(id, 'chat', conversationSnapshot());
-  store.dispatch(request.id); const message = store.prepareReply(id, request.id);
-  store.finishReply(request.id, message.id, 'What do you enjoy seeing there?', {});
-  store.end(id); return id;
-}
+function end(text='I enjoy quiet museums.') {const s=memorySession(store,text);store.end(s.id);return s.id;}
+
 function rows(table: string) { return raw.prepare(`SELECT rowid,* FROM ${table} ORDER BY rowid`).all(); }
 it('deletes all owned records atomically while preserving shared questions, memory and other chats', () => {
   const id = end();
   const grammar = store.createRequest(id, 'grammar', grammarSnapshot()); store.dispatch(grammar.id);
   store.saveAnalysis(grammar.id, JSON.stringify({ units: [{ index: 0, corrected_text: 'I enjoy quiet museums.', explanation: 'No change needed.' }] }), {});
-  const memory = store.prepareMemory(id, 'memory-public'); store.dispatchMemory(memory.id);
-  const packet = JSON.parse(memory.input_json);
-  store.saveMemory(memory.id, JSON.stringify({ operations: [{ op: 'add', id: null, category: 'traits', text: 'Enjoys quiet museums.', source_message_ids: ['u1'] }] }), {});
+  acceptNotes(store,['Enjoys quiet museums.']);
   raw.prepare("INSERT INTO starter_renewal_jobs(id,session_id,created_at,source_sequence,source_hash,source_messages,input_json,input_hash,config,config_hash,model,state) VALUES('old-job',?,'2026-09-09',0,'h','[]','[]','h','{}','h','old-model','completed')").run(id);
   raw.exec("INSERT INTO starter_renewal_attempts(id,job_id,status,created_at) VALUES('old-attempt','old-job','succeeded','2026-09-09')");
   const attempt={id:'old-attempt'};
@@ -44,7 +38,7 @@ it('deletes all owned records atomically while preserving shared questions, memo
   expect(() => store.view(id)).toThrow('session_not_found'); expect(store.view(next)).toEqual(nextView);
   expect(['shared_memory', 'starter_slots', 'starter_catalog_entries'].map(rows)).toEqual(shared);
   for (const q of questions) expect(raw.prepare('SELECT * FROM starter_questions WHERE id=?').get(q.id)).toEqual({ ...q, origin: 'detached', attempt_id: null, ordinal: null });
-  for (const table of ['sessions', 'messages', 'model_requests', 'grammar_units', 'route_decisions', 'starter_events', 'starter_skips', 'session_memories', 'memory_jobs', 'starter_renewal_jobs']) {
+  for (const table of ['sessions', 'messages', 'model_requests', 'grammar_units', 'route_decisions', 'starter_events', 'starter_skips', 'session_memories', 'memory_jobs', 'memory_add_jobs', 'starter_renewal_jobs']) {
     expect(raw.prepare(`SELECT count(*) n FROM ${table} WHERE ${table === 'sessions' ? 'id' : 'session_id'}=?`).get(id)).toEqual({ n: 0 });
   }
   expect(store.pendingDeletions()).toEqual([id]); expect(store.integrity().foreignKeys).toEqual([]);
@@ -53,7 +47,7 @@ it('deletes all owned records atomically while preserving shared questions, memo
   expect(store.pendingDeletions()).toEqual([]); expect(store.view(next)).toBeDefined();
 });
 it('retains immutable-message protection, rejects unfinished deletion and rolls back a failing deletion', () => {
-  const draft = store.createSession().id;
+  const draft = historicalSession(store).id;
   expect(() => store.deleteSession(draft)).toThrow('delete_requires_ended');
   store.submit(draft, 'An immutable submitted message.');
   expect(() => raw.prepare('DELETE FROM messages WHERE session_id=?').run(draft)).toThrow('immutable');
@@ -66,18 +60,18 @@ it('retains immutable-message protection, rejects unfinished deletion and rolls 
   expect(store.integrity().foreignKeys).toEqual([]);
 });
 it('releases a failed memory job blocker without modifying already applied memory', () => {
-  const first = end(); const partner = store.session(first).character;
-  const attempt = store.prepareMemory(first, 'failed-memory'); store.dispatchMemory(attempt.id); store.failMemory(attempt.id, 'public_failure', null, {});
-  const second = store.createSession().id; store.selectManual(second, partner); store.submit(second, 'A second topic.'); store.commitRoute(second, null, 'public', null); store.freezeMemory(second); store.end(second);
-  expect(store.view(second).memory.blockedBy).toBe(first);
-  const current = rows('shared_memory'); store.deleteSession(first);
-  expect(store.memoryReady([second])).toBe(second); expect(rows('shared_memory')).toEqual(current);
+  const first=end(),attempt=memoryAttempt(store);store.failMemoryAdd(attempt.id,'public_failure');
+  expect(store.endBlocker()).toBe(first);expect(()=>store.createSession()).toThrow('end_processing_pending');
+  const current=rows('shared_memory');store.deleteSession(first);
+  expect(store.endBlocker()).toBeNull();expect(rows('shared_memory')).toEqual(current);
+  const second=end('A second topic.');expect(store.memoryAddReady()?.session_id).toBe(second);
+
 });
 it('refuses a schema-v3 database without writing or recovering it', () => {
   store.close(); rmSync(join(directory, 'stomylos.sqlite3'));
   const old = new Database(join(directory, 'stomylos.sqlite3')); old.exec(readFileSync('tests/fixtures/schema-v3.sql', 'utf8')); old.pragma('user_version=3'); old.close();
   const before = readFileSync(join(directory, 'stomylos.sqlite3'));
-  expect(() => new Store(directory, native)).toThrow('external_migration_required');
+  expect(() => new Store(directory, native)).toThrow('unsupported_schema_version');
   expect(readFileSync(join(directory, 'stomylos.sqlite3'))).toEqual(before);
 });
 it('accepts only a bounded session ID and no renderer-provided deletion paths or SQL', () => {

@@ -1,3 +1,5 @@
+import { historicalSession, seedMemory, historicalConversation as conversationSnapshot } from './historical-fixtures';
+import sevenRuntime from '../src/main/conversation-v7-config.json';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -5,13 +7,16 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { Store } from '../src/main/database';
-import { characters, config, conversationSnapshot, conversationRequestSnapshot, eligible, hash, leastUsed, routerBody, routerScores, routerSnapshot } from '../src/main/contracts';
+import { conversationRequestSnapshot, eligible as runtimeEligible, hash, leastUsed, routerBody, routerScores as runtimeScores, routerSnapshot } from '../src/main/contracts';
 import { emptyMemory, memoryHash, memoryJson } from '../src/main/memory-updater';
 import { routeSearch } from '../src/main/search-router';
 import { ChatStream, type Gateway } from '../src/main/transport';
 import v5 from '../src/main/conversation-v5-config.json';
 import { v5Snapshot } from './time-fixtures';
 
+const routerScores=(text:string,snapshot=conversationSnapshot())=>runtimeScores(text,snapshot);
+const eligible=(scores:any,snapshot=conversationSnapshot())=>runtimeEligible(scores,snapshot);
+const config=sevenRuntime, characters=sevenRuntime.conversation.characters;
 const ids = ['model_01', 'model_02', 'model_03', 'model_04', 'model_05', 'model_07', 'model_08'];
 const models = ['anthropic/claude-fable-5.1', 'xiaomi/mimo-v2.5-pro', 'anthropic/claude-sonnet-5', 'openai/gpt-6-astra', 'google/gemini-3.8-flash', 'bytedance-seed/seed-2-1-turbo', 'deepseek/deepseek-v4-pro-0813'];
 let directory: string, store: Store, raw: Database.Database;
@@ -64,7 +69,7 @@ it('requires exactly seven integer score fields, retains overlapping eligibility
 });
 
 for (const kind of ['starter', 'user'] as const) it(`keeps a v5 unsent draft and interrupted request through restart and opening changes (${kind})`, () => {
-  const created = store.createSession();
+  const created = historicalSession(store);
   if (kind === 'user') store.setOpening(created.id, randomUUID(), 0, kind);
   const saved = JSON.stringify(v5Snapshot(kind)); raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(saved, created.id);
   store.saveDraft(created.id, 'An old unsent draft.'); store.close(); open();
@@ -76,18 +81,20 @@ for (const kind of ['starter', 'user'] as const) it(`keeps a v5 unsent draft and
   expect(() => store.selectManual(created.id, 'model_05')).toThrow('invalid_character');
   store.selectManual(created.id, 'model_04'); store.searchMode(created.id, 'off'); store.submit(created.id, 'An old accepted message.');
   store.commitRoute(created.id, null, 'manual', null);
+  const legacy=memoryJson(emptyMemory('shared'));raw.prepare('INSERT INTO memory_legacy_seeds VALUES(?,?,?)').run(created.id,legacy,memoryHash(legacy));
+  store.freezeMemory(created.id);
   const request = store.prepareChat(created.id, randomUUID()), body = store.chatBody(request.id);
   store.dispatch(request.id); const reply = store.prepareReply(created.id, request.id); store.checkpoint(reply.id, 'Retained partial.');
   store.close(); open();
   const retry = store.prepareChat(created.id, randomUUID()); expect(retry.config).toBe(request.config); expect(store.chatBody(retry.id)).toEqual(body);
   expect(body.messages[0].content.startsWith(v5.conversationPrompt)).toBe(true);
   store.dispatch(retry.id); const complete = store.prepareReply(created.id, retry.id); store.finishReply(retry.id, complete.id, 'Saved reply.', {});
-  store.end(created.id); store.cancelEnd(created.id); const next = store.createSession(); expect(JSON.parse(next.chat_config).version).toBe('stomylos_conversation_v7');
+  store.end(created.id); store.cancelEnd(created.id); const next = historicalSession(store); expect(JSON.parse(next.chat_config).version).toBe('stomylos_conversation_v7');
   expect(JSON.parse(store.session(created.id).chat_config).characters[3].label).toBe('Everyday companion');
 });
 
 for (const partner of ids) for (const mode of ['auto', 'off'] as const) it(`preserves ${partner} identity, reasoning and ${mode} search through retry`, async () => {
-  const session = store.createSession(); store.setOpening(session.id, randomUUID(), 0, 'user'); store.selectManual(session.id, partner);
+  const session = historicalSession(store); store.setOpening(session.id, randomUUID(), 0, 'user'); store.selectManual(session.id, partner);
   store.searchMode(session.id, mode); store.submit(session.id, 'Please retrieve the latest release notes.'); store.commitRoute(session.id, null, 'manual', null);
   let calls = 0;
   const gateway = { stream: async () => { calls++; return { content: '{"search":true}', metadata: {} }; } } as unknown as Gateway;
@@ -102,17 +109,16 @@ for (const partner of ids) for (const mode of ['auto', 'off'] as const) it(`pres
 });
 
 it('gives all seven models the same memory while preserving their conversation identities', () => {
-  const document = emptyMemory('shared');
-  document.traits = ids.map((_, index) => ({ id: `preference-${index}`, text: `Public preference ${index}.` }));
-  const encoded = memoryJson(document); raw.prepare('UPDATE shared_memory SET document=?,document_hash=? WHERE id=1').run(encoded, memoryHash(encoded));
+  const document = {character_id:'shared',revision:0,database_records:ids.map((_, index) => ({ id: `preference-${index}`, text: `Public preference ${index}.` }))};
+  const encoded = memoryJson(document); seedMemory(raw,encoded);
   for (const partner of ids) {
-    const session = store.createSession(); store.selectManual(session.id, partner); store.searchMode(session.id, 'off');
+    const session = historicalSession(store); store.selectManual(session.id, partner); store.searchMode(session.id, 'off');
     store.submit(session.id, 'Tell me about your music.'); store.commitRoute(session.id, null, 'manual', null);
     const request = store.prepareChat(session.id, randomUUID()), body = store.chatBody(request.id);
     for (let other = 0; other < ids.length; other++) expect(body.messages[0].content).toContain(`Public preference ${other}.`);
     store.dispatch(request.id); const reply = store.prepareReply(session.id, request.id); store.finishReply(request.id, reply.id, 'My imagined story.', {}); store.end(session.id);
-    expect(JSON.parse(store.memoryJob(session.id)!.source).character_id).toBe(partner);
-    const attempt = store.prepareMemory(session.id, randomUUID()); store.dispatchMemory(attempt.id); store.saveMemory(attempt.id, '{"operations":[]}', {}); store.cancelEnd(session.id);
+    expect(store.session(session.id).character).toBe(partner);expect(store.memoryJob(session.id)).toBeNull();
+    store.cancelEnd(session.id);
   }
   store.close(); open(); expect(raw.prepare('SELECT document FROM shared_memory').get()).toEqual({ document: encoded });
 });
@@ -141,7 +147,7 @@ function v6Snapshot(kind: 'starter' | 'user', memory = 'stomylos_memory_context_
 for (const kind of ['starter', 'user'] as const) for (const memory of ['stomylos_memory_context_v2', 'stomylos_memory_context_v3']) {
   it(`preserves v6 ${kind} ${memory} drafts, routes and retries after adding Taste`, () => {
     expect(hash(readFileSync('src/main/conversation-v6-config.json', 'utf8'))).toBe('291ea61aa8be5945ac389427ba7bae943de14a1b73e7e2617c8865d1ba6251c7');
-    const old = v6Snapshot(kind, memory), snapshot = store.createSession();
+    const old = v6Snapshot(kind, memory), snapshot = historicalSession(store);
     if (kind === 'user') store.setOpening(snapshot.id, randomUUID(), 0, kind);
     raw.prepare('UPDATE sessions SET chat_config=? WHERE id=?').run(JSON.stringify(old), snapshot.id);
     const question = kind === 'user' ? null : 'An old question?';

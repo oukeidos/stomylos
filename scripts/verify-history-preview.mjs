@@ -24,7 +24,7 @@ try {
   await command('setMemoryPreference', { enabled: false, revision: snapshot.settings.memory.revision });
   if (!await page.locator('#conversation-sidebar').isVisible()) await button('Show history').click();
   await wait(async () => await subtitle().textContent() === 'New chat');
-  await command('selectPartner', { sessionId: id, character: 'model_04' });
+  await command('selectPartner', { sessionId: id, character: 'model_03' });
   await command('searchMode', { sessionId: id, mode: 'off' });
   const text = 'Last input\n안녕 👋 <b>literal</b> ' + 'unbroken'.repeat(90);
   await command('sendMessage', { sessionId: id, text, revision: 1 });

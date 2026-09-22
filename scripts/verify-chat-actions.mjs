@@ -22,7 +22,7 @@ try {
   assert.equal(await button('Delete chat').count(), 0);
   assert.equal(await button('End chat').count(), 1);
   assert.equal(await button('Chat options').count(), 0);
-  await command('selectPartner', { sessionId: id, character: 'model_04' });
+  await command('selectPartner', { sessionId: id, character: 'model_03' });
   await command('searchMode', { sessionId: id, mode: 'off' });
   await command('sendMessage', { sessionId: id, text: 'I enjoy visiting quiet museums.', revision: 1 });
   await wait(async () => (await command('snapshot')).activity.phase === 'idle' && (await command('loadSession', { sessionId: id })).messages.at(-1).delivery === 'complete');

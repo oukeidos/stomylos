@@ -1,10 +1,13 @@
+import {historicalSession} from './historical-fixtures';
+import {conversationSnapshot} from '../src/main/contracts';
 import { expect, it } from 'vitest';
 import { coldFixture, receiveNotes } from './cold-memory-fixtures';
 import { coldHash } from '../src/main/cold-memory-store';
 
 function start(f: ReturnType<typeof coldFixture>) {
-  const session = f.store.createSession();
-  f.store.searchMode(session.id, 'off'); f.store.selectManual(session.id, 'model_04');
+  const saved=conversationSnapshot('user');delete saved.conversation_date_version;saved.associative_context_version='stomylos_associative_recall_v1';
+  const session = historicalSession(f.store,'user',saved);
+  f.store.searchMode(session.id, 'off'); f.store.selectManual(session.id, 'model_03');
   const message = f.store.submit(session.id, 'I like hiking.');
   expect(f.store.memoryAddReady()).toBeNull();
   f.store.commitRoute(session.id, null, 'fixture', null);

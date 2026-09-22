@@ -1,3 +1,4 @@
+import { closeNative } from './native-lifecycle.mjs';
 // Native and packaged bookmark acceptance; invented history and local HTTP only.
 import { _electron as electron } from 'playwright-core';
 import { createRequire } from 'node:module';
@@ -25,18 +26,18 @@ if (process.argv[2] === '--seed') {
   const directory = process.argv[3];
   assert.ok(basename(directory).startsWith('stomylos-bookmarks-ui-'));
   const Database = require('better-sqlite3'), db = new Database(join(directory, 'stomylos.sqlite3'));
-  assert.equal(db.pragma('user_version', { simple: true }), 13);
+  assert.equal(db.pragma('user_version', { simple: true }), 46);
   const template = db.prepare('SELECT * FROM sessions LIMIT 1').get();
   db.pragma('foreign_keys=ON');
   db.transaction(() => {
     db.prepare("UPDATE sessions SET state='ended' WHERE id=?").run(template.id);
     for (let i = 0; i < 83; i++) {
       const id = `public-history-${String(i).padStart(3, '0')}`, direct = i % 2 === 1;
-      const config = JSON.parse(template.chat_config); config.opening.kind = direct ? 'user' : 'starter';
+      const config = JSON.parse(template.chat_config); delete config.opener_version; delete config.conversation_date_version; config.opening.kind = direct ? 'user' : 'starter';
       const row = { ...template, id, state: 'active', ended_at: '2026-09-06T12:00:00Z',
         created_at: `2026-09-06T${String(Math.floor(i / 4)).padStart(2, '0')}:00:00Z`,
-        character: 'model_04', analysis_state: 'none', draft: '', opening_kind: direct ? 'user' : 'starter',
-        starter_id: direct ? null : template.starter_id, starter_version: direct ? null : template.starter_version,
+        character: 'model_03', analysis_state: 'none', draft: '', opening_kind: direct ? 'user' : 'starter',
+        starter_id: direct ? null : 'public-fixture', starter_version: direct ? null : 'public-fixture-v1',
         starter_text: direct ? null : `A remembered conversation ${i}: what makes a familiar place worth revisiting?`, chat_config: JSON.stringify(config) };
       db.prepare(`INSERT INTO sessions(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(() => '?').join(',')})`).run(...Object.values(row));
       db.prepare("INSERT INTO messages(id,session_id,sequence,role,content,origin,delivery) VALUES(?,?,1,'user',?,'learner','complete')").run(`${id}-learner`, id, `I remember public topic ${i} and would like to return to it.`);
@@ -89,7 +90,7 @@ async function launch() {
   await button('Settings').waitFor(); await page.locator('.composer textarea').waitFor();
 }
 async function close() {
-  const exited = new Promise(done => app.process().once('exit', done)); await command('close'); await exited; app = null;
+  const exited = new Promise(done => app.process().once('exit', done)); await closeNative(app); await exited; app = null;
 }
 async function choose(name) { await setFilter(name); await settled(); }
 async function rowAction(index, action) {

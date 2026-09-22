@@ -23,7 +23,7 @@ for (const key of ['ELECTRON_RUN_AS_NODE', 'ELECTRON_RENDERER_URL', 'STOMYLOS_LI
 let app, page;
 const errors = [], checks = [];
 const report = { status: 'running', directory, packaged, errors, checks, paidRequests: 0 };
-const button = name => page.getByRole('button', { name, exact: true });
+const button = name => page.getByRole('button', { name:name.startsWith('Partner: ')?new RegExp('^'+name+'(?: ·|$)'):name, exact: true });
 const cmd = (name, args) => page.evaluate(([name, args]) => window.stomylos.command(name, args), [name, args]);
 async function launch() {
   app = await electron.launch({ executablePath: packaged ? resolve(process.env.STOMYLOS_VERIFY_BUNDLE ?? 'release/linux-unpacked/stomylos') : executable,
@@ -57,7 +57,7 @@ try {
   await button('Partner: Automatic').click(); await page.keyboard.press('End');
   await settled(() => page.evaluate(label => document.activeElement.textContent.includes(label), snapshot.characters.at(-1).label));
   await page.keyboard.type('Explain');
-  await settled(() => page.evaluate(() => document.activeElement.querySelector('strong')?.textContent === 'Explain'));
+  await settled(() => page.evaluate(() => document.activeElement.querySelector('strong')?.textContent.startsWith('Explain · ')));
   await page.keyboard.press('Enter'); await button('Partner: Explain').waitFor();
   const input = page.getByRole('textbox', { name: 'Your message', exact: true });
   const text = '  I enjoy quiet mornings.\n한글 draft retained.  ';
@@ -80,21 +80,26 @@ try {
   await page.keyboard.press('Escape');
   checks.push('History paging/reopen, current roster keyboard selection, exact IME/text/clipboard, stream focus and retained active selector');
   await page.getByRole('button', { name: 'What small part of your day would you like to keep?' }).first().click();
-  await page.getByRole('button', { name: /Analysis details/ }).click();
+  await button('Conversation details').click();
+  await page.getByRole('button',{name:/^Grammar analysis/}).click();
   await page.getByRole('checkbox', { name: 'Only show suggested changes' }).uncheck();
   assert.equal(await page.locator('.analysis-unit').count(), 24);
-  await button('Return to current chat').click(); await button('End chat').click();
+  await page.keyboard.press('Escape');await button('Return to current chat').click(); await button('End chat').click();
+  await cmd('retryAnalysis',{sessionId:id});
   await settled(async () => {
     const view = await cmd('loadSession', { sessionId: id });
-    return view.session.analysis_state === 'completed' && view.renewal?.state === 'completed' && view.memory.job?.state === 'completed';
+    return view.session.analysis_state === 'completed' && view.memory.job?.state === 'completed';
   });
   const stored = await cmd('loadSession', { sessionId: id });
   assert.equal(stored.messages.find(m => m.origin === 'learner').content, text);
   assert.equal(stored.units.length, 1); assert.equal(stored.session.character, 'model_03');
-  assert.equal(stored.renewal.accepted_count, 2);
-  assert.equal(await page.locator('header .current-partner').innerText(), 'Explain');
+  assert.equal(stored.renewal,null);
+  assert.match(await page.locator('header .current-partner').innerText(), /^Explain(?: ·|$)/);
   const calls = mock.requests.length;
-  assert.equal(calls, 6, 'One route, search, reply, grammar, memory and renewal request');
+  assert.equal(calls, 3, 'Retained pre-search contract sends one reply, explicit grammar and memory extraction');
+  assert.equal(mock.requests.filter(r=>r.stream).length,1);
+  assert.equal(mock.requests.filter(r=>r.response_format?.json_schema?.name==='add_only_v1').length,1);
+  assert.equal(mock.requests.filter(r=>r.response_format?.json_schema?.schema.properties?.units).length,1);
   await close(); await launch();
   assert.deepEqual(await cmd('loadSession', { sessionId: id }), stored);
   assert.equal(mock.requests.length, calls, 'Restart cannot dispatch background work');
