@@ -8,6 +8,7 @@ import { SpeechSettings } from './speech';
 import { IconButton } from './icon-button';
 import { CredentialSettings } from './credentials';
 import { BackupSettings } from './backup';
+import { ReadingSizeSetting } from './reading-size';
 
 const tabs = [{ id: 'appearance', label: 'Appearance' }, { id: 'voice', label: 'Voice' }, { id: 'memory', label: 'Memory' }, { id: 'usage', label: 'Usage & budget' }, { id: 'data', label: 'Connection & data' }] as const;
 export type SettingsTab = typeof tabs[number]['id'];
@@ -40,11 +41,11 @@ export const SettingsDialog = forwardRef<SettingsHandle, {
         </div>
         {tabs.map(item => <section key={item.id} className="settings-panel" role="tabpanel" id={`${id}-${item.id}-panel`} aria-labelledby={`${id}-${item.id}-tab`} tabIndex={0} hidden={tab !== item.id} inert={tab !== item.id}>
           {item.id !== 'memory' && <h3 className="settings-title">{item.label}</h3>}
-          {item.id === 'appearance' && <section className="setting">
+          {item.id === 'appearance' && <><ReadingSizeSetting /><section className="setting">
             <label className="check"><input type="checkbox" role="switch" checked={wordCloud.enabled === true}
               disabled={wordCloud.busy || wordCloud.enabled === undefined} onChange={event => void wordCloud.change(event.target.checked)} />Show word cloud in new chats</label>
             {wordCloud.error && <p role="alert" className="note">Could not save this setting. Try changing it again.</p>}
-          </section>}
+          </section></>}
           {item.id === 'voice' && <SpeechSettings active={open && tab === 'voice'} />}
           {item.id === 'usage' && <UsageSettings active={open && tab === 'usage'} />}
           {item.id === 'memory' && <MemoryManager preference={settings.memory} ref={memory} active={open && tab === 'memory'} errorText={errorText} openChat={id => { onOpenChange(false); openChat(id); }} />}

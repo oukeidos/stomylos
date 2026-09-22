@@ -37,6 +37,7 @@ import { AssistantMarkdown } from './markdown';
 import { useConversationScroll } from './conversation-scroll';
 import { BookmarkUndo, useBookmarks, useHistory } from './bookmarks';
 import './style.css';
+import { initializeReadingSize, readingDidChange } from './reading-size';
 
 const labels: Record<string, string> = { none: 'Not analyzed', pending: 'Analysis ready to run', running: 'Analyzing',
   completed: 'Analysis saved', failed: 'Analysis needs attention', skipped: 'No learner messages' };
@@ -284,7 +285,11 @@ function Composer({ view, app, act, openingAction, starter, blocked, onCompositi
   const allowance = conversationBudget(view.messages, draft.text === '//end' ? '/end' : draft.text);
   const overBudget = draft.text !== '/end' && !allowance.allowed, near = allowance.near;
   useEffect(() => { const timer = setTimeout(() => { void flushDraft(id).catch(() => undefined); }, 350); return () => clearTimeout(timer); }, [id, draft.revision]);
-  useEffect(() => { const node = textarea.current; if (node) { node.style.height = 'auto'; node.style.height = `${Math.min(node.scrollHeight, 160)}px`; } }, [draft.text]);
+  useLayoutEffect(() => {
+    const resize = () => { const node = textarea.current; if (node) { node.style.height = 'auto'; node.style.height = `${Math.min(node.scrollHeight, 160)}px`; } };
+    resize(); window.addEventListener(readingDidChange, resize);
+    return () => window.removeEventListener(readingDidChange, resize);
+  }, [draft.text]);
   const send = () => act(async () => {
     if (replyChoice.busy.current || replyChoice.failed || (view.outdatedOpening && draft.text !== '/end') || blocked || genieBusy() || sending || dictationBusy() || overBudget || !draft.text.trim()) return;
     const accepted = afterAcceptedAction();
@@ -579,4 +584,5 @@ function App() {
     <div className="dialog-actions"><button onClick={() => { setNewDialog(false); if (unfinished) act(() => show(unfinished.id)); }}>Keep current chat</button><button className="primary" onClick={() => act(startNew)}>End and start new</button></div>
   </Modal></div>;
 }
+initializeReadingSize();
 createRoot(document.getElementById('root')!).render(<App />);

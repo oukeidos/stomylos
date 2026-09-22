@@ -17,7 +17,7 @@ export function MemoryChangeHistory({ memory, ended }: { memory: MemoryView; end
           {label:'Removed by capacity limit', items:changes.evicted.filter(item => !archived.has(item.id))},
         ];
         return groups.filter(group => group.label === 'Added' || group.items.length).map(group =>
-          <div key={group.label}><strong>{group.label}</strong><ul>{group.items.map(item => <li key={item.id}>{item.text}</li>)}</ul></div>);
+          <div key={group.label}><strong>{group.label}</strong><ul>{group.items.map(item => <li className="memory-note" key={item.id}>{item.text}</li>)}</ul></div>);
       })() : <p className="note">{job.state === 'skipped' ? 'This source was skipped.' : job.failure || 'Waiting for memory processing.'}</p>}
     </section>)}
   </div>;

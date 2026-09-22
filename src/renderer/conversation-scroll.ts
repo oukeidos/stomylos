@@ -1,4 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { readingAnchor } from './reading-anchor';
+import { readingWillChange, readingDidChange } from './reading-size';
 
 const tolerance = 2;
 
@@ -63,8 +65,22 @@ export function useConversationScroll(sessionId: string | null) {
     };
     const queue = () => { if (!frame) frame = requestAnimationFrame(update); };
     schedule.current = queue;
+    let restoreAnchor: (() => void) | undefined;
+    const beforeReadingChange = () => {
+      if (following.current) restoreAnchor = undefined;
+      else restoreAnchor ??= readingAnchor(node, body);
+    };
+    const afterReadingChange = () => {
+      restoreAnchor?.();
+      // Ignore our own restoration when the delayed scroll event arrives.
+      lastTop = node.scrollTop; lastMaximum = maximum();
+      queue();
+    };
+    window.addEventListener(readingWillChange, beforeReadingChange);
+    window.addEventListener(readingDidChange, afterReadingChange);
     const scroll = () => {
       const top = node.scrollTop, bottom = maximum();
+      if (Math.abs(top - lastTop) > 1) restoreAnchor = undefined;
       const clamped = lastTop > bottom && top >= bottom - tolerance && bottom < lastMaximum;
       if (top < lastTop - 1 && !clamped) pause();
       else if (!dragging && readerDown.current && top > lastTop + 1 && bottom - top <= tolerance) resume();
@@ -73,12 +89,14 @@ export function useConversationScroll(sessionId: string | null) {
       queue();
     };
     const wheel = (event: WheelEvent) => {
+      restoreAnchor = undefined;
       if (event.deltaY < 0 && node.scrollTop > 0) pause();
       else if (event.deltaY > 0) readerDown.current = true;
     };
     const key = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey) return;
       if ((event.target as Element).closest('input, textarea, select, button, [contenteditable="true"]')) return;
+      restoreAnchor = undefined;
       if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)) pause();
       else if (['ArrowDown', 'PageDown', 'End'].includes(event.key) || event.key === ' ') readerDown.current = true;
     };
@@ -86,6 +104,7 @@ export function useConversationScroll(sessionId: string | null) {
       const rect = node.getBoundingClientRect();
       if (event.target === node && event.clientX >= rect.left + node.clientLeft + node.clientWidth) {
         dragging = true;
+        restoreAnchor = undefined;
         pause();
       }
     };
@@ -115,6 +134,8 @@ export function useConversationScroll(sessionId: string | null) {
       cancelAnimationFrame(frame);
       resize.disconnect();
       mutation.disconnect();
+      window.removeEventListener(readingWillChange, beforeReadingChange);
+      window.removeEventListener(readingDidChange, afterReadingChange);
       node.removeEventListener('scroll', scroll);
       node.removeEventListener('scrollend', scrollEnd);
       node.removeEventListener('wheel', wheel);
